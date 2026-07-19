@@ -2,12 +2,6 @@ https://z750sasr.github.io/epomaker-he30-alternate-web-driver/
 
 <table>
   <tr>
-    <td><img src="images/EPOMAKERHE30_black.webp" alt="Black" width="300"></td>
-    <td><img src="images/EPOMAKERHE30_white.webp" alt="White" width="300"></td>
-  </tr>
-</table>
-<table>
-  <tr>
     <td><img src="images/EPOMAKERHE30_black.webp" alt="Black Epomaker HE30 keyboard" width="300"></td>
     <td><img src="images/EPOMAKERHE30_white.webp" alt="White Epomaker HE30 keyboard" width="300"></td>
   </tr>
