@@ -7,7 +7,7 @@ https://z750sasr.github.io/epomaker-he30-alternate-web-driver/
   </tr>
 </table>
 
-# Custom Web Driver for HE30 Keyboard
+# Custom Web Driver for EPOMAKER HE30 Keyboard
 
 A simple web-based configuration tool for supported Epomaker HE30-family Hall-effect keyboards.
 
