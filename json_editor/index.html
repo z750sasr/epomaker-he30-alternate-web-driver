@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Open, inspect, remap, and export HE30 keyboard JSON backups locally in your browser." />
+    <meta name="theme-color" content="#07111f" />
+    <title>JSON Editor | HE30 Control</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body data-app-mode="json">
+    <div class="app-shell">
+      <header class="topbar">
+        <button class="brand" id="homeButton" type="button" aria-label="JSON editor home">
+          <span class="brand-mark" aria-hidden="true">H</span>
+          <span><strong>HE30 Control</strong><small>Offline JSON editor</small></span>
+        </button>
+        <div class="topbar-actions">
+          <span class="local-pill"><i></i> Local only</span>
+          <a class="button secondary compact route-link" href="../">Live keyboard control</a>
+          <button class="button primary compact" id="openFileButton" type="button">Open JSON</button>
+          <input id="fileInput" type="file" accept="application/json,.json" hidden />
+        </div>
+      </header>
+
+      <main>
+        <section class="welcome" id="welcomeView">
+          <div class="welcome-copy">
+            <p class="eyebrow">Offline profile tools</p>
+            <h1>Inspect a backup.<br /><span>Change only what you intend.</span></h1>
+            <p class="lead">Open a keyboard JSON backup, edit its supported configuration sections locally, and export a new copy. This page never connects to or writes to a keyboard.</p>
+            <div class="welcome-actions">
+              <button class="button primary large" id="welcomeFileButton" type="button">Open a JSON backup</button>
+              <button class="button secondary large" id="demoButton" type="button">Explore demo workspace</button>
+              <a class="text-link route-link" href="../">Return to live keyboard control &rarr;</a>
+            </div>
+            <div class="support-note"><span aria-hidden="true">&#9432;</span><span>Your file stays in this browser tab. Export downloads a new JSON file; the original is not overwritten.</span></div>
+          </div>
+          <div class="welcome-visual" aria-label="JSON editor feature overview">
+            <div class="device-card">
+              <div class="device-card-top"><span class="live-dot"></span><span>Offline workspace</span><b>Local file</b></div>
+              <div class="mini-keyboard" id="welcomeKeyboard" aria-hidden="true"></div>
+              <div class="device-stats">
+                <span><small>Input</small><strong>JSON</strong></span>
+                <span><small>Editing</small><strong>Staged</strong></span>
+                <span><small>Output</small><strong>Backup</strong></span>
+              </div>
+            </div>
+            <div class="feature-float float-one"><span>&#8645;</span><div><strong>Complete keymap</strong><small>Four editable layers</small></div></div>
+            <div class="feature-float float-two"><span>&#10003;</span><div><strong>No device writes</strong><small>Offline by design</small></div></div>
+          </div>
+        </section>
+
+        <section class="workspace hidden" id="workspaceView">
+          <aside class="sidebar">
+            <div class="device-summary">
+              <div class="device-icon">J</div>
+              <div><strong id="deviceName">JSON profile</strong><span id="deviceMeta">Local backup</span></div>
+            </div>
+            <nav id="sideNav" aria-label="Configuration sections">
+              <button data-page="overview" class="active"><span>&#9673;</span>Overview</button>
+              <button data-page="mapping"><span>&#9000;</span>Key mapping</button>
+              <button data-page="hall"><span>&#8597;</span>Hall effect</button>
+              <button data-page="settings"><span>&#9881;</span>Device settings</button>
+              <button data-page="lighting"><span>&#10024;</span>Lighting</button>
+              <button data-page="advanced"><span>&#9670;</span>Advanced</button>
+              <button data-page="profiles"><span>&#9638;</span>Onboard profiles</button>
+              <button data-page="diagnostics"><span>&#9432;</span>Diagnostics</button>
+            </nav>
+            <div class="sidebar-safety"><i></i><div><strong>Offline editing</strong><span>Export creates a new file</span></div></div>
+          </aside>
+
+          <div class="work-area">
+            <header class="work-header">
+              <div><p class="eyebrow" id="pageEyebrow">Workspace</p><h1 id="pageTitle">Overview</h1><p id="pageDescription">Your profile at a glance.</p></div>
+              <div class="work-actions">
+                <button class="button secondary" id="exportButton" type="button">Export backup</button>
+                <button class="button secondary" id="revertButton" type="button" disabled>Revert staged</button>
+                <button class="button primary hidden" id="applyButton" type="button" disabled>Apply to keyboard</button>
+              </div>
+            </header>
+            <div class="dirty-banner hidden" id="dirtyBanner"><span><b id="dirtyCount">0</b> section changes staged locally</span><small>Export to save a new JSON backup.</small></div>
+            <div class="page-content" id="pageContent"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="modal" id="mappingDialog">
+      <form method="dialog" class="modal-frame wide" id="mappingForm">
+        <header class="modal-header"><div><p class="eyebrow">Key mapping</p><h2 id="mappingTitle">Remap key</h2><p id="mappingCurrent"></p></div><button class="icon-button" value="cancel" aria-label="Close">&times;</button></header>
+        <div class="modal-toolbar"><input id="mappingSearch" type="search" placeholder="Search keyboard, media, mouse, or internal functions" autocomplete="off" /><span id="mappingAddress"></span></div>
+        <div class="mapping-groups" id="mappingGroups"></div>
+        <footer class="modal-footer"><button class="button danger-text" id="clearMappingButton" type="button">Unassign key</button><span></span><button class="button secondary" value="cancel">Cancel</button></footer>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="advancedDialog">
+      <form method="dialog" class="modal-frame wide" id="advancedForm">
+        <header class="modal-header"><div><p class="eyebrow">Advanced action</p><h2 id="advancedTitle">Configure action</h2><p id="advancedSubtitle">The host key will point to this action.</p></div><button class="icon-button" value="cancel" aria-label="Close">&times;</button></header>
+        <div class="advanced-form" id="advancedFields"></div>
+        <footer class="modal-footer"><span class="form-error" id="advancedError"></span><button class="button secondary" value="cancel">Cancel</button><button class="button primary" id="saveAdvancedButton" value="default">Stage action</button></footer>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="confirmDialog">
+      <form method="dialog" class="modal-frame compact-modal">
+        <header class="modal-header"><div><p class="eyebrow">Hardware writes unavailable</p><h2>Use live keyboard control</h2><p>The offline editor exports files and never writes directly to a keyboard.</p></div><button class="icon-button" value="cancel" aria-label="Close">&times;</button></header>
+        <div class="confirm-list" id="confirmList"></div>
+        <label class="confirm-check"><input id="confirmBackupCheck" type="checkbox" /><span>I understand.</span></label>
+        <footer class="modal-footer"><span></span><button class="button secondary" value="cancel">Cancel</button><button class="button primary" id="confirmApplyButton" value="default" disabled>Continue</button></footer>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="switchProfileDialog">
+      <form method="dialog" class="modal-frame compact-modal">
+        <header class="modal-header"><div><p class="eyebrow">Onboard profile</p><h2 id="switchProfileTitle">Load profile?</h2><p>Profile switching is available only from live keyboard control.</p></div><button class="icon-button" value="cancel" aria-label="Close">&times;</button></header>
+        <footer class="modal-footer"><span></span><button class="button secondary" value="cancel">Cancel</button><button class="button primary" id="confirmSwitchButton" value="default">Load profile</button></footer>
+      </form>
+    </dialog>
+
+    <div class="progress-overlay hidden" id="progressOverlay" role="status" aria-live="polite">
+      <div class="progress-card"><div class="spinner"></div><h2 id="progressTitle">Opening profile</h2><p id="progressMessage">Reading the local file.</p><div class="progress-track"><i id="progressBar"></i></div><strong id="progressPercent">0%</strong></div>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="../protocol.js"></script>
+    <script src="../app.js"></script>
+  </body>
+</html>

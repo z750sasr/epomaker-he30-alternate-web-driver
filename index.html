@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A local-first HE30 keyboard configuration studio for remapping, Hall-effect tuning, lighting, profiles, and advanced actions." />
+    <meta name="theme-color" content="#07111f" />
+    <title>EPOMAKER HE30 Control Panel</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-app-mode="live">
+    <div class="app-shell">
+      <header class="topbar">
+        <button class="brand" id="homeButton" type="button" aria-label="HE30 Control home">
+          <span class="brand-mark" aria-hidden="true">H</span>
+          <span><strong>Unofficial EPOMAKER HE30 Control Panel</strong><small>Still in development</small></span>
+        </button>
+        <div class="topbar-actions">
+          <span class="local-pill"><i></i> Local only</span>
+          <span class="connection-pill" id="connectionPill"><i></i><span>Not connected</span></span>
+          <a class="button secondary compact route-link" href="json_editor/">JSON editor</a>
+          <button class="button primary compact" id="connectButton" type="button">Connect keyboard</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="welcome" id="welcomeView">
+          <div class="welcome-copy">
+            <p class="eyebrow">Alternative EPOMAKER HE30 Web Driver</p>
+            <h1>I am jobless, I failed my only interview at Amazon.<br /><span>Now I use AI to made this.</span></h1>
+            <p class="lead">Configure your HE30 directly in the browser. Read the keyboard first, stage changes locally, then write and verify only when you choose.</p>
+            <div class="welcome-actions">
+              <button class="button primary large" id="welcomeConnectButton" type="button">Connect with WebHID</button>
+              <a class="text-link route-link" href="json_editor/">Open the offline JSON editor &rarr;</a>
+            </div>
+            <div class="support-note"><span aria-hidden="true">ⓘ</span><span>Direct keyboard access requires Chrome or Edge on desktop. If the keyboard disconnects, this page returns here automatically.</span></div>
+          </div>
+          <div class="welcome-visual" aria-label="HE30 feature overview">
+            <div class="device-card">
+              <div class="device-card-top"><span class="live-dot"></span><span>Keyboard workspace</span><b>36 keys</b></div>
+              <div class="mini-keyboard" id="welcomeKeyboard" aria-hidden="true"></div>
+              <div class="device-stats">
+                <span><small>Actuation</small><strong>0.4 mm</strong></span>
+                <span><small>Rapid Trigger</small><strong>0.1 mm</strong></span>
+                <span><small>Polling</small><strong>8K Hz</strong></span>
+              </div>
+            </div>
+            <div class="feature-float float-one"><span>↕</span><div><strong>Rapid Trigger</strong><small>Per-key control</small></div></div>
+            <div class="feature-float float-two"><span>◆</span><div><strong>Read-back verified</strong><small>Writes are checked</small></div></div>
+          </div>
+        </section>
+
+        <section class="workspace hidden" id="workspaceView">
+          <aside class="sidebar">
+            <div class="device-summary">
+              <div class="device-icon">⌨</div>
+              <div><strong id="deviceName">HE30</strong><span id="deviceMeta">Demo profile</span></div>
+            </div>
+            <nav id="sideNav" aria-label="Configuration sections">
+              <button data-page="overview" class="active"><span>⌂</span>Overview</button>
+              <button data-page="mapping"><span>⌨</span>Key mapping</button>
+              <button data-page="hall"><span>↕</span>Hall effect</button>
+              <button data-page="settings"><span>⚙</span>Device settings</button>
+              <button data-page="lighting"><span>✦</span>Lighting</button>
+              <button data-page="advanced"><span>⌁</span>Advanced</button>
+              <button data-page="profiles"><span>▣</span>Onboard profiles</button>
+              <button data-page="diagnostics"><span>☷</span>Diagnostics</button>
+            </nav>
+            <div class="sidebar-safety"><i></i><div><strong>Staged editing</strong><span>Nothing writes until Apply</span></div></div>
+          </aside>
+
+          <div class="work-area">
+            <header class="work-header">
+              <div><p class="eyebrow" id="pageEyebrow">Workspace</p><h1 id="pageTitle">Overview</h1><p id="pageDescription">Your keyboard at a glance.</p></div>
+              <div class="work-actions">
+                <button class="button secondary" id="exportButton" type="button">Export backup</button>
+                <button class="button secondary" id="revertButton" type="button" disabled>Revert staged</button>
+                <button class="button primary" id="applyButton" type="button" disabled>Apply to keyboard</button>
+              </div>
+            </header>
+            <div class="dirty-banner hidden" id="dirtyBanner"><span><b id="dirtyCount">0</b> section changes staged locally</span><small>No keyboard writes have occurred.</small></div>
+            <div class="page-content" id="pageContent"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="modal" id="mappingDialog">
+      <form method="dialog" class="modal-frame wide" id="mappingForm">
+        <header class="modal-header"><div><p class="eyebrow">Key mapping</p><h2 id="mappingTitle">Remap key</h2><p id="mappingCurrent"></p></div><button class="icon-button" value="cancel" aria-label="Close">×</button></header>
+        <div class="modal-toolbar"><input id="mappingSearch" type="search" placeholder="Search keyboard, media, mouse, or internal functions…" autocomplete="off" /><span id="mappingAddress"></span></div>
+        <div class="mapping-groups" id="mappingGroups"></div>
+        <footer class="modal-footer"><button class="button danger-text" id="clearMappingButton" type="button">Unassign key</button><span></span><button class="button secondary" value="cancel">Cancel</button></footer>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="advancedDialog">
+      <form method="dialog" class="modal-frame wide" id="advancedForm">
+        <header class="modal-header"><div><p class="eyebrow">Advanced action</p><h2 id="advancedTitle">Configure action</h2><p id="advancedSubtitle">The host key will point to this action.</p></div><button class="icon-button" value="cancel" aria-label="Close">×</button></header>
+        <div class="advanced-form" id="advancedFields"></div>
+        <footer class="modal-footer"><span class="form-error" id="advancedError"></span><button class="button secondary" value="cancel">Cancel</button><button class="button primary" id="saveAdvancedButton" value="default">Stage action</button></footer>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="confirmDialog">
+      <form method="dialog" class="modal-frame compact-modal">
+        <header class="modal-header"><div><p class="eyebrow">Final check</p><h2>Write staged changes?</h2><p>The app will write only the sections listed below, then read them back byte-for-byte.</p></div><button class="icon-button" value="cancel" aria-label="Close">×</button></header>
+        <div class="confirm-list" id="confirmList"></div>
+        <label class="confirm-check"><input id="confirmBackupCheck" type="checkbox" /><span>I understand the current profile backup is available from Export backup.</span></label>
+        <footer class="modal-footer"><span></span><button class="button secondary" value="cancel">Cancel</button><button class="button primary" id="confirmApplyButton" value="default" disabled>Write and verify</button></footer>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="switchProfileDialog">
+      <form method="dialog" class="modal-frame compact-modal">
+        <header class="modal-header"><div><p class="eyebrow">Onboard profile</p><h2 id="switchProfileTitle">Load profile?</h2><p>Loading another profile replaces the current workspace. Export or apply staged changes first.</p></div><button class="icon-button" value="cancel" aria-label="Close">×</button></header>
+        <footer class="modal-footer"><span></span><button class="button secondary" value="cancel">Cancel</button><button class="button primary" id="confirmSwitchButton" value="default">Load profile</button></footer>
+      </form>
+    </dialog>
+
+    <div class="progress-overlay hidden" id="progressOverlay" role="status" aria-live="polite">
+      <div class="progress-card"><div class="spinner"></div><h2 id="progressTitle">Reading keyboard</h2><p id="progressMessage">Please keep the keyboard connected.</p><div class="progress-track"><i id="progressBar"></i></div><strong id="progressPercent">0%</strong></div>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="protocol.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
