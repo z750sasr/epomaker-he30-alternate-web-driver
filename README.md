@@ -1,9 +1,7 @@
 https://z750sasr.github.io/epomaker-he30-alternate-web-driver/
 
-<p align="center">
-  <img src="images/EPOMAKERHE30_white.webp" alt="White Epomaker HE30 keyboard" width="48%">
-  <img src="images/EPOMAKERHE30_black.webp" alt="Black Epomaker HE30 keyboard" width="48%">
-</p>
+![EPOMAKER HE30 BLACK](images\EPOMAKERHE30_black.webp)
+![EPOMAKER HE30 WHITE](images\EPOMAKERHE30_white.webp)
 
 # HE30 Control
 
