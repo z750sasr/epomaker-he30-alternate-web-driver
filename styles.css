@@ -151,7 +151,7 @@ button { color: inherit; }
 .keycap.advanced { border-color: #6b86ff; }
 .keycap .physical { display: block; font-size: 10px; font-weight: 850; }
 .keycap .mapped { display: block; color: var(--muted); font-size: 8px; margin-top: 7px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
-.keycap .primary-label { margin-top: 0; color: var(--text); font-size: 12px; font-weight: 850; line-height: 1.2; }
+.keycap .primary-label { margin-top: 0; color: var(--text); font-size: 15px; font-weight: 850; line-height: 1.2; }
 .keycap .secondary-label { margin-top: 8px; color: var(--muted); font-size: 8px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
 .keycap .key-dot { position: absolute; width: 5px; height: 5px; right: 8px; top: 8px; border-radius: 50%; background: var(--mint); }
 .keycap .travel-fill { position: absolute; z-index: 1; left: 0; right: 0; bottom: 0; height: var(--travel-pct, 0%); background: linear-gradient(0deg, rgb(102 247 194 / 30%), rgb(91 140 255 / 13%)); border-top: 1px solid rgb(102 247 194 / 65%); transition: height 45ms linear; pointer-events: none; }

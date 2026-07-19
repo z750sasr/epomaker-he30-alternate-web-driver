@@ -30,13 +30,19 @@
     return [`F${number}`, 16, 0, code, `F${number}`];
   });
   const key = (name, type, code1, code2, short = name) => ({ name, type, code1, code2, short });
+  const globalLayerNumber = (profileIndex, layer) => clamp(profileIndex, 0, API.PROFILE_COUNT - 1) * API.LAYER_COUNT + clamp(layer, 0, API.LAYER_COUNT - 1);
+  const globalLayerLabel = (profileIndex, layer) => {
+    const number = globalLayerNumber(profileIndex, layer);
+    return `Layer ${number}${Number(layer) === 0 ? " · Default" : ` · FN${number}`}`;
+  };
+  const fnLayerMappings = Array.from({ length: API.TOTAL_LAYER_COUNT }, (_, index) => key(`${index === 0 ? "FN" : `FN${index}`} · Layer ${index}`, 240, 255, index, index === 0 ? "FN" : `FN${index}`));
   const MAPPING_GROUPS = Object.freeze([
     { title: "Basic characters", items: [...letters, ...digits, ["Space", 16, 0, 44, "Space"], ["Enter", 16, 0, 40, "Enter"], ["Tab", 16, 0, 43, "Tab"], ["Backspace", 16, 0, 42, "Bksp"], ["Escape", 16, 0, 41, "Esc"]].map((item) => key(...item)) },
     { title: "Symbols", items: [["Minus", 45, "-"], ["Equals", 46, "="], ["Left bracket", 47, "["], ["Right bracket", 48, "]"], ["Backslash", 49, "\\"], ["Semicolon", 51, ";"], ["Apostrophe", 52, "'"], ["Grave", 53, "`"], ["Comma", 54, ","], ["Period", 55, "."], ["Slash", 56, "/"]].map(([name, code, short]) => key(name, 16, 0, code, short)) },
     { title: "Function keys", items: functionKeys.map((item) => key(...item)) },
     { title: "Extended keys", items: [["Insert", 73], ["Home", 74], ["Page Up", 75], ["Delete", 76], ["End", 77], ["Page Down", 78], ["Right Arrow", 79], ["Left Arrow", 80], ["Down Arrow", 81], ["Up Arrow", 82], ["Caps Lock", 57], ["Print Screen", 70], ["Scroll Lock", 71], ["Pause", 72], ["Application", 101]].map(([name, code]) => key(name, 16, 0, code)) },
     { title: "Modifiers", items: [["Left Ctrl", 224, "LCtrl"], ["Left Shift", 225, "LShift"], ["Left Alt", 226, "LAlt"], ["Left GUI", 227, "LWin"], ["Right Ctrl", 228, "RCtrl"], ["Right Shift", 229, "RShift"], ["Right Alt", 230, "RAlt"], ["Right GUI", 231, "RWin"]].map(([name, code, short]) => key(name, 16, 0, code, short)) },
-    { title: "Layers and profiles", items: [["FN layer 1", 255, 1, "FN1"], ["FN layer 2", 255, 2, "FN2"], ["FN layer 3", 255, 3, "FN3"], ["Profile 1", 253, 0, "P1"], ["Profile 2", 252, 0, "P2"], ["Profile 3", 251, 0, "P3"]].map(([name, code1, code2, short]) => key(name, 240, code1, code2, short)) },
+    { title: "Layers and profiles", items: [...fnLayerMappings, ...[["Profile 1", 253, 0, "P1"], ["Profile 2", 252, 0, "P2"], ["Profile 3", 251, 0, "P3"]].map(([name, code1, code2, short]) => key(name, 240, code1, code2, short))] },
     { title: "Media and applications", items: [["Play / Pause", 205, 0, "Play"], ["Next track", 181, 0, "Next"], ["Previous track", 182, 0, "Prev"], ["Stop", 183, 0, "Stop"], ["Volume up", 233, 0, "Vol+"], ["Volume down", 234, 0, "Vol−"], ["Mute", 226, 0, "Mute"], ["Calculator", 146, 1, "Calc"], ["Browser home", 35, 2, "Home"], ["Browser back", 36, 2, "Back"], ["Browser forward", 37, 2, "Forward"]].map(([name, code1, code2, short]) => key(name, 48, code1, code2, short)) },
     { title: "Mouse and system", items: [["Mouse left", 32, 1, 0, "M1"], ["Mouse right", 32, 2, 0, "M2"], ["Mouse middle", 32, 4, 0, "M3"], ["Mouse back", 32, 16, 0, "M4"], ["Mouse forward", 32, 8, 0, "M5"], ["Wheel up", 33, 0, 1, "Wheel+"], ["Wheel down", 33, 0, 255, "Wheel−"], ["Power", 64, 1, 0, "Power"], ["Sleep", 64, 2, 0, "Sleep"], ["Wake", 64, 4, 0, "Wake"]].map(([name, type, code1, code2, short]) => key(name, type, code1, code2, short)) },
     { title: "Keyboard functions", items: [["N / All", 160, 0, "N/ALL"], ["RGB mode +", 46, 0, "RGB+"], ["RGB mode −", 47, 0, "RGB−"], ["RGB mode", 48, 0, "RGB"], ["Brightness +", 50, 0, "Bright+"], ["Brightness −", 51, 0, "Bright−"], ["Brightness off", 53, 0, "Light off"], ["Speed +", 54, 0, "Speed+"], ["Speed −", 55, 0, "Speed−"], ["Color +", 61, 0, "Color+"]].map(([name, code1, code2, short]) => key(name, 240, code1, code2, short)) },
@@ -78,6 +84,11 @@
     liveMonitorActive: false,
     liveMonitorBusy: false,
     liveTelemetryUnsubscribe: null,
+    profileChangeUnsubscribe: null,
+    profileSyncBusy: false,
+    profileSyncTarget: null,
+    profileSyncLayer: 0,
+    queuedProfileChange: null,
     liveTravel: new Array(128).fill(0),
     liveTravelRaw: new Array(128).fill(0),
     liveTravelStatus: new Array(128).fill(0),
@@ -111,7 +122,7 @@
 
   function makeDemoProfile() {
     const userKeys = {};
-    for (let layer = 0; layer < 4; layer += 1) {
+    for (let layer = 0; layer < API.LAYER_COUNT; layer += 1) {
       userKeys[layer] = Array.from({ length: 128 }, (_, index) => API.makeMapping(255, 255, 255, 0, layer));
       PHYSICAL_KEYS.forEach(({ index }) => {
         if (layer === 0 && index !== 26 && PHYSICAL_HID_CODES[index] != null) userKeys[layer][index] = API.makeMapping(16, 0, PHYSICAL_HID_CODES[index], 0, layer);
@@ -143,11 +154,11 @@
     if (profile.light || profile.logoLight) derivedSections.push("lighting");
     if (Array.isArray(profile.colorKeys) && profile.colorKeys.length) derivedSections.push("colors");
     profile._workspaceSections = Array.isArray(profile._workspaceSections) ? [...new Set(profile._workspaceSections)] : derivedSections;
-    profile.profileIndex = clamp(profile.profileIndex ?? profile.profile ?? 0, 0, 3);
+    profile.profileIndex = API.inferProfileIndex(profile);
     profile.name ||= `Keyboard Profile ${profile.profileIndex + 1}`;
     const keys = profile.userKeys || {};
     profile.userKeys = {};
-    for (let layer = 0; layer < 4; layer += 1) {
+    for (let layer = 0; layer < API.LAYER_COUNT; layer += 1) {
       profile.userKeys[layer] = Array.from({ length: 128 }, (_, index) => {
         const found = keys[layer]?.[index] || keys[String(layer)]?.[index];
         if (!found) return API.makeMapping(255, 255, 255, profile.profileIndex, layer);
@@ -195,14 +206,16 @@
   function hideProgress() { $("#progressOverlay").classList.add("hidden"); }
 
   function setWorkspace(profile, source, metadata = {}) {
+    const previousPage = state.page;
+    const previousLayer = state.layer;
     state.profile = normalizeProfile(profile);
     state.original = clone(state.profile);
     state.source = source;
     state.identity = metadata.identity || state.identity;
     state.info = metadata.info || state.info;
     state.fileName = metadata.fileName || state.fileName;
-    state.layer = 0;
-    state.page = "overview";
+    state.layer = clamp(metadata.layer ?? (metadata.preserveView ? previousLayer : 0), 0, API.LAYER_COUNT - 1);
+    state.page = metadata.preserveView ? previousPage : "overview";
     state.dirty.clear();
     state.hallSelection = new Set([0]);
     state.colorSelection = new Set([0]);
@@ -278,7 +291,7 @@
   }
 
   function layerTabs() {
-    return `<div class="tabs" role="tablist">${[0, 1, 2, 3].map((layer) => `<button type="button" data-layer="${layer}" class="${layer === state.layer ? "active" : ""}">Layer ${layer}</button>`).join("")}</div>`;
+    return `<div class="tabs" role="tablist">${Array.from({ length: API.LAYER_COUNT }, (_, layer) => `<button type="button" data-layer="${layer}" class="${layer === state.layer ? "active" : ""}">${globalLayerLabel(state.profile.profileIndex, layer)}</button>`).join("")}</div>`;
   }
 
   function renderOverview() {
@@ -288,15 +301,15 @@
     const reportRate = ({ 1: "8,000", 2: "4,000", 3: "2,000", 4: "1,000" })[settings.reportRate] || "Unknown";
     return `
       <div class="stats-grid">
-        ${statCard("Current profile", `Profile ${state.profile.profileIndex + 1}`, state.identity?.multiProfile ? "Four onboard slots available" : "Active workspace", "▣")}
+        ${statCard("Current profile", `Profile ${state.profile.profileIndex + 1}`, state.identity?.multiProfile ? "Three onboard profiles · 12 total layers" : "Active workspace", "▣")}
         ${statCard("Polling rate", `${reportRate} Hz`, `Tick rate ${settings.tickRate || "auto"}`, "⌁")}
         ${statCard("Rapid Trigger", `${rapidCount} keys`, rapidCount ? "Enabled per-key" : "Standard actuation", "↕")}
-        ${statCard("Advanced actions", state.profile.advancedKeys.length, `${mappedCount}/36 keys mapped on layer ${state.layer}`, "◆")}
+        ${statCard("Advanced actions", state.profile.advancedKeys.length, `${mappedCount}/36 keys mapped on ${globalLayerLabel(state.profile.profileIndex, state.layer)}`, "◆")}
       </div>
       <div class="section-heading"><div><h2>Configuration health</h2><p>Every area remains independent until it is staged.</p></div></div>
       <div class="overview-grid">
         <section class="panel panel-pad"><div class="quick-list">
-          ${quickRow("⌨", "Key mapping", `${mappedCount} physical keys mapped on layer ${state.layer}`, "mapping")}
+          ${quickRow("⌨", "Key mapping", `${mappedCount} physical keys mapped on ${globalLayerLabel(state.profile.profileIndex, state.layer)}`, "mapping")}
           ${quickRow("↕", "Hall effect", `${rapidCount} Rapid Trigger keys · ${(averageActuation()).toFixed(2)} mm average actuation`, "hall")}
           ${quickRow("✦", "Lighting", `Effect ${state.profile.light.effect} · ${state.profile.light.brightness}% brightness`, "lighting")}
           ${quickRow("⌁", "Advanced functions", `${state.profile.advancedKeys.length} configured action${state.profile.advancedKeys.length === 1 ? "" : "s"}`, "advanced")}
@@ -315,7 +328,7 @@
   }
 
   function renderMapping() {
-    return `<div class="layer-bar">${layerTabs()}<span class="selection-bar">Click a key to open the mapping library</span></div><section class="panel keyboard-panel">${keyboardHtml("mapping")}<div class="keyboard-legend"><span><i></i>Mapped key</span><span><i class="advanced-dot"></i>Advanced action</span><span><i class="staged-dot"></i>Workspace contains staged changes</span></div></section><div class="callout">F13–F24 and Fn1–Fn3 use the device encodings confirmed for this keyboard. Combination keys and macros are configured in Advanced functions.</div>`;
+    return `<div class="layer-bar">${layerTabs()}<span class="selection-bar">Click a key to open the mapping library</span></div><section class="panel keyboard-panel">${keyboardHtml("mapping")}<div class="keyboard-legend"><span><i></i>Mapped key</span><span><i class="advanced-dot"></i>Advanced action</span><span><i class="staged-dot"></i>Workspace contains staged changes</span></div></section><div class="callout">FN and FN1–FN11 can target any of the keyboard's 12 global layers. Profiles 1, 2, and 3 use default layers 0, 4, and 8; each profile editor shows its default layer plus its three local Fn layers.</div>`;
   }
 
   function renderHall() {
@@ -448,16 +461,16 @@
   function configuredAction(item, index) {
     const meta = ADVANCED_META[item.type] || { name: item.type, icon: "?" };
     const paired = item.index2 != null ? ` + ${physicalName(item.index2)}` : "";
-    return `<article class="panel configured-row"><span class="action-icon">${meta.icon}</span><div><strong>${esc(meta.name)} · ${esc(physicalName(item.index1))}${esc(paired)}</strong><small>Layer ${item.layer || 0}${item.type === "macro" ? ` · ${(item.actions || []).length} events` : ""}</small></div><button class="icon-action" type="button" data-edit-advanced="${index}">Edit</button><button class="icon-action delete" type="button" data-delete-advanced="${index}">Delete</button></article>`;
+    return `<article class="panel configured-row"><span class="action-icon">${meta.icon}</span><div><strong>${esc(meta.name)} · ${esc(physicalName(item.index1))}${esc(paired)}</strong><small>${esc(globalLayerLabel(state.profile.profileIndex, item.layer || 0))}${item.type === "macro" ? ` · ${(item.actions || []).length} events` : ""}</small></div><button class="icon-action" type="button" data-edit-advanced="${index}">Edit</button><button class="icon-action delete" type="button" data-delete-advanced="${index}">Delete</button></article>`;
   }
 
   function renderProfiles() {
     const multi = Boolean(state.identity?.multiProfile);
-    const total = multi ? 4 : 1;
-    return `<div class="profile-grid">${Array.from({ length: total }, (_, index) => `<article class="panel profile-card${index === state.profile.profileIndex ? " active" : ""}"><span class="profile-number">${index + 1}</span>${index === state.profile.profileIndex ? "<span class=\"active-label\">Active workspace</span>" : ""}<h3>Profile ${index + 1}</h3><p>${state.source === "device" ? "Stored in onboard memory." : "Available when a multi-profile keyboard is connected."}</p><button class="button ${index === state.profile.profileIndex ? "secondary" : "primary"}" type="button" data-profile="${index}" ${index === state.profile.profileIndex || state.source !== "device" ? "disabled" : ""}>${index === state.profile.profileIndex ? "Loaded" : "Switch and load"}</button></article>`).join("")}</div>
+    const profileIndexes = multi ? Array.from({ length: API.PROFILE_COUNT }, (_, index) => index) : [state.profile.profileIndex];
+    return `<div class="profile-grid">${profileIndexes.map((index) => `<article class="panel profile-card${index === state.profile.profileIndex ? " active" : ""}"><span class="profile-number">${index + 1}</span>${index === state.profile.profileIndex ? "<span class=\"active-label\">Active workspace</span>" : ""}<h3>Profile ${index + 1}</h3><p>${state.source === "device" ? "Stored in onboard memory." : "Profile identity recovered from this backup."}</p><button class="button ${index === state.profile.profileIndex ? "secondary" : "primary"}" type="button" data-profile="${index}" ${index === state.profile.profileIndex || state.source !== "device" ? "disabled" : ""}>${index === state.profile.profileIndex ? "Loaded" : "Switch and load"}</button></article>`).join("")}</div>
       <div class="section-heading"><div><h2>Profile portability</h2><p>Back up the complete current profile, including Hall and lighting data.</p></div></div>
       <section class="panel panel-pad"><div class="quick-list">${quickRow("⇩", "Export current backup", "Download a complete JSON copy of the current workspace", "export-profile")}${APP_MODE === "json" ? quickRow("⇧", "Import profile JSON", "Open another backup in this offline workspace", "import-profile") : quickRow("↗", "Open JSON editor", "Inspect or modify a backup without connecting a keyboard", "json-editor")}</div></section>
-      ${multi ? "" : `<div class="callout">${state.identity ? `${esc(state.identity.name)} reports a single onboard profile.` : "Connect a supported multi-profile HE30 to switch among four onboard slots."}</div>`}`;
+      ${multi ? `<div class="callout">Profile 1 owns layers 0–3, Profile 2 owns layers 4–7, and Profile 3 owns layers 8–11. A key mapped to FN/FN1–FN11 may jump directly to any corresponding global layer.</div>` : `<div class="callout">${state.identity ? `${esc(state.identity.name)} reports a single onboard profile.` : "Connect a supported multi-profile HE30 to switch among three onboard profiles."}</div>`}`;
   }
 
   function renderDiagnostics() {
@@ -722,7 +735,7 @@
     const mapping = API.compileAdvanced(state.profile).userKeys[state.layer][index];
     $("#mappingTitle").textContent = `Remap ${physicalName(index)}`;
     $("#mappingCurrent").textContent = `Currently: ${mappingLabel(mapping)}`;
-    $("#mappingAddress").textContent = `Layer ${state.layer} · Key ${index}`;
+    $("#mappingAddress").textContent = `${globalLayerLabel(state.profile.profileIndex, state.layer)} · Key ${index}`;
     $("#mappingSearch").value = "";
     renderMappingGroups("");
     $("#mappingDialog").showModal();
@@ -757,7 +770,7 @@
     const removedAdvanced = removeAdvancedAtHost(state.mappingIndex, state.layer);
     state.profile.userKeys[state.layer][state.mappingIndex] = mappingFromPreset(preset);
     markDirty("keymap", ...(removedAdvanced.advanced ? ["advanced"] : []), ...(removedAdvanced.hall ? ["hall"] : []));
-    log("change", `${physicalName(state.mappingIndex)} mapped to ${preset.name} on layer ${state.layer}`);
+    log("change", `${physicalName(state.mappingIndex)} mapped to ${preset.name} on ${globalLayerLabel(state.profile.profileIndex, state.layer)}`);
     $("#mappingDialog").close();
     renderPage();
     showToast(`${physicalName(state.mappingIndex)} → ${preset.name}`);
@@ -925,9 +938,94 @@
     renderPage(); showToast("Advanced action removed and host mapping restored.");
   }
 
+  function preserveStagedProfileForSwitch(nextProfileIndex) {
+    if (!state.profile || !state.dirty.size) return false;
+    const snapshot = {
+      savedAt: new Date().toISOString(),
+      reason: `Keyboard switched to profile ${nextProfileIndex + 1}`,
+      dirtySections: [...state.dirty],
+      profile: state.profile,
+    };
+    try {
+      const identity = state.identity?.vidPid || "keyboard";
+      localStorage.setItem(`he30-staged-${identity}-p${state.profile.profileIndex}`, JSON.stringify(snapshot));
+      log("warning", `Staged profile ${state.profile.profileIndex + 1} saved to browser recovery before switching`, { nextProfile: nextProfileIndex + 1, dirtySections: snapshot.dirtySections });
+    } catch (error) {
+      log("warning", "Could not save staged profile recovery before switching", error.message);
+    }
+    return true;
+  }
+
+  async function syncDeviceProfile(profileIndex, { activate = false, layer = 0, origin = "keyboard" } = {}) {
+    if (!state.driver || state.source !== "device") return;
+    const target = clamp(profileIndex, 0, API.PROFILE_COUNT - 1);
+    const targetLayer = clamp(layer, 0, API.LAYER_COUNT - 1);
+    if (state.profileSyncBusy) {
+      if (state.profileSyncTarget === target) state.profileSyncLayer = targetLayer;
+      else state.queuedProfileChange = { profileIndex: target, layer: targetLayer, origin };
+      return;
+    }
+
+    const driver = state.driver;
+    const recoveredStagedChanges = state.profile?.profileIndex !== target && preserveStagedProfileForSwitch(target);
+    const resumeLiveMonitor = state.liveMonitorActive;
+    state.profileSyncBusy = true;
+    state.profileSyncTarget = target;
+    state.profileSyncLayer = targetLayer;
+    try {
+      if (state.liveMonitorActive) await stopLiveMonitor(false);
+      showProgress(`Loading profile ${target + 1}`, 5, activate ? "Switching the active onboard slot…" : "Keyboard profile changed. Refreshing its settings…");
+      if (activate) await driver.setActiveProfile(target);
+      const profile = await driver.readProfile(target, (percent, message) => updateProgress(10 + Math.round(percent * .9), message));
+      if (driver !== state.driver || state.source !== "device") return;
+      const activeLayer = state.profileSyncTarget === target ? state.profileSyncLayer : targetLayer;
+      try { localStorage.setItem(`he30-backup-${state.identity.vidPid}-p${target}`, JSON.stringify({ savedAt: new Date().toISOString(), profile })); } catch (error) { log("warning", "Browser backup storage unavailable", error.message); }
+      setWorkspace(profile, "device", { identity: state.identity, info: state.info, preserveView: true, layer: activeLayer });
+      log("info", `${origin === "keyboard" ? "Keyboard selected" : "Selected"} profile ${target + 1}; workspace refreshed on layer ${activeLayer}`);
+      showToast(recoveredStagedChanges
+        ? `Profile ${target + 1} loaded. Previous staged changes were saved to browser recovery.`
+        : `Profile ${target + 1} is live. All pages now show its settings.`);
+      if (resumeLiveMonitor && state.page === "hall") await startLiveMonitor();
+    } catch (error) {
+      log("error", "Profile synchronization failed", error.message);
+      showToast(`Could not refresh profile ${target + 1}: ${error.message}`, true);
+    } finally {
+      state.profileSyncBusy = false;
+      state.profileSyncTarget = null;
+      hideProgress();
+      const queued = state.queuedProfileChange;
+      state.queuedProfileChange = null;
+      if (queued && state.driver === driver && (state.profile?.profileIndex !== queued.profileIndex || state.layer !== queued.layer)) {
+        void syncDeviceProfile(queued.profileIndex, queued);
+      }
+    }
+  }
+
+  function handleHardwareProfileChange(event) {
+    if (!state.driver || state.source !== "device" || !state.profile) return;
+    const profileIndex = clamp(event.profileIndex, 0, API.PROFILE_COUNT - 1);
+    const layer = clamp(event.layer, 0, API.LAYER_COUNT - 1);
+    if (state.profileSyncBusy) {
+      if (state.profileSyncTarget === profileIndex) state.profileSyncLayer = layer;
+      else state.queuedProfileChange = { profileIndex, layer, origin: "keyboard" };
+      return;
+    }
+    if (state.profile.profileIndex === profileIndex) {
+      if (state.layer !== layer) {
+        state.layer = layer;
+        log("event", `Keyboard changed to ${globalLayerLabel(profileIndex, layer)} on profile ${profileIndex + 1}`);
+        renderPage();
+      }
+      return;
+    }
+    void syncDeviceProfile(profileIndex, { layer, origin: "keyboard" });
+  }
+
   async function connectKeyboard() {
     try {
       if (state.liveMonitorActive) await stopLiveMonitor(false);
+      state.profileChangeUnsubscribe?.();
+      state.profileChangeUnsubscribe = null;
       if (state.driver) { try { await state.driver.close(); } catch (_) { /* no-op */ } state.driver = null; }
       showProgress("Connecting keyboard", 3, "Choose your compatible keyboard in the browser prompt.");
       const driver = await API.HE30Driver.request(log);
@@ -939,6 +1037,7 @@
       const profile = await driver.readProfile(profileIndex, (percent, message) => updateProgress(8 + Math.round(percent * .9), message));
       try { localStorage.setItem(`he30-backup-${state.identity.vidPid}-p${profileIndex}`, JSON.stringify({ savedAt: new Date().toISOString(), profile })); } catch (error) { log("warning", "Browser backup storage unavailable", error.message); }
       setWorkspace(profile, "device", { identity: state.identity, info });
+      state.profileChangeUnsubscribe = driver.subscribeProfileChange(handleHardwareProfileChange);
       log("info", `Profile ${profileIndex + 1} loaded; in-browser recovery backup created`);
       showToast(`${state.identity.name} connected. Profile ${profileIndex + 1} is ready.`);
     } catch (error) {
@@ -1039,16 +1138,9 @@
     event.preventDefault();
     $("#switchProfileDialog").close();
     if (!state.driver || state.pendingProfile == null) return;
-    try {
-      if (state.liveMonitorActive) await stopLiveMonitor(false);
-      showProgress(`Loading profile ${state.pendingProfile + 1}`, 5, "Switching the active onboard slot…");
-      await state.driver.setActiveProfile(state.pendingProfile);
-      const profile = await state.driver.readProfile(state.pendingProfile, updateProgress);
-      setWorkspace(profile, "device", { identity: state.identity, info: state.info });
-      log("info", `Switched to onboard profile ${state.pendingProfile + 1}`);
-      showToast(`Profile ${state.pendingProfile + 1} loaded.`);
-    } catch (error) { log("error", "Profile switch failed", error.message); showToast(error.message, true); }
-    finally { state.pendingProfile = null; hideProgress(); }
+    const profileIndex = state.pendingProfile;
+    state.pendingProfile = null;
+    await syncDeviceProfile(profileIndex, { activate: true, layer: 0, origin: "interface" });
   }
 
   async function resetToLanding({ closeDevice = false, stopMonitor = true, message = "" } = {}) {
@@ -1059,6 +1151,8 @@
     }
     state.liveTelemetryUnsubscribe?.();
     state.liveTelemetryUnsubscribe = null;
+    state.profileChangeUnsubscribe?.();
+    state.profileChangeUnsubscribe = null;
     state.liveMonitorActive = false;
     state.liveMonitorBusy = false;
     if (closeDevice && state.driver) {
@@ -1073,6 +1167,9 @@
     state.source = "none";
     state.dirty.clear();
     state.pendingProfile = null;
+    state.profileSyncBusy = false;
+    state.profileSyncTarget = null;
+    state.queuedProfileChange = null;
     state.liveTravel.fill(0);
     state.liveTravelRaw.fill(0);
     state.liveTravelStatus.fill(0);
@@ -1094,6 +1191,8 @@
     $("#welcomeFileButton")?.addEventListener("click", () => $("#fileInput")?.click());
     $("#fileInput")?.addEventListener("change", (event) => loadFile(event.target.files[0]));
     $("#demoButton")?.addEventListener("click", async () => {
+      state.profileChangeUnsubscribe?.();
+      state.profileChangeUnsubscribe = null;
       if (state.driver) { try { await state.driver.close(); } catch (_) { /* no-op */ } }
       state.driver = null; state.identity = null; state.info = null;
       setWorkspace(makeDemoProfile(), "demo", { identity: null, info: null });

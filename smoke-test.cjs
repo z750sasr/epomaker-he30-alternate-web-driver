@@ -67,9 +67,9 @@ if (API.encodeDksBank(compiled.banks.dks).length !== 1024 || API.encodeMtBank(co
 for (const fragment of [
   "Array.from({ length: 24 }",
   "number <= 12 ? number + 57 : number + 91",
-  '["FN layer 1", 255, 1, "FN1"]',
-  '["FN layer 2", 255, 2, "FN2"]',
-  '["FN layer 3", 255, 3, "FN3"]',
+  "fnLayerMappings",
+  "API.TOTAL_LAYER_COUNT",
+  "globalLayerLabel",
   "Hall effect",
   "Rappy Snappy",
   "SOCD",
@@ -77,6 +77,14 @@ for (const fragment of [
   "Macro",
 ]) {
   if (!appSource.includes(fragment)) throw new Error(`Required application feature is missing: ${fragment}`);
+}
+if (API.PROFILE_COUNT !== 3 || API.LAYER_COUNT !== 4 || API.TOTAL_LAYER_COUNT !== 12) throw new Error("The three-profile, twelve-layer topology is incorrect.");
+equal([0, 1, 2].map(API.profileConfigOffset), [0, 64, 128], "Live telemetry config offsets must follow the active profile.");
+if (API.inferProfileIndex({ userKeys: { 0: [{ profile: 1, layer: 0 }] } }) !== 1) throw new Error("Embedded Profile 2 metadata was not inferred from a vendor backup.");
+if (API.inferProfileIndex({ userKeys: { 0: [{ profile: 2, layer: 0 }] } }) !== 2) throw new Error("Embedded Profile 3 metadata was not inferred from a vendor backup.");
+for (let layer = 0; layer < 12; layer += 1) {
+  const expected = layer === 0 ? "FN" : `FN${layer}`;
+  if (API.mappingName(240, 255, layer) !== expected) throw new Error(`Global Fn target ${expected} is missing.`);
 }
 
 for (const id of ["welcomeView", "workspaceView", "mappingDialog", "advancedDialog", "confirmDialog", "progressOverlay"]) {
@@ -109,6 +117,12 @@ const telemetry = API.decodeTelemetryReport([0xa0, 16, 0, 4, 0, 0, 1, 44, 0, 0, 
 if (!telemetry || telemetry.keyCode !== 4 || telemetry.rawTravel !== 300 || telemetry.status !== 255) throw new Error("Live Hall telemetry was not decoded correctly.");
 const modifierTelemetry = API.decodeTelemetryReport([0xa0, 16, 2, 0, 0, 0, 0, 25, 0, 0, 1]);
 if (modifierTelemetry.keyCode !== 225 || modifierTelemetry.rawTravel !== 25) throw new Error("Modifier telemetry key identity was not decoded correctly.");
+const profileChange = API.decodeProfileChangeReport([0xa1, 11, 2]);
+if (!profileChange || profileChange.layer !== 3 || profileChange.globalLayer !== 11 || profileChange.profileIndex !== 2) throw new Error("Global profile-change reports were not decoded correctly.");
+const localProfileChange = API.decodeProfileChangeReport([0xa1, 3, 1]);
+if (!localProfileChange || localProfileChange.layer !== 3 || localProfileChange.globalLayer !== 7 || localProfileChange.profileIndex !== 1) throw new Error("Local profile-change reports were not expanded to a global layer correctly.");
+const crossProfileFnChange = API.decodeProfileChangeReport([0xa1, 7, 0]);
+if (!crossProfileFnChange || crossProfileFnChange.layer !== 3 || crossProfileFnChange.globalLayer !== 7 || crossProfileFnChange.profileIndex !== 1) throw new Error("A global FN7 event did not resolve to Profile 2, Layer 7.");
 const fakeDevice = { vendorId: 0x19f5, productId: 0xfb4c, productName: "Test HE30", opened: true, addEventListener() {}, removeEventListener() {} };
 const fakeDriver = new API.HE30Driver(fakeDevice);
 let routedTelemetry = null;
@@ -117,10 +131,18 @@ fakeDriver.subscribeTelemetry((event) => { routedTelemetry = event; });
 const telemetryBytes = Uint8Array.from([0xa0, 16, 0, 4, 0, 0, 1, 44, 0, 0, 255]);
 fakeDriver.onInputReport({ data: new DataView(telemetryBytes.buffer) });
 if (routedTelemetry?.rawTravel !== 300 || fakeDriver.reportQueue.length !== 0) throw new Error("Telemetry reports were not routed away from command responses.");
+let routedProfileChange = null;
+fakeDriver.subscribeProfileChange((event) => { routedProfileChange = event; });
+const profileBytes = Uint8Array.from([0xa1, 2, 1]);
+fakeDriver.onInputReport({ data: new DataView(profileBytes.buffer) });
+if (routedProfileChange?.profileIndex !== 1 || routedProfileChange?.layer !== 2 || routedProfileChange?.globalLayer !== 6 || fakeDriver.reportQueue.length !== 0) throw new Error("Profile-change reports were not routed away from command responses.");
 for (const fragment of ["startLiveTelemetry", "stopLiveTelemetry", "subscribeTelemetry"]) {
   if (!protocolSource.includes(fragment)) throw new Error(`Live telemetry driver support is missing: ${fragment}`);
 }
-for (const fragment of ["liveMonitorHtml", "handleLiveTelemetry", "Live press distance", "Dynamic Display diagnostic flag"]) {
+for (const fragment of ["subscribeProfileChange", "handleHardwareProfileChange", "syncDeviceProfile", "preserveView: true"]) {
+  if (!protocolSource.includes(fragment) && !appSource.includes(fragment)) throw new Error(`Live profile synchronization support is missing: ${fragment}`);
+}
+for (const fragment of ["liveMonitorHtml", "handleLiveTelemetry", "Live press distance", "Dynamic Display diagnostic flag", "resumeLiveMonitor"]) {
   if (!appSource.includes(fragment)) throw new Error(`Live distance infographic support is missing: ${fragment}`);
 }
 if (!styleSource.includes(".switch-infographic") || !styleSource.includes(".travel-fill")) throw new Error("Live distance animation styles are missing.");

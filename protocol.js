@@ -5,8 +5,9 @@
   const CHUNK_SIZE = 56;
   const REQUEST_PREFIX = 0x55;
   const RESPONSE_PREFIX = 0xaa;
-  const PROFILE_COUNT = 4;
+  const PROFILE_COUNT = 3;
   const LAYER_COUNT = 4;
+  const TOTAL_LAYER_COUNT = PROFILE_COUNT * LAYER_COUNT;
   const KEY_COUNT = 128;
 
   const DEVICE_MODELS = Object.freeze({
@@ -44,7 +45,7 @@
   });
 
   const SPECIAL_NAMES = new Map([
-    ["255:0", "FN"], ["255:1", "FN1"], ["255:2", "FN2"], ["255:3", "FN3"],
+    ...Array.from({ length: TOTAL_LAYER_COUNT }, (_, index) => [`255:${index}`, index === 0 ? "FN" : `FN${index}`]),
     ["253:0", "Profile 1"], ["252:0", "Profile 2"], ["251:0", "Profile 3"],
     ["160:0", "N/ALL"], ["46:0", "RGB Mode+"], ["47:0", "RGB Mode-"],
     ["48:0", "RGB Mode"], ["50:0", "Bright+"], ["51:0", "Bright-"],
@@ -69,6 +70,10 @@
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, Number(value) || 0));
+  }
+
+  function profileConfigOffset(profileIndex) {
+    return 64 * clamp(profileIndex, 0, PROFILE_COUNT - 1);
   }
 
   function littleEndian(value) {
@@ -109,6 +114,24 @@
       keyCode,
       rawTravel: readLittleEndian(report[7] || 0, report[6] || 0),
       status: report[10] || 0,
+      report,
+    };
+  }
+
+  function decodeProfileChangeReport(bytes) {
+    const report = Array.from(bytes || []);
+    if (report[0] !== 0xa1) return null;
+    const rawLayer = report[1] || 0;
+    const reportsGlobalLayer = rawLayer >= LAYER_COUNT && rawLayer < TOTAL_LAYER_COUNT;
+    const profileIndex = reportsGlobalLayer
+      ? Math.floor(rawLayer / LAYER_COUNT)
+      : clamp(report[2] || 0, 0, PROFILE_COUNT - 1);
+    const layer = rawLayer % LAYER_COUNT;
+    return {
+      layer,
+      globalLayer: profileIndex * LAYER_COUNT + layer,
+      profileIndex,
+      rawLayer,
       report,
     };
   }
@@ -168,6 +191,20 @@
     const mapping = { type, code1, code2, code: -1, name: "", profile, layer };
     mapping.name = mappingName(mapping) === "Unassigned" ? "" : mappingName(mapping);
     return mapping;
+  }
+
+  function inferProfileIndex(profile) {
+    const explicit = profile?.profileIndex ?? profile?.profile;
+    if (explicit !== undefined && explicit !== null && Number.isFinite(Number(explicit))) {
+      return clamp(Number(explicit), 0, PROFILE_COUNT - 1);
+    }
+    const layers = profile?.userKeys || {};
+    for (let layer = 0; layer < LAYER_COUNT; layer += 1) {
+      const mappings = layers[layer] || layers[String(layer)] || [];
+      const embedded = mappings.find((mapping) => mapping && Number.isFinite(Number(mapping.profile)))?.profile;
+      if (embedded !== undefined) return clamp(Number(embedded), 0, PROFILE_COUNT - 1);
+    }
+    return 0;
   }
 
   function decodeMappings(bytes, profile, layer) {
@@ -643,6 +680,7 @@
       this.commandQueue = Promise.resolve();
       this.closed = false;
       this.telemetryListeners = new Set();
+      this.profileChangeListeners = new Set();
       this.telemetryActive = false;
       this.telemetryRestoreNeeded = false;
       this.telemetryProfile = 0;
@@ -674,6 +712,12 @@
       const telemetry = decodeTelemetryReport(report);
       if (telemetry) {
         if (this.telemetryActive) this.telemetryListeners.forEach((listener) => { try { listener(telemetry); } catch (error) { this.log("warning", "A telemetry listener failed", error.message); } });
+        return;
+      }
+      const profileChange = decodeProfileChangeReport(report);
+      if (profileChange) {
+        this.log("event", `Active profile changed to ${profileChange.profileIndex + 1}, global layer ${profileChange.globalLayer}`, report);
+        this.profileChangeListeners.forEach((listener) => { try { listener(profileChange); } catch (error) { this.log("warning", "A profile-change listener failed", error.message); } });
         return;
       }
       this.log("rx", `Received ${report.length} bytes`, report);
@@ -769,11 +813,16 @@
       return () => this.telemetryListeners.delete(listener);
     }
 
+    subscribeProfileChange(listener) {
+      if (typeof listener !== "function") throw new Error("A profile-change listener function is required.");
+      this.profileChangeListeners.add(listener);
+      return () => this.profileChangeListeners.delete(listener);
+    }
+
     async startLiveTelemetry(profileIndex = 0) {
       if (this.telemetryActive) return;
-      const activeProfile = clamp(profileIndex, 0, PROFILE_COUNT - 1);
-      const profile = 0;
-      const offset = 0;
+      const profile = clamp(profileIndex, 0, PROFILE_COUNT - 1);
+      const offset = profileConfigOffset(profile);
       const config = await this.readBlock(5, offset, 64);
       this.telemetryRestoreNeeded = (config[7] & 8) === 0;
       this.telemetryProfile = profile;
@@ -783,7 +832,7 @@
         await this.writeAndVerify(6, 5, offset, enabled, "Live Hall monitor");
       }
       this.telemetryActive = true;
-      this.log("info", "Live Hall telemetry enabled", { activeProfile, configProfile: profile, restoredAfterStop: this.telemetryRestoreNeeded });
+      this.log("info", "Live Hall telemetry enabled", { profile, configOffset: offset, restoredAfterStop: this.telemetryRestoreNeeded });
     }
 
     async stopLiveTelemetry() {
@@ -792,7 +841,7 @@
       const profile = this.telemetryProfile;
       this.telemetryActive = false;
       if (restore && !this.closed && this.device.opened) {
-        const offset = 64 * profile;
+        const offset = profileConfigOffset(profile);
         const config = await this.readBlock(5, offset, 64);
         const disabled = [...config];
         disabled[7] &= 0xf7;
@@ -807,11 +856,11 @@
       const steps = 11;
       let completed = 0;
       const advance = (label) => { completed += 1; progress(Math.round((completed / steps) * 100), label); };
-      const config = await this.readBlock(5, 64 * profile, 64); advance("Device settings");
+      const config = await this.readBlock(5, profileConfigOffset(profile), 64); advance("Device settings");
       const keymaps = {};
       for (let layer = 0; layer < LAYER_COUNT; layer += 1) {
         keymaps[layer] = await this.readBlock(8, 2048 * profile + 512 * layer, 384);
-        advance(`Layer ${layer}`);
+        advance(`Layer ${profile * LAYER_COUNT + layer}`);
       }
       const travel = await this.readBlock(160, 1024 * profile, 1024); advance("Hall settings");
       const dks = await this.readBlock(162, 1024 * profile, 1024); advance("DKS bank");
@@ -859,7 +908,7 @@
       }
       if (dirty.has("keymap") || dirty.has("advanced")) {
         for (let layer = 0; layer < LAYER_COUNT; layer += 1) {
-          tasks.push({ label: `Layer ${layer} mappings`, write: 9, read: 8, offset: 2048 * profileIndex + 512 * layer, data: encodeMappings(compiled.userKeys[layer]) });
+          tasks.push({ label: `Layer ${profileIndex * LAYER_COUNT + layer} mappings`, write: 9, read: 8, offset: 2048 * profileIndex + 512 * layer, data: encodeMappings(compiled.userKeys[layer]) });
         }
       }
       if (dirty.has("hall") || dirty.has("advanced")) {
@@ -901,9 +950,12 @@
     KEY_NAMES,
     PROFILE_COUNT,
     LAYER_COUNT,
+    TOTAL_LAYER_COUNT,
     KEY_COUNT,
     mappingName,
     makeMapping,
+    inferProfileIndex,
+    profileConfigOffset,
     normalizeHexColor,
     decodeTravel,
     encodeTravel,
@@ -921,5 +973,6 @@
     encodeTglBank,
     encodeMacros,
     decodeTelemetryReport,
+    decodeProfileChangeReport,
   });
 })(window);
