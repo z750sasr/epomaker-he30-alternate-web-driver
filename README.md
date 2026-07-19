@@ -13,6 +13,14 @@ A simple web-based configuration tool for supported Epomaker HE30-family Hall-ef
 
 Use it to change key mappings, Hall-effect settings, lighting, profiles, macros, and other keyboard options directly from your browser. Nothing needs to be installed, and your keyboard data stays on your computer.
 
+> [!WARNING]
+>
+> ## Lighting Settings Are Still Under Development
+>
+> LED-related settings are currently still under development. The **Lighting** tab may be buggy, and some controls may not work as expected.
+>
+> Export a configuration backup before changing lighting settings. Avoid disconnecting the keyboard while changes are being applied.
+
 > [!IMPORTANT]
 > Firmware updates and bootloader flashing are not supported.
 
