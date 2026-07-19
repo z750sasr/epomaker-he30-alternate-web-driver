@@ -1,11 +1,13 @@
-# HE30 Control
-
-A dependency-free, local-first configuration studio for supported Epomaker HE30-family Hall-effect keyboards. It runs as static files, so it can be hosted directly on GitHub Pages. The main route is dedicated to live hardware configuration; `/json_editor/` is the separate offline backup editor.
+https://z750sasr.github.io/epomaker-he30-alternate-web-driver/
 
 <p align="center">
   <img src="images/EPOMAKERHE30_white.webp" alt="White Epomaker HE30 keyboard" width="48%">
   <img src="images/EPOMAKERHE30_black.webp" alt="Black Epomaker HE30 keyboard" width="48%">
 </p>
+
+# HE30 Control
+
+A dependency-free, local-first configuration studio for supported Epomaker HE30-family Hall-effect keyboards. It runs as static files, so it can be hosted directly on GitHub Pages. The main route is dedicated to live hardware configuration; `/json_editor/` is the separate offline backup editor.
 
 ## Included
 
