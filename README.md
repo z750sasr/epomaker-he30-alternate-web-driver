@@ -13,14 +13,6 @@ A simple web-based configuration tool for supported Epomaker HE30-family Hall-ef
 
 Use it to change key mappings, Hall-effect settings, lighting, profiles, macros, and other keyboard options directly from your browser. Nothing needs to be installed, and your keyboard data stays on your computer.
 
-> [!WARNING]
->
-> ## Lighting Settings Are Still Under Development
->
-> LED-related settings are currently still under development. The **Lighting** tab may be buggy, and some controls may not work as expected.
->
-> Export a configuration backup before changing lighting settings. Avoid disconnecting the keyboard while changes are being applied.
-
 > [!IMPORTANT]
 > Firmware updates and bootloader flashing are not supported.
 
@@ -38,7 +30,42 @@ For live keyboard configuration, use a desktop version of:
 
 Firefox and Safari do not currently support WebHID, but they can still be used with the offline JSON editor and demo mode.
 
-## Included
+## WHy do I make this when we already have the manufacturer's driver?
+
+- Added (experimental) settings that are not displayed.
+- Added new features, QoLs.
+- Added new key map: MacOS's Siri and Launchpad keys, additional F13 to F24 keys for those nerds.
+- Maybe better UX/UI interface? (subjective)
+- Maybe one day, the manufacturer will end the suppport for this keyboard and shut the website down, but this project is deployed on GitHub, so maybe this would stay forever (unless the world is coming to and end or some god-level hacker vaporizes GitHub.
+- Miscs, blah blah blah
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Let's be real, who wants to read AI generated stuff? If you are, then read the part below.
 
 - Direct WebHID connection for normal configuration mode
 - Complete JSON profile import and export on the dedicated `/json_editor/` route
@@ -74,9 +101,11 @@ Firmware update and bootloader flashing are intentionally not included.
 
 | Model         | VID:PID     | Supported Profiles                    |
 | ------------- | ----------- | ------------------------------------- |
-| Epomaker HE30 | `19F5:FB27` | One profile                           |
 | Epomaker HE30 | `19F5:FB4C` | Three profiles, with four layers each |
+
+Based on AI Analysis, the original driver site https://epomaker.keybord.net.cn/ also supports 2 more models:
 | Epomaker GT60 | `19F5:FB79` | One profile                           |
+| Epomaker HE30 | `19F5:FB27` | One profile                           |
 
 Only normal keyboard-configuration interfaces are requested.
 
