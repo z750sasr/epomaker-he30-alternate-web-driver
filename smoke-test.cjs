@@ -9,10 +9,11 @@ const jsonEditorHtml = fs.readFileSync(`${root}/json_editor/index.html`, "utf8")
 const styleSource = fs.readFileSync(`${root}/styles.css`, "utf8");
 const factoryProfile = JSON.parse(fs.readFileSync(`${root}/src/factory_config.json`, "utf8"));
 
+async function main() {
 new Function(protocolSource);
 new Function(appSource);
 
-const context = { window: { navigator: {} }, Uint8Array, ArrayBuffer, DataView, Promise, Math, Number, String, Boolean, Object, Array, Set, Map, JSON, Error };
+const context = { window: { navigator: {}, Blob, Response, CompressionStream, DecompressionStream, TextEncoder, TextDecoder, btoa, atob }, Uint8Array, ArrayBuffer, DataView, Promise, Math, Number, String, Boolean, Object, Array, Set, Map, JSON, Error };
 vm.createContext(context);
 vm.runInContext(protocolSource, context);
 const API = context.window.HE30Control;
@@ -88,6 +89,26 @@ const profile = {
 const compiled = API.compileAdvanced(profile);
 if (compiled.banks.dks.length !== 1 || compiled.banks.mt.length !== 5 || compiled.banks.tgl.length !== 1 || compiled.banks.macros.length !== 1) throw new Error("Advanced actions did not compile into the expected banks.");
 if (API.encodeDksBank(compiled.banks.dks).length !== 1024 || API.encodeMtBank(compiled.banks.mt).length !== 256 || API.encodeTglBank(compiled.banks.tgl).length !== 128 || API.encodeMacros(compiled.banks.macros).length !== 2048) throw new Error("An advanced bank has the wrong size.");
+const shareReadyProfile = {
+  ...profile,
+  name: "Share-code smoke profile",
+  travelKeys: travel.map((item) => ({ ...item, key_max_length: 4, deadzone_status: item.press_deadzone > 0 && item.release_deadzone > 0 })),
+  light: { effect: 1, brightness: 80, speed: 2, direction: 0, singleColor: true, color: "#66f7c2" },
+  logoLight: { effect: 1, brightness: 80, speed: 2, direction: 0, singleColor: true, color: "#66f7c2" },
+  colorKeys: Array(128).fill("#66f7c2"),
+  deviceSettings: { lockWin: false, lockAltTab: false, lockAltF4: false, reportRate: 1, tickRate: 1, debounce: 0, stabilityMode: false, checkMode: false, tachyonMode: true, systemMode: 0 },
+  _rawConfig: Array(64).fill(0),
+};
+const shareCode = await API.encodeProfileShare(shareReadyProfile);
+if (!shareCode.startsWith("HE30P1.") || shareCode.length >= JSON.stringify(shareReadyProfile).length) throw new Error("The profile share code was not versioned and compressed.");
+const sharedRoundTrip = await API.decodeProfileShare(shareCode);
+if (sharedRoundTrip.profileIndex !== 0 || sharedRoundTrip.userKeys[0].length !== 128 || sharedRoundTrip.travelKeys.length !== 128 || sharedRoundTrip.advancedKeys.length !== profile.advancedKeys.length || !sharedRoundTrip.deviceSettings.tachyonMode) throw new Error("The compressed profile share code did not round-trip all configuration sections.");
+let rejectedCorruptShare = false;
+try {
+  const corruptIndex = Math.floor(shareCode.length / 2);
+  await API.decodeProfileShare(shareCode.slice(0, corruptIndex) + (shareCode[corruptIndex] === "A" ? "B" : "A") + shareCode.slice(corruptIndex + 1));
+} catch (_) { rejectedCorruptShare = true; }
+if (!rejectedCorruptShare) throw new Error("A corrupted compressed profile share code was accepted.");
 
 for (const fragment of [
   "Array.from({ length: 24 }",
@@ -148,7 +169,9 @@ if (!styleSource.includes("@media (max-width: 780px)")) throw new Error("Respons
 if (!appSource.includes("bindHallDragSelection") || !appSource.includes("updateHallSelectionBox") || !appSource.includes("selectionAfterHallBox")) throw new Error("Hall box-selection support is missing.");
 if (!styleSource.includes('data-keyboard-mode="hall"') || !styleSource.includes("touch-action: none") || !styleSource.includes("hall-selection-box")) throw new Error("Hall box-selection styles are missing.");
 if (!appSource.includes('class="mapped primary-label"') || !appSource.includes("Physical:")) throw new Error("Mapped output must be the primary keycap label.");
-if (appSource.includes('data-setting="tachyonMode"')) throw new Error("The capture-only Tachyon bit must not be exposed as a setting.");
+for (const fragment of ['"tachyonMode"', "Tachyon / Berserker mode", "Hidden setting · use with caution", "original driver does not list it as a normal option"]) {
+  if (!appSource.includes(fragment)) throw new Error(`The cautious Tachyon/Berserker setting is incomplete: ${fragment}`);
+}
 for (const fragment of ["factoryResetCardHtml", "FACTORY_PROFILE_URL", "validateFactoryProfileTemplate", "prepareFactoryProfile", "resetFromFactoryProfile", "FACTORY PROFILE READY", "translateFactoryFnLayer", "Device-performance settings and per-key RGB colors stay unchanged"]) {
   if (!appSource.includes(fragment) && !protocolSource.includes(fragment)) throw new Error(`Safe partial factory-reset support is missing: ${fragment}`);
 }
@@ -163,6 +186,10 @@ const baseConfig = Array(64).fill(0);
 baseConfig[7] = 1;
 const preservedConfig = API.applyDeviceSettings(baseConfig, { lockWin: false, lockAltTab: false, lockAltF4: false, reportRate: 1, tickRate: 1, debounce: 0, stabilityMode: 0, checkMode: false, systemMode: 0 });
 if ((preservedConfig[7] & 1) !== 1) throw new Error("The hidden Tachyon/Berserk bit was not preserved.");
+const tachyonEnabledConfig = API.applyDeviceSettings(new Array(64).fill(0), { lockWin: false, lockAltTab: false, lockAltF4: false, reportRate: 1, tickRate: 1, debounce: 0, stabilityMode: 0, checkMode: false, tachyonMode: true, systemMode: 0 });
+if ((tachyonEnabledConfig[7] & 1) !== 1 || !API.decodeDeviceSettings(tachyonEnabledConfig).tachyonMode) throw new Error("Tachyon/Berserker mode did not set firmware config byte 7 bit 0.");
+const tachyonDisabledConfig = API.applyDeviceSettings(tachyonEnabledConfig, { lockWin: false, lockAltTab: false, lockAltF4: false, reportRate: 1, tickRate: 1, debounce: 0, stabilityMode: 0, checkMode: false, tachyonMode: false, systemMode: 0 });
+if ((tachyonDisabledConfig[7] & 1) !== 0 || API.decodeDeviceSettings(tachyonDisabledConfig).tachyonMode) throw new Error("Tachyon/Berserker mode did not clear firmware config byte 7 bit 0.");
 const triggerBottomConfig = API.applyDeviceSettings(baseConfig, { lockWin: false, lockAltTab: false, lockAltF4: false, reportRate: 1, tickRate: 1, debounce: 0, stabilityMode: true, checkMode: false, systemMode: 0 });
 if ((triggerBottomConfig[7] & 2) !== 2) throw new Error("Trigger Bottom did not set the profile-wide stability-mode bit.");
 const originalLevelConfig = API.applyDeviceSettings(baseConfig, { lockWin: false, lockAltTab: false, lockAltF4: false, reportRate: 1, tickRate: 2, debounce: 7, stabilityMode: false, checkMode: false, systemMode: 1 });
@@ -170,6 +197,14 @@ if (((originalLevelConfig[4] >> 4) & 15) !== 2) throw new Error("High tick rate 
 if (((originalLevelConfig[7] >> 5) & 7) !== 7) throw new Error("High debounce must use the original driver's encoded value 7.");
 if ((originalLevelConfig[1] & 15) !== 1) throw new Error("macOS mode must be written to the firmware OS-mode byte.");
 equal(API.encodeMappings([{ type: 16, code1: 8, code2: 0 }]).slice(0, 3), [16, 8, 0], "Command/GUI modifier mapping must use the firmware modifier mask, not HID code 227 in code2.");
+if (API.translateProfileFnLayer(5, 1, 2) !== 9 || API.translateProfileFnLayer(7, 1, 0) !== 3) throw new Error("Self-contained Fn targets were not moved with a shared profile.");
+if (API.translateProfileFnLayer(2, 1, 2) !== 2) throw new Error("A deliberate cross-profile Fn target must remain unchanged during profile sharing.");
+const sharedRetarget = API.retargetSharedProfile({
+  profileIndex: 1,
+  userKeys: Object.fromEntries([0, 1, 2, 3].map((layer) => [layer, [API.makeMapping(240, 255, layer === 0 ? 5 : 2, 1, layer)]])),
+  advancedKeys: [{ type: "mt", layer: 0, index1: 0, mtClickKey: API.makeMapping(240, 255, 5), mtDownKey: API.makeMapping(240, 255, 2) }],
+}, 2);
+if (sharedRetarget.profileIndex !== 2 || sharedRetarget.userKeys[0][0].code2 !== 9 || sharedRetarget.userKeys[1][0].code2 !== 2 || sharedRetarget.advancedKeys[0].mtClickKey.code2 !== 9 || sharedRetarget.advancedKeys[0].mtDownKey.code2 !== 2) throw new Error("Shared-profile Fn retargeting did not cover mappings embedded in advanced actions.");
 for (const fragment of ['[[0, "Low"], [1, "Medium"], [2, "High"]]', '[[0, "Close"], [1, "Low"], [4, "Medium"], [7, "High"]]', 'macName: "Left Command"', 'macOnly: true', '["Windows mode", 4, 0', '["macOS mode", 5, 0', '["Toggle Windows / macOS", 6, 0']) {
   if (!appSource.includes(fragment)) throw new Error(`Original-driver device setting or macOS mapping is missing: ${fragment}`);
 }
@@ -239,6 +274,12 @@ if (styleSource.includes(".key-row:last-child .keycap:last-child") || styleSourc
 for (const fragment of ["lightingKeyboardPreview", "configuredLightingColor", "data-lighting-board", "Light strip", "Select all 36", "previewSelectedKeyColor"]) {
   if (!appSource.includes(fragment)) throw new Error(`Lighting page feature is missing: ${fragment}`);
 }
+for (const fragment of ["PROFILE_SHARE_PREFIX", "encodeProfileShare", "decodeProfileShare", "retargetSharedProfile", "CompressionStream", "DecompressionStream", "HE30P1.", "validateProfileShareCode", "replaceProfileFromShare", "data-share-target"]) {
+  if (!protocolSource.includes(fragment) && !appSource.includes(fragment)) throw new Error(`Compressed profile sharing is missing: ${fragment}`);
+}
+for (const fragment of ["position: sticky", ".work-header", ".profile-share-grid", ".share-code", ".share-target-grid"]) {
+  if (!styleSource.includes(fragment)) throw new Error(`Sticky actions or profile-sharing styles are missing: ${fragment}`);
+}
 const mainEffectSource = appSource.match(/const MAIN_LIGHT_EFFECTS = Object\.freeze\(\[([\s\S]*?)\]\);\s*const LIGHT_STRIP_EFFECTS/)?.[1] || "";
 const stripEffectSource = appSource.match(/const LIGHT_STRIP_EFFECTS = Object\.freeze\(\[([\s\S]*?)\]\);\s*const lightingEffects/)?.[1] || "";
 equal([...mainEffectSource.matchAll(/\{ value: (\d+)/g)].map((match) => Number(match[1])), [...Array.from({ length: 22 }, (_, index) => index + 1), 255, 0], "The 24 main-light effect IDs or original-driver order changed.");
@@ -261,3 +302,9 @@ for (const token of forbiddenFirmwareTokens) {
 }
 
 console.log("Smoke test passed: codecs, feature surfaces, mappings, safety scope, and static assets verified.");
+}
+
+main().catch((error) => {
+  console.error(error?.stack || error);
+  process.exitCode = 1;
+});

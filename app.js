@@ -8,6 +8,7 @@
   const APP_SCRIPT_URL = document.currentScript?.src || window.location.href;
   const FACTORY_PROFILE_URL = new URL("src/factory_config.json", APP_SCRIPT_URL).href;
   const FACTORY_RESET_SECTIONS = Object.freeze(["advanced", "keymap", "hall", "lighting"]);
+  const PROFILE_SHARE_SECTIONS = Object.freeze(["advanced", "keymap", "hall", "settings", "lighting", "colors"]);
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
   const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
@@ -129,6 +130,12 @@
     advancedType: null,
     pendingProfile: null,
     factoryResetBusy: false,
+    shareExportCode: "",
+    shareImportText: "",
+    shareImportProfile: null,
+    shareStatus: "",
+    shareError: false,
+    shareBusy: false,
   };
 
   function mappingFromPreset(preset, layer = state.layer) {
@@ -152,7 +159,7 @@
   }
 
   function defaultSettings() {
-    return { lockWin: false, lockAltTab: false, lockAltF4: false, reportRate: 1, tickRate: 1, debounce: 0, stabilityMode: 0, checkMode: false, systemMode: 0 };
+    return { lockWin: false, lockAltTab: false, lockAltF4: false, reportRate: 1, tickRate: 1, debounce: 0, stabilityMode: 0, checkMode: false, tachyonMode: false, systemMode: 0 };
   }
 
   function makeDemoProfile() {
@@ -261,6 +268,11 @@
     state.hallEditSelection = new Set();
     state.hallEditPending = false;
     state.colorSelection = new Set([0]);
+    state.shareExportCode = "";
+    state.shareImportText = "";
+    state.shareImportProfile = null;
+    state.shareStatus = "";
+    state.shareError = false;
     $("#welcomeView").classList.add("hidden");
     $("#workspaceView").classList.remove("hidden");
     updateChrome();
@@ -533,7 +545,8 @@
       </div><div class="callout">8,000 Hz can use more CPU and may be less stable through some USB hubs. The OS mode byte is valid firmware state, although the original driver changes it through remappable Windows/macOS function keys instead of showing this selector.</div></section>
       <section class="panel form-card"><h3>Input processing</h3><p>Compatibility modes exposed by the original software.</p><div class="switch-list">
         ${switchRow("Check mode", "Additional signal checks", "checkMode", settings.checkMode)}
-      </div><div class="callout">Trigger Bottom is now grouped with Hall settings because it changes Rapid Trigger behavior. The hidden Tachyon/Berserk bit is still preserved and intentionally not editable.</div></section>
+        ${switchRow("Tachyon / Berserker mode", "Experimental firmware latency-processing bit", "tachyonMode", settings.tachyonMode)}
+      </div><div class="callout caution-callout"><b>Hidden setting · use with caution.</b> Tachyon/Berserker mode is a valid stored firmware bit, but the original driver does not list it as a normal option. Stability and compatibility effects are not documented. Trigger Bottom remains grouped with Hall settings because it changes Rapid Trigger behavior.</div></section>
       <section class="panel form-card"><h3>Lock settings</h3><p>Prevent common shortcuts from interrupting a game.</p><div class="switch-list">
         ${switchRow("Windows key lock", "Blocks the GUI key", "lockWin", settings.lockWin)}
         ${switchRow("Alt + Tab lock", "Blocks app switching", "lockAltTab", settings.lockAltTab)}
@@ -664,12 +677,33 @@
     return `<article class="panel configured-row"><span class="action-icon">${meta.icon}</span><div><strong>${esc(meta.name)} · ${esc(physicalName(item.index1))}${esc(paired)}</strong><small>${esc(globalLayerLabel(state.profile.profileIndex, item.layer || 0))}${item.type === "macro" ? ` · ${(item.actions || []).length} events` : ""}</small></div><button class="icon-action" type="button" data-edit-advanced="${index}">Edit</button><button class="icon-action delete" type="button" data-delete-advanced="${index}">Delete</button></article>`;
   }
 
+  function profileShareHtml() {
+    const connected = state.source === "device" && Boolean(state.driver);
+    const multiProfile = connected && Boolean(state.identity?.multiProfile);
+    const pending = state.shareImportProfile;
+    const sourceProfile = pending ? pending.profileIndex + 1 : 0;
+    const exportMeta = state.shareExportCode ? `${state.shareExportCode.length.toLocaleString()} characters · gzip + Base64URL` : "Nothing leaves this browser unless you copy the code.";
+    return `<div class="section-heading"><div><h2>Compressed profile sharing</h2><p>Share one complete profile as a versioned text code instead of attaching a JSON file.</p></div><span class="chip">HE30P1</span></div>
+      <div class="profile-share-grid">
+        <section class="panel panel-pad share-card"><div class="share-card-heading"><div><h3>Export current profile</h3><p>Includes all four layers, Hall data, advanced actions, device settings, lighting, and per-key colors.</p></div><button class="button secondary compact" id="generateShareCode" type="button"${state.shareBusy ? " disabled" : ""}>${state.shareBusy ? "Working…" : "Generate code"}</button></div>
+          <textarea class="share-code" id="shareCodeOutput" readonly spellcheck="false" aria-label="Generated compressed profile code" placeholder="Generate a code for the current workspace…">${esc(state.shareExportCode)}</textarea>
+          <div class="share-card-footer"><small>${esc(exportMeta)}</small><button class="button primary compact" id="copyShareCode" type="button"${!state.shareExportCode ? " disabled" : ""}>Copy code</button></div>
+        </section>
+        <section class="panel panel-pad share-card"><div class="share-card-heading"><div><h3>Import shared profile</h3><p>Paste a code, validate every configuration bank, then choose the onboard profile to replace.</p></div><button class="button secondary compact" id="validateShareCode" type="button"${state.shareBusy ? " disabled" : ""}>${state.shareBusy ? "Validating…" : "Validate code"}</button></div>
+          <textarea class="share-code" id="shareCodeInput" spellcheck="false" autocomplete="off" aria-label="Compressed profile code to import" placeholder="Paste an HE30P1 profile code…">${esc(state.shareImportText)}</textarea>
+          ${state.shareStatus ? `<div class="share-validation${state.shareError ? " error" : " valid"}">${esc(state.shareStatus)}</div>` : ""}
+          ${pending ? `<div class="share-targets"><div><strong>Validated Profile ${sourceProfile}</strong><small>Choose the onboard destination. Fn targets inside layers ${(sourceProfile - 1) * API.LAYER_COUNT}–${sourceProfile * API.LAYER_COUNT - 1} will move with the profile; deliberate cross-profile Fn targets stay unchanged.</small></div><div class="share-target-grid">${Array.from({ length: API.PROFILE_COUNT }, (_, index) => `<button class="button ${index === state.profile.profileIndex ? "primary" : "secondary"}" type="button" data-share-target="${index}"${!multiProfile || state.shareBusy ? " disabled" : ""}>Replace Profile ${index + 1}${index === state.profile.profileIndex ? " · loaded" : ""}</button>`).join("")}</div>${!multiProfile ? `<div class="callout"><b>Connect the three-profile HE30</b> to write this validated code to onboard memory.</div>` : ""}</div>` : ""}
+        </section>
+      </div>`;
+  }
+
   function renderProfiles() {
     const multi = Boolean(state.identity?.multiProfile);
     const profileIndexes = multi ? Array.from({ length: API.PROFILE_COUNT }, (_, index) => index) : [state.profile.profileIndex];
     return `<div class="profile-grid">${profileIndexes.map((index) => `<article class="panel profile-card${index === state.profile.profileIndex ? " active" : ""}"><span class="profile-number">${index + 1}</span>${index === state.profile.profileIndex ? "<span class=\"active-label\">Active workspace</span>" : ""}<h3>Profile ${index + 1}</h3><p>${state.source === "device" ? "Stored in onboard memory." : "Profile identity recovered from this backup."}</p><button class="button ${index === state.profile.profileIndex ? "secondary" : "primary"}" type="button" data-profile="${index}" ${index === state.profile.profileIndex || state.source !== "device" ? "disabled" : ""}>${index === state.profile.profileIndex ? "Loaded" : "Switch and load"}</button></article>`).join("")}</div>
       <div class="section-heading"><div><h2>Profile portability</h2><p>Back up the complete current profile, including Hall and lighting data.</p></div></div>
       <section class="panel panel-pad"><div class="quick-list">${quickRow("⇩", "Export current backup", "Download a complete JSON copy of the current workspace", "export-profile")}${APP_MODE === "json" ? quickRow("⇧", "Import profile JSON", "Open another backup in this offline workspace", "import-profile") : quickRow("↗", "Open JSON editor", "Inspect or modify a backup without connecting a keyboard", "json-editor")}</div></section>
+      ${profileShareHtml()}
       ${multi ? `<div class="callout">Profile 1 owns layers 0–3, Profile 2 owns layers 4–7, and Profile 3 owns layers 8–11. A key mapped to FN/FN1–FN11 may jump directly to any corresponding global layer.</div>` : `<div class="callout">${state.identity ? `${esc(state.identity.name)} reports a single onboard profile.` : "Connect a supported multi-profile HE30 to switch among three onboard profiles."}</div>`}`;
   }
 
@@ -728,6 +762,18 @@
     $$('[data-delete-advanced]').forEach((button) => button.addEventListener("click", () => deleteAdvanced(Number(button.dataset.deleteAdvanced))));
     $$('[data-profile]').forEach((button) => button.addEventListener("click", () => promptProfileSwitch(Number(button.dataset.profile))));
     $$('[data-factory-reset]').forEach((button) => button.addEventListener("click", () => resetFromFactoryProfile(button.dataset.factoryReset)));
+    $("#generateShareCode")?.addEventListener("click", generateProfileShareCode);
+    $("#copyShareCode")?.addEventListener("click", copyProfileShareCode);
+    $("#validateShareCode")?.addEventListener("click", validateProfileShareCode);
+    $("#shareCodeInput")?.addEventListener("input", (event) => {
+      state.shareImportText = event.target.value;
+      state.shareImportProfile = null;
+      state.shareStatus = "";
+      state.shareError = false;
+      $(".share-validation")?.remove();
+      $(".share-targets")?.remove();
+    });
+    $$('[data-share-target]').forEach((button) => button.addEventListener("click", () => replaceProfileFromShare(Number(button.dataset.shareTarget))));
     $("#exportLogButton")?.addEventListener("click", exportLog);
   }
 
@@ -1830,6 +1876,107 @@
 
   function exportLog() { download(`he30-session-${new Date().toISOString().replace(/[:.]/g, "-")}.json`, JSON.stringify(state.logs, null, 2), "application/json"); }
   function download(fileName, content, type) { const anchor = document.createElement("a"); anchor.href = URL.createObjectURL(new Blob([content], { type })); anchor.download = fileName; anchor.click(); setTimeout(() => URL.revokeObjectURL(anchor.href), 1000); }
+
+  async function generateProfileShareCode() {
+    if (!state.profile || state.shareBusy) return;
+    state.shareBusy = true;
+    renderPage();
+    try {
+      state.shareExportCode = await API.encodeProfileShare(state.profile);
+      log("info", `Generated compressed share code for Profile ${state.profile.profileIndex + 1}`);
+      showToast(`Profile code generated (${state.shareExportCode.length.toLocaleString()} characters).`);
+    } catch (error) {
+      log("error", "Could not generate profile share code", error.message);
+      showToast(`Could not generate profile code: ${error.message}`, true);
+    } finally {
+      state.shareBusy = false;
+      renderPage();
+    }
+  }
+
+  async function copyProfileShareCode() {
+    if (!state.shareExportCode) return;
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(state.shareExportCode);
+      else {
+        const output = $("#shareCodeOutput");
+        output.focus(); output.select();
+        if (!document.execCommand("copy")) throw new Error("Clipboard access was denied.");
+      }
+      showToast("Compressed profile code copied.");
+    } catch (error) { showToast(`Could not copy automatically: ${error.message}`, true); }
+  }
+
+  async function validateProfileShareCode() {
+    if (state.shareBusy) return;
+    state.shareImportText = $("#shareCodeInput")?.value || state.shareImportText;
+    state.shareImportProfile = null;
+    state.shareError = false;
+    if (!state.shareImportText.trim()) {
+      state.shareStatus = "Paste an HE30P1 profile code first.";
+      state.shareError = true;
+      renderPage();
+      return;
+    }
+    state.shareBusy = true;
+    state.shareStatus = "Validating compressed profile data…";
+    renderPage();
+    try {
+      const decoded = await API.decodeProfileShare(state.shareImportText);
+      state.shareImportProfile = normalizeProfile(decoded);
+      state.shareStatus = `Valid Profile ${state.shareImportProfile.profileIndex + 1} code. All six configuration sections passed validation.`;
+      state.shareError = false;
+      log("verify", `Validated compressed Profile ${state.shareImportProfile.profileIndex + 1} share code`);
+    } catch (error) {
+      state.shareImportProfile = null;
+      state.shareStatus = error.message;
+      state.shareError = true;
+      log("warning", "Rejected profile share code", error.message);
+    } finally {
+      state.shareBusy = false;
+      renderPage();
+    }
+  }
+
+  async function replaceProfileFromShare(targetProfileIndex) {
+    if (state.shareBusy || !state.shareImportProfile || !state.driver || state.source !== "device" || !state.identity?.multiProfile) return;
+    const target = clamp(targetProfileIndex, 0, API.PROFILE_COUNT - 1);
+    const source = state.shareImportProfile.profileIndex;
+    const stagedWarning = target === state.profile.profileIndex && state.dirty.size ? " Any staged changes in the loaded profile will be discarded." : "";
+    const confirmation = `Replace onboard Profile ${target + 1} with the validated shared Profile ${source + 1}?\n\nAll mappings, Hall settings, advanced actions/macros, device settings, lighting, and per-key colors will be written and verified. Fn targets inside the source profile's four-layer range will be translated to Profile ${target + 1}; deliberate cross-profile targets will remain unchanged.${stagedWarning}`;
+    if (!window.confirm(confirmation)) return;
+
+    const driver = state.driver;
+    const replacement = normalizeProfile(API.retargetSharedProfile(state.shareImportProfile, target));
+    state.shareBusy = true;
+    renderPage();
+    try {
+      if (state.calibrationActive || state.calibrationBusy) await stopCalibration(false);
+      if (state.liveMonitorActive) await stopLiveMonitor(false);
+      if (state.liveLightingActive || state.liveLightingBusy) await stopLiveLighting();
+      showProgress(`Replacing Profile ${target + 1}`, 0, "Writing the validated shared profile…");
+      const verified = await driver.writeProfile(replacement, PROFILE_SHARE_SECTIONS, updateProgress);
+      if (driver !== state.driver || state.source !== "device") throw new Error("The keyboard connection changed during profile replacement.");
+      if (target === state.profile.profileIndex) {
+        setWorkspace(verified, "device", { identity: state.identity, info: state.info, preserveView: true, layer: 0 });
+      } else {
+        state.shareImportText = "";
+        state.shareImportProfile = null;
+        state.shareStatus = "";
+        state.shareError = false;
+      }
+      log("verify", `Shared profile written and verified on Profile ${target + 1}`);
+      showToast(`Profile ${target + 1} was replaced and verified.`);
+    } catch (error) {
+      log("error", "Shared profile replacement stopped", error.message);
+      showToast(`Profile replacement stopped: ${error.message}`, true);
+    } finally {
+      state.shareBusy = false;
+      hideProgress();
+      if (state.profile) renderPage();
+      updateChrome();
+    }
+  }
 
   function validateFactoryProfileTemplate(profile) {
     if (!profile || typeof profile !== "object") throw new Error("The bundled factory profile is not a JSON object.");

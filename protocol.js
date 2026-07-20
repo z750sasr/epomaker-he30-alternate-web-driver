@@ -9,6 +9,10 @@
   const LAYER_COUNT = 4;
   const TOTAL_LAYER_COUNT = PROFILE_COUNT * LAYER_COUNT;
   const KEY_COUNT = 128;
+  const PROFILE_SHARE_PREFIX = "HE30P1.";
+  const PROFILE_SHARE_FORMAT = "he30-profile";
+  const PROFILE_SHARE_MAX_LENGTH = 262144;
+  const TRAVEL_SHARE_FIELDS = Object.freeze(["switch_type", "key_mode", "priority", "key_max_length", "key_actuation", "rt_press", "rt_release", "pressPrecision", "releasePrecision", "press_deadzone", "release_deadzone", "deadzone_status"]);
 
   const DEVICE_MODELS = Object.freeze({
     "19f5:fb27": { name: "EPOMAKER HE30", type: 102, multiProfile: false },
@@ -88,6 +92,19 @@
       throw new Error("A valid target profile is required for Fn translation.");
     }
     return target * LAYER_COUNT + source;
+  }
+
+  function translateProfileFnLayer(globalLayer, sourceProfileIndex, targetProfileIndex) {
+    const layer = Number(globalLayer);
+    const source = Number(sourceProfileIndex);
+    const target = Number(targetProfileIndex);
+    if (!Number.isInteger(layer) || layer < 0 || layer >= TOTAL_LAYER_COUNT) throw new Error("A valid global Fn layer is required.");
+    if (!Number.isInteger(source) || source < 0 || source >= PROFILE_COUNT || !Number.isInteger(target) || target < 0 || target >= PROFILE_COUNT) {
+      throw new Error("Valid source and target profiles are required for Fn translation.");
+    }
+    const sourceStart = source * LAYER_COUNT;
+    if (layer < sourceStart || layer >= sourceStart + LAYER_COUNT) return layer;
+    return target * LAYER_COUNT + (layer - sourceStart);
   }
 
   function factoryResetPayload(profileIndex) {
@@ -572,6 +589,208 @@
     return bytes;
   }
 
+  function bytesToBase64Url(bytes) {
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));
+    }
+    return global.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+
+  function base64UrlToBytes(value) {
+    const normalized = String(value).replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+    let binary;
+    try { binary = global.atob(padded); } catch (_) { throw new Error("The profile share code contains invalid Base64 data."); }
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  }
+
+  async function gzipTransform(bytes, decompress = false) {
+    const Stream = decompress ? global.DecompressionStream : global.CompressionStream;
+    if (!Stream || !global.Blob || !global.Response || !global.TextEncoder || !global.TextDecoder || !global.btoa || !global.atob) {
+      throw new Error("Compressed profile sharing requires a current Chrome or Edge browser.");
+    }
+    const stream = new global.Blob([bytes]).stream().pipeThrough(new Stream("gzip"));
+    if (decompress) {
+      const reader = stream.getReader();
+      const chunks = [];
+      let length = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        length += value.length;
+        if (length > 1048576) {
+          await reader.cancel();
+          throw new Error("The decompressed profile share code is too large.");
+        }
+        chunks.push(value);
+      }
+      const output = new Uint8Array(length);
+      let offset = 0;
+      chunks.forEach((chunk) => { output.set(chunk, offset); offset += chunk.length; });
+      return output;
+    }
+    return new Uint8Array(await new global.Response(stream).arrayBuffer());
+  }
+
+  function compactProfileForShare(profile) {
+    const profileIndex = inferProfileIndex(profile);
+    const keymaps = Array.from({ length: LAYER_COUNT }, (_, layer) => {
+      const mappings = profile.userKeys?.[layer] || profile.userKeys?.[String(layer)] || [];
+      if (mappings.length < KEY_COUNT) throw new Error(`Layer ${layer} does not contain ${KEY_COUNT} mappings.`);
+      return mappings.slice(0, KEY_COUNT).map((mapping) => [Number(mapping.type), Number(mapping.code1), Number(mapping.code2)]);
+    });
+    if (!Array.isArray(profile.travelKeys) || profile.travelKeys.length < KEY_COUNT) throw new Error(`The profile does not contain ${KEY_COUNT} Hall records.`);
+    return {
+      n: String(profile.name || `Keyboard Profile ${profileIndex + 1}`).slice(0, 200),
+      i: profileIndex,
+      k: keymaps,
+      t: profile.travelKeys.slice(0, KEY_COUNT).map((record) => TRAVEL_SHARE_FIELDS.map((field) => field === "deadzone_status" ? Boolean(record[field]) : Number(record[field]))),
+      a: JSON.parse(JSON.stringify(profile.advancedKeys || [])),
+      l: JSON.parse(JSON.stringify(profile.light || {})),
+      s: JSON.parse(JSON.stringify(profile.logoLight || {})),
+      c: Array.from(profile.colorKeys || []).slice(0, KEY_COUNT),
+      d: JSON.parse(JSON.stringify(profile.deviceSettings || {})),
+      r: Array.from(profile._rawConfig || []).slice(0, 64),
+    };
+  }
+
+  function requireShareInteger(value, min, max, message) {
+    if (!Number.isInteger(value) || value < min || value > max) throw new Error(message);
+    return value;
+  }
+
+  function expandProfileSharePayload(payload) {
+    if (!payload || payload.f !== PROFILE_SHARE_FORMAT || payload.v !== 1 || !payload.p || typeof payload.p !== "object") {
+      throw new Error("This is not a supported HE30 profile share code.");
+    }
+    const packed = payload.p;
+    const profileIndex = requireShareInteger(packed.i, 0, PROFILE_COUNT - 1, "The shared source profile is invalid.");
+    if (!Array.isArray(packed.k) || packed.k.length !== LAYER_COUNT) throw new Error("The shared profile must contain exactly four mapping layers.");
+    const userKeys = {};
+    packed.k.forEach((layerMappings, layer) => {
+      if (!Array.isArray(layerMappings) || layerMappings.length !== KEY_COUNT) throw new Error(`Shared layer ${layer} must contain exactly ${KEY_COUNT} mappings.`);
+      userKeys[layer] = layerMappings.map((triplet, index) => {
+        if (!Array.isArray(triplet) || triplet.length !== 3) throw new Error(`Shared layer ${layer}, key ${index + 1} has an invalid mapping.`);
+        const [type, code1, code2] = triplet.map(Number);
+        requireShareInteger(type, 0, 255, `Shared layer ${layer}, key ${index + 1} has an invalid mapping type.`);
+        requireShareInteger(code1, 0, 255, `Shared layer ${layer}, key ${index + 1} has an invalid mapping code.`);
+        requireShareInteger(code2, 0, 255, `Shared layer ${layer}, key ${index + 1} has an invalid mapping code.`);
+        return makeMapping(type, code1, code2, profileIndex, layer);
+      });
+    });
+    if (!Array.isArray(packed.t) || packed.t.length !== KEY_COUNT) throw new Error(`The shared profile must contain exactly ${KEY_COUNT} Hall records.`);
+    const travelLimits = [[0, 15], [0, 15], [0, 15], [0, 10], [1, 511], [1, 511], [1, 511], [0, 3], [0, 3], [0, 127], [0, 127]];
+    const travelKeys = packed.t.map((values, index) => {
+      if (!Array.isArray(values) || values.length !== TRAVEL_SHARE_FIELDS.length) throw new Error(`Shared Hall record ${index + 1} is incomplete.`);
+      const record = {};
+      TRAVEL_SHARE_FIELDS.forEach((field, fieldIndex) => {
+        if (field === "deadzone_status") {
+          if (typeof values[fieldIndex] !== "boolean") throw new Error(`Shared Hall record ${index + 1} has an invalid dead-zone state.`);
+          record[field] = values[fieldIndex];
+          return;
+        }
+        const [minimum, maximum] = travelLimits[fieldIndex];
+        record[field] = requireShareInteger(Number(values[fieldIndex]), minimum, maximum, `Shared Hall record ${index + 1} has an invalid ${field} value.`);
+      });
+      return record;
+    });
+    if (!Array.isArray(packed.a) || packed.a.length > KEY_COUNT) throw new Error("The shared advanced-action list is invalid.");
+    const allowedAdvancedTypes = new Set(["dks", "mt", "tgl", "rs", "socd", "cb", "macro"]);
+    packed.a.forEach((item, index) => {
+      if (!item || !allowedAdvancedTypes.has(item.type)) throw new Error(`Shared advanced action ${index + 1} has an unsupported type.`);
+      requireShareInteger(Number(item.layer || 0), 0, LAYER_COUNT - 1, `Shared advanced action ${index + 1} has an invalid layer.`);
+      requireShareInteger(Number(item.index1), 0, KEY_COUNT - 1, `Shared advanced action ${index + 1} has an invalid host key.`);
+      if (item.type === "rs" || item.type === "socd") requireShareInteger(Number(item.index2), 0, KEY_COUNT - 1, `Shared advanced action ${index + 1} has an invalid paired key.`);
+    });
+    if (!packed.l || typeof packed.l !== "object" || !packed.s || typeof packed.s !== "object") throw new Error("The shared lighting settings are incomplete.");
+    [packed.l, packed.s].forEach((lighting, index) => {
+      const label = index ? "light-strip" : "main-key";
+      requireShareInteger(Number(lighting.effect), 0, 255, `The shared ${label} lighting effect is invalid.`);
+      requireShareInteger(Number(lighting.brightness), 0, 100, `The shared ${label} brightness is invalid.`);
+      requireShareInteger(Number(lighting.speed), 0, 4, `The shared ${label} speed is invalid.`);
+      requireShareInteger(Number(lighting.direction || 0), 0, 255, `The shared ${label} direction is invalid.`);
+      if (typeof lighting.singleColor !== "boolean" || !/^#[0-9a-f]{6}$/i.test(String(lighting.color))) throw new Error(`The shared ${label} color settings are invalid.`);
+    });
+    if (!Array.isArray(packed.c) || packed.c.length !== KEY_COUNT || !packed.c.every((color) => /^#[0-9a-f]{6}$/i.test(String(color)))) throw new Error(`The shared profile must contain exactly ${KEY_COUNT} valid per-key colors.`);
+    if (!packed.d || typeof packed.d !== "object" || Array.isArray(packed.d)) throw new Error("The shared device settings are invalid.");
+    ["lockWin", "lockAltTab", "lockAltF4", "checkMode", "tachyonMode"].forEach((field) => {
+      if (typeof packed.d[field] !== "boolean") throw new Error(`The shared device setting ${field} is invalid.`);
+    });
+    if (![false, true, 0, 1].includes(packed.d.stabilityMode)) throw new Error("The shared Trigger Bottom setting is invalid.");
+    requireShareInteger(Number(packed.d.reportRate), 0, 15, "The shared polling-rate setting is invalid.");
+    requireShareInteger(Number(packed.d.tickRate), 0, 15, "The shared tick-rate setting is invalid.");
+    requireShareInteger(Number(packed.d.debounce), 0, 7, "The shared debounce setting is invalid.");
+    requireShareInteger(Number(packed.d.systemMode), 0, 15, "The shared OS-mode setting is invalid.");
+    if (!Array.isArray(packed.r) || packed.r.length !== 64) throw new Error("The shared raw profile configuration must contain exactly 64 bytes.");
+    packed.r.forEach((value, index) => requireShareInteger(Number(value), 0, 255, `Raw configuration byte ${index} is invalid.`));
+    const profile = {
+      name: String(packed.n || `Shared Profile ${profileIndex + 1}`).slice(0, 200),
+      active: true,
+      profileIndex,
+      userKeys,
+      travelKeys,
+      advancedKeys: JSON.parse(JSON.stringify(packed.a)),
+      light: JSON.parse(JSON.stringify(packed.l)),
+      logoLight: JSON.parse(JSON.stringify(packed.s)),
+      colorKeys: packed.c.map((color) => normalizeHexColor(color)),
+      deviceSettings: JSON.parse(JSON.stringify(packed.d)),
+      _rawConfig: packed.r.map(Number),
+      _hasRawConfig: true,
+      _workspaceSections: ["keymap", "hall", "advanced", "settings", "lighting", "colors"],
+    };
+    const compiled = compileAdvanced(profile);
+    encodeDksBank(compiled.banks.dks); encodeMtBank(compiled.banks.mt); encodeTglBank(compiled.banks.tgl); encodeMacros(compiled.banks.macros);
+    encodeMappings(compiled.userKeys[0]); encodeTravel(compiled.travelKeys); encodeColors(profile.colorKeys);
+    applyLighting(applyDeviceSettings(profile._rawConfig, profile.deviceSettings), profile.light, profile.logoLight);
+    retargetSharedProfile(profile, profileIndex);
+    return profile;
+  }
+
+  async function encodeProfileShare(profile) {
+    const payload = { f: PROFILE_SHARE_FORMAT, v: 1, p: compactProfileForShare(profile) };
+    const source = new global.TextEncoder().encode(JSON.stringify(payload));
+    const compressed = await gzipTransform(source);
+    return PROFILE_SHARE_PREFIX + bytesToBase64Url(compressed);
+  }
+
+  async function decodeProfileShare(value) {
+    const code = String(value || "").replace(/\s+/g, "");
+    if (!code.startsWith(PROFILE_SHARE_PREFIX)) throw new Error(`Profile codes must start with ${PROFILE_SHARE_PREFIX}`);
+    if (code.length > PROFILE_SHARE_MAX_LENGTH) throw new Error("The profile share code is too large.");
+    const compressed = base64UrlToBytes(code.slice(PROFILE_SHARE_PREFIX.length));
+    let decompressed;
+    try { decompressed = await gzipTransform(compressed, true); } catch (error) { throw new Error(`The profile share code could not be decompressed: ${error.message}`); }
+    if (decompressed.length > 1048576) throw new Error("The decompressed profile share code is too large.");
+    let payload;
+    try { payload = JSON.parse(new global.TextDecoder().decode(decompressed)); } catch (_) { throw new Error("The profile share code does not contain valid JSON data."); }
+    return expandProfileSharePayload(payload);
+  }
+
+  function retargetSharedProfile(profile, targetProfileIndex) {
+    const source = inferProfileIndex(profile);
+    const target = requireShareInteger(Number(targetProfileIndex), 0, PROFILE_COUNT - 1, "A valid target profile is required.");
+    const retargeted = JSON.parse(JSON.stringify(profile));
+    const visit = (value) => {
+      if (!value || typeof value !== "object") return;
+      if (Array.isArray(value)) value.forEach(visit);
+      else Object.values(value).forEach(visit);
+      if (Number(value.type) === 240 && Number(value.code1) === 255) {
+        value.code2 = translateProfileFnLayer(Number(value.code2), source, target);
+        value.name = mappingName(240, 255, value.code2);
+        value.profile = target;
+      }
+    };
+    visit(retargeted.userKeys);
+    visit(retargeted.advancedKeys);
+    retargeted.profileIndex = target;
+    for (let layer = 0; layer < LAYER_COUNT; layer += 1) {
+      (retargeted.userKeys?.[layer] || retargeted.userKeys?.[String(layer)] || []).forEach((mapping) => { mapping.profile = target; mapping.layer = layer; });
+    }
+    retargeted._workspaceSections = ["keymap", "hall", "advanced", "settings", "lighting", "colors"];
+    return retargeted;
+  }
+
   function expandAdvancedBanks(advancedKeys) {
     const dks = advancedKeys.filter((item) => item.type === "dks");
     const tgl = advancedKeys.filter((item) => item.type === "tgl");
@@ -1030,6 +1249,10 @@
     inferProfileIndex,
     profileConfigOffset,
     translateFactoryFnLayer,
+    translateProfileFnLayer,
+    encodeProfileShare,
+    decodeProfileShare,
+    retargetSharedProfile,
     factoryResetPayload,
     factoryResetAllPayload,
     normalizeHexColor,
