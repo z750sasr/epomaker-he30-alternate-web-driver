@@ -46,6 +46,27 @@ for (const field of ["switch_type", "key_mode", "priority", "key_actuation", "rt
   equal(travelRoundTrip.map((item) => item[field]), travel.map((item) => item[field]), `Hall field ${field} did not round-trip.`);
 }
 
+const documentedHallKey = {
+  switch_type: 0,
+  key_mode: 1,
+  priority: 0,
+  key_max_length: 4,
+  key_actuation: 145,
+  rt_press: 50,
+  rt_release: 50,
+  pressPrecision: 0,
+  releasePrecision: 0,
+  press_deadzone: 30,
+  release_deadzone: 23,
+  deadzone_status: true,
+};
+const documentedHallRoundTrip = API.decodeTravel(API.encodeTravel(Array.from({ length: 128 }, () => documentedHallKey)))[0];
+for (const field of ["switch_type", "key_mode", "priority", "key_actuation", "rt_press", "rt_release", "pressPrecision", "releasePrecision", "press_deadzone", "release_deadzone", "deadzone_status"]) {
+  equal(documentedHallRoundTrip[field], documentedHallKey[field], `Documented Hall example field ${field} did not round-trip.`);
+}
+const oneSidedInsurance = { ...documentedHallKey, release_deadzone: 0 };
+if (API.decodeTravel(API.encodeTravel(Array.from({ length: 128 }, () => oneSidedInsurance)))[0].deadzone_status) throw new Error("Trigger Insurance must require both top and bottom zones, matching the original driver.");
+
 const colorValues = Array.from({ length: 128 }, (_, index) => `#${(index * 123457 % 0x1000000).toString(16).padStart(6, "0")}`);
 equal(API.decodeColors(API.encodeColors(colorValues)), colorValues, "Per-key RGB colors did not round-trip.");
 
@@ -83,6 +104,12 @@ for (const fragment of [
 }
 if (API.PROFILE_COUNT !== 3 || API.LAYER_COUNT !== 4 || API.TOTAL_LAYER_COUNT !== 12) throw new Error("The three-profile, twelve-layer topology is incorrect.");
 equal([0, 1, 2].map(API.profileConfigOffset), [0, 64, 128], "Live telemetry config offsets must follow the active profile.");
+equal(API.factoryResetPayload(0), [0xee, 0, 1, 1, 0, 0, 0, 0], "Profile 1 reset payload does not match the original driver.");
+equal(API.factoryResetPayload(2), [0xee, 0, 3, 1, 0, 0, 0, 2], "Profile 3 reset payload does not match the original driver.");
+equal(API.factoryResetAllPayload(), [0xee, 0, 0, 1, 0, 0, 0, 0xff], "All-profile reset payload does not match the original driver.");
+let rejectedResetTarget = false;
+try { API.factoryResetPayload(255); } catch (_) { rejectedResetTarget = true; }
+if (!rejectedResetTarget) throw new Error("A current-profile reset must reject the all-profile sentinel.");
 if (API.inferProfileIndex({ userKeys: { 0: [{ profile: 1, layer: 0 }] } }) !== 1) throw new Error("Embedded Profile 2 metadata was not inferred from a vendor backup.");
 if (API.inferProfileIndex({ userKeys: { 0: [{ profile: 2, layer: 0 }] } }) !== 2) throw new Error("Embedded Profile 3 metadata was not inferred from a vendor backup.");
 for (let layer = 0; layer < 12; layer += 1) {
@@ -105,17 +132,34 @@ for (const fragment of ["resetToLanding", "Returned to the connection screen", '
   if (!appSource.includes(fragment)) throw new Error(`Connection or keyboard-capture behavior is missing: ${fragment}`);
 }
 if (!styleSource.includes("@media (max-width: 780px)")) throw new Error("Responsive layout rules are missing.");
-if (!appSource.includes("bindHallDragSelection") || !appSource.includes("pointermove") || !appSource.includes("elementFromPoint")) throw new Error("Hall drag-selection support is missing.");
-if (!styleSource.includes('data-keyboard-mode="hall"') || !styleSource.includes("touch-action: none")) throw new Error("Hall touch drag-selection styles are missing.");
+if (!appSource.includes("bindHallDragSelection") || !appSource.includes("updateHallSelectionBox") || !appSource.includes("selectionAfterHallBox")) throw new Error("Hall box-selection support is missing.");
+if (!styleSource.includes('data-keyboard-mode="hall"') || !styleSource.includes("touch-action: none") || !styleSource.includes("hall-selection-box")) throw new Error("Hall box-selection styles are missing.");
 if (!appSource.includes('class="mapped primary-label"') || !appSource.includes("Physical:")) throw new Error("Mapped output must be the primary keycap label.");
 if (appSource.includes('data-setting="tachyonMode"')) throw new Error("The capture-only Tachyon bit must not be exposed as a setting.");
-for (const fragment of ["[102, 103, 105]", '[0, "0.01 mm"]', '[1, "0.005 mm"]', '[2, "0.001 mm"]']) {
+for (const fragment of ["factoryResetCardHtml", 'data-factory-reset="current" disabled', 'data-factory-reset="all" disabled', "DEFAULT FILE REQUIRED", "resetCurrentProfile", "resetAllProfiles"]) {
+  if (!appSource.includes(fragment) && !protocolSource.includes(fragment)) throw new Error(`Safe partial factory-reset support is missing: ${fragment}`);
+}
+for (const fragment of ["[102, 103, 104, 105]", '[0, "0.01 mm"]', '[1, "0.005 mm"]', '[2, "0.001 mm"]', "HIDDEN SETTING · USE WITH CAUTION", 'data-rt-sensitivity-preset="0.05"', 'data-rt-sensitivity-preset="0.10"']) {
   if (!appSource.includes(fragment)) throw new Error(`Precision compatibility rule is missing: ${fragment}`);
 }
+for (const fragment of ["hallRapidTrigger", "hallFullTravel", "hallIndependentRt", "hallInsurance", "hallTriggerBottom", "rtPrecisionMeta", "Continuous Rapid Trigger"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Original-driver Hall control is missing: ${fragment}`);
+}
+if (appSource.includes('id="hallMode"')) throw new Error("The ambiguous Hall mode dropdown must be replaced by explicit Rapid Trigger controls.");
 const baseConfig = Array(64).fill(0);
 baseConfig[7] = 1;
 const preservedConfig = API.applyDeviceSettings(baseConfig, { lockWin: false, lockAltTab: false, lockAltF4: false, reportRate: 1, tickRate: 1, debounce: 0, stabilityMode: 0, checkMode: false, systemMode: 0 });
 if ((preservedConfig[7] & 1) !== 1) throw new Error("The hidden Tachyon/Berserk bit was not preserved.");
+const triggerBottomConfig = API.applyDeviceSettings(baseConfig, { lockWin: false, lockAltTab: false, lockAltF4: false, reportRate: 1, tickRate: 1, debounce: 0, stabilityMode: true, checkMode: false, systemMode: 0 });
+if ((triggerBottomConfig[7] & 2) !== 2) throw new Error("Trigger Bottom did not set the profile-wide stability-mode bit.");
+const originalLevelConfig = API.applyDeviceSettings(baseConfig, { lockWin: false, lockAltTab: false, lockAltF4: false, reportRate: 1, tickRate: 2, debounce: 7, stabilityMode: false, checkMode: false, systemMode: 1 });
+if (((originalLevelConfig[4] >> 4) & 15) !== 2) throw new Error("High tick rate must use the original driver's encoded value 2.");
+if (((originalLevelConfig[7] >> 5) & 7) !== 7) throw new Error("High debounce must use the original driver's encoded value 7.");
+if ((originalLevelConfig[1] & 15) !== 1) throw new Error("macOS mode must be written to the firmware OS-mode byte.");
+equal(API.encodeMappings([{ type: 16, code1: 8, code2: 0 }]).slice(0, 3), [16, 8, 0], "Command/GUI modifier mapping must use the firmware modifier mask, not HID code 227 in code2.");
+for (const fragment of ['[[0, "Low"], [1, "Medium"], [2, "High"]]', '[[0, "Close"], [1, "Low"], [4, "Medium"], [7, "High"]]', 'macName: "Left Command"', 'macOnly: true', '["Windows mode", 4, 0', '["macOS mode", 5, 0', '["Toggle Windows / macOS", 6, 0']) {
+  if (!appSource.includes(fragment)) throw new Error(`Original-driver device setting or macOS mapping is missing: ${fragment}`);
+}
 const telemetry = API.decodeTelemetryReport([0xa0, 16, 0, 4, 0, 0, 1, 44, 0, 0, 255]);
 if (!telemetry || telemetry.keyCode !== 4 || telemetry.rawTravel !== 300 || telemetry.status !== 255) throw new Error("Live Hall telemetry was not decoded correctly.");
 const modifierTelemetry = API.decodeTelemetryReport([0xa0, 16, 2, 0, 0, 0, 0, 25, 0, 0, 1]);
@@ -134,6 +178,12 @@ fakeDriver.subscribeTelemetry((event) => { routedTelemetry = event; });
 const telemetryBytes = Uint8Array.from([0xa0, 16, 0, 4, 0, 0, 1, 44, 0, 0, 255]);
 fakeDriver.onInputReport({ data: new DataView(telemetryBytes.buffer) });
 if (routedTelemetry?.rawTravel !== 300 || fakeDriver.reportQueue.length !== 0) throw new Error("Telemetry reports were not routed away from command responses.");
+let routedCalibration = null;
+fakeDriver.calibrationActive = true;
+fakeDriver.subscribeCalibration((event) => { routedCalibration = event; });
+fakeDriver.onInputReport({ data: new DataView(telemetryBytes.buffer) });
+if (routedCalibration?.keyCode !== 4 || routedCalibration?.rawTravel !== 300 || routedCalibration?.status !== 255 || fakeDriver.reportQueue.length !== 0) throw new Error("Calibration reports were not routed to the calibration session.");
+fakeDriver.calibrationActive = false;
 let routedProfileChange = null;
 fakeDriver.subscribeProfileChange((event) => { routedProfileChange = event; });
 const profileBytes = Uint8Array.from([0xa1, 2, 1]);
@@ -142,6 +192,10 @@ if (routedProfileChange?.profileIndex !== 1 || routedProfileChange?.layer !== 2 
 for (const fragment of ["startLiveTelemetry", "stopLiveTelemetry", "subscribeTelemetry"]) {
   if (!protocolSource.includes(fragment)) throw new Error(`Live telemetry driver support is missing: ${fragment}`);
 }
+for (const fragment of ["subscribeCalibration", "startCalibration", "endCalibration", "this.transact(REQUEST_PREFIX, [0xa8, 0, 0])", "this.transact(REQUEST_PREFIX, [0xa9, 0, 0])"]) {
+  if (!protocolSource.includes(fragment)) throw new Error(`Original-driver calibration protocol is missing: ${fragment}`);
+}
+if (!protocolSource.includes("if (this.calibrationActive) throw new Error")) throw new Error("Calibration and live diagnostics must remain mutually exclusive.");
 if (!protocolSource.includes("readLiveColors") || !protocolSource.includes("this.readBlock(0xde, 0, 384)")) throw new Error("Live RGB framebuffer command 0xDE is missing.");
 for (const fragment of ["subscribeProfileChange", "handleHardwareProfileChange", "syncDeviceProfile", "preserveView: true"]) {
   if (!protocolSource.includes(fragment) && !appSource.includes(fragment)) throw new Error(`Live profile synchronization support is missing: ${fragment}`);
@@ -150,6 +204,25 @@ for (const fragment of ["liveMonitorHtml", "handleLiveTelemetry", "Live press di
   if (!appSource.includes(fragment)) throw new Error(`Live distance infographic support is missing: ${fragment}`);
 }
 if (!styleSource.includes(".switch-infographic") || !styleSource.includes(".travel-fill")) throw new Error("Live distance animation styles are missing.");
+for (const fragment of ["calibrationPanelHtml", "toggleCalibration", "handleCalibrationTelemetry", "calibrationStatus", "Stop calibration", "Press every physical key one at a time until it turns blue."]) {
+  if (!appSource.includes(fragment)) throw new Error(`Calibration UI or behavior is missing: ${fragment}`);
+}
+for (const fragment of [".calibration-panel", ".calibration-progress", ".calibration-waiting", ".calibration-progress", ".calibration-complete", ".calibration-fill", ".calibration-locked"]) {
+  if (!styleSource.includes(fragment)) throw new Error(`Calibration styling is missing: ${fragment}`);
+}
+for (const fragment of ["await stopCalibration(false)", "state.driver.endCalibration()", "state.calibrationUnsubscribe?.()"] ) {
+  if (!appSource.includes(fragment)) throw new Error(`Calibration cleanup behavior is missing: ${fragment}`);
+}
+for (const fragment of ["calibrationOperationPromise", "if (state.calibrationOperationPromise) return state.calibrationOperationPromise", "await state.calibrationOperationPromise"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Calibration start/stop race protection is missing: ${fragment}`);
+}
+for (const fragment of ["const KEY_UNITS", "Tab: 1.5", "Caps: 1.75", "Shift: 2.25", "Ctrl: 1.25", "Fn: 1.25", "Alt: 1.25", "Space: 2.75", "keyWidth(keyItem)"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Physical keyboard unit sizing is missing: ${fragment}`);
+}
+for (const fragment of ["hall-primary-grid", "hall-selection-panel", "hall-live-panel", "keyboard-grid lighting-board", "--key-width"]) {
+  if (!appSource.includes(fragment) && !styleSource.includes(fragment)) throw new Error(`Shared keyboard or Hall workbench layout is missing: ${fragment}`);
+}
+if (styleSource.includes(".key-row:last-child .keycap:last-child") || styleSource.includes(".lighting-board-row:last-child")) throw new Error("Legacy stretched Space-key layout must not be used.");
 for (const fragment of ["lightingKeyboardPreview", "configuredLightingColor", "data-lighting-board", "Light strip", "Select all 36", "previewSelectedKeyColor"]) {
   if (!appSource.includes(fragment)) throw new Error(`Lighting page feature is missing: ${fragment}`);
 }
@@ -163,6 +236,10 @@ for (const fragment of ["data-light-effect", "data-effect-value", "effectPicker"
 for (const fragment of ["startLiveLighting", "pollLiveLighting", "stopLiveLighting", "Live from keyboard", "readLiveColors"]) {
   if (!appSource.includes(fragment)) throw new Error(`Live lighting behavior is missing: ${fragment}`);
 }
+for (const fragment of ["LIVE_LIGHTING_SMOOTHING_MS", "liveLightingDisplayColors", "requestAnimationFrame(animateLiveLighting)", "blendLightingColor"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Smooth live-lighting rendering is missing: ${fragment}`);
+}
+if (!appSource.includes('const delay = [0, 3, 255].includes(state.profile?.light?.effect) ? 500 : 50')) throw new Error("Live-lighting smoothing must not increase HID polling traffic.");
 if (!styleSource.includes(".lighting-board-key") || !styleSource.includes(".light-strip") || !styleSource.includes('[data-keyboard-mode="color"]')) throw new Error("The 36-key and light-strip lighting previews are incomplete.");
 
 const forbiddenFirmwareTokens = ["flashFirmware", "writeFirmware", "bootloaderCommand", "firmwareFileInput"];

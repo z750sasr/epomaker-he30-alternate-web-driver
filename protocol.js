@@ -47,6 +47,7 @@
   const SPECIAL_NAMES = new Map([
     ...Array.from({ length: TOTAL_LAYER_COUNT }, (_, index) => [`255:${index}`, index === 0 ? "FN" : `FN${index}`]),
     ["253:0", "Profile 1"], ["252:0", "Profile 2"], ["251:0", "Profile 3"],
+    ["4:0", "Windows mode"], ["5:0", "macOS mode"], ["6:0", "Toggle Windows/macOS"],
     ["160:0", "N/ALL"], ["46:0", "RGB Mode+"], ["47:0", "RGB Mode-"],
     ["48:0", "RGB Mode"], ["50:0", "Bright+"], ["51:0", "Bright-"],
     ["53:0", "Bright Off"], ["54:0", "Speed+"], ["55:0", "Speed-"],
@@ -74,6 +75,16 @@
 
   function profileConfigOffset(profileIndex) {
     return 64 * clamp(profileIndex, 0, PROFILE_COUNT - 1);
+  }
+
+  function factoryResetPayload(profileIndex) {
+    const profile = Number(profileIndex);
+    if (!Number.isInteger(profile) || profile < 0 || profile >= PROFILE_COUNT) throw new Error("A valid onboard profile index is required for a profile reset.");
+    return [0xee, 0, profile + 1, 1, 0, 0, 0, profile];
+  }
+
+  function factoryResetAllPayload() {
+    return [0xee, 0, 0, 1, 0, 0, 0, 0xff];
   }
 
   function littleEndian(value) {
@@ -243,7 +254,7 @@
         releasePrecision: (data[3] >> 1) & 3,
         press_deadzone: pressDeadzone,
         release_deadzone: releaseDeadzone,
-        deadzone_status: pressDeadzone > 0 || releaseDeadzone > 0,
+        deadzone_status: pressDeadzone > 0 && releaseDeadzone > 0,
       });
     }
     return keys;
@@ -680,10 +691,12 @@
       this.commandQueue = Promise.resolve();
       this.closed = false;
       this.telemetryListeners = new Set();
+      this.calibrationListeners = new Set();
       this.profileChangeListeners = new Set();
       this.telemetryActive = false;
       this.telemetryRestoreNeeded = false;
       this.telemetryProfile = 0;
+      this.calibrationActive = false;
       const key = `${hex(device.vendorId, 4)}:${hex(device.productId, 4)}`.toLowerCase();
       this.model = DEVICE_MODELS[key] || { name: device.productName || "Compatible keyboard", type: 0, multiProfile: false };
       this.onInputReport = this.onInputReport.bind(this);
@@ -697,6 +710,9 @@
     }
 
     async close() {
+      if (this.calibrationActive) {
+        try { await this.endCalibration(); } catch (error) { this.log("warning", "Could not stop calibration before closing", error.message); }
+      }
       if (this.telemetryActive || this.telemetryRestoreNeeded) {
         try { await this.stopLiveTelemetry(); } catch (error) { this.log("warning", "Could not restore the live-monitor flag before closing", error.message); }
       }
@@ -712,6 +728,7 @@
       const telemetry = decodeTelemetryReport(report);
       if (telemetry) {
         if (this.telemetryActive) this.telemetryListeners.forEach((listener) => { try { listener(telemetry); } catch (error) { this.log("warning", "A telemetry listener failed", error.message); } });
+        if (this.calibrationActive) this.calibrationListeners.forEach((listener) => { try { listener(telemetry); } catch (error) { this.log("warning", "A calibration listener failed", error.message); } });
         return;
       }
       const profileChange = decodeProfileChangeReport(report);
@@ -807,10 +824,24 @@
       await this.transact(REQUEST_PREFIX, [14, 0, (profile + 1) & 0xff, 1, 0, 0, 0, profile]);
     }
 
+    async resetCurrentProfile(profileIndex) {
+      await this.transact(REQUEST_PREFIX, factoryResetPayload(profileIndex));
+    }
+
+    async resetAllProfiles() {
+      await this.transact(REQUEST_PREFIX, factoryResetAllPayload());
+    }
+
     subscribeTelemetry(listener) {
       if (typeof listener !== "function") throw new Error("A telemetry listener function is required.");
       this.telemetryListeners.add(listener);
       return () => this.telemetryListeners.delete(listener);
+    }
+
+    subscribeCalibration(listener) {
+      if (typeof listener !== "function") throw new Error("A calibration listener function is required.");
+      this.calibrationListeners.add(listener);
+      return () => this.calibrationListeners.delete(listener);
     }
 
     subscribeProfileChange(listener) {
@@ -821,6 +852,7 @@
 
     async startLiveTelemetry(profileIndex = 0) {
       if (this.telemetryActive) return;
+      if (this.calibrationActive) throw new Error("Stop switch calibration before starting live diagnostics.");
       const profile = clamp(profileIndex, 0, PROFILE_COUNT - 1);
       const offset = profileConfigOffset(profile);
       const config = await this.readBlock(5, offset, 64);
@@ -849,6 +881,29 @@
       }
       this.telemetryRestoreNeeded = false;
       this.log("info", "Dynamic Display diagnostics disabled", { profile, restored: restore });
+    }
+
+    async startCalibration() {
+      if (this.calibrationActive) return;
+      if (this.telemetryActive || this.telemetryRestoreNeeded) throw new Error("Stop live diagnostics before starting switch calibration.");
+      try {
+        await this.transact(REQUEST_PREFIX, [0xa8, 0, 0]);
+        this.calibrationActive = true;
+        this.log("info", "Switch calibration started", { command: "0x55/0xA8" });
+      } catch (error) {
+        this.calibrationActive = false;
+        throw error;
+      }
+    }
+
+    async endCalibration() {
+      if (!this.calibrationActive) return;
+      try {
+        await this.transact(REQUEST_PREFIX, [0xa9, 0, 0]);
+        this.log("info", "Switch calibration stopped", { command: "0x55/0xA9" });
+      } finally {
+        this.calibrationActive = false;
+      }
     }
 
     async readLiveColors() {
@@ -961,6 +1016,8 @@
     makeMapping,
     inferProfileIndex,
     profileConfigOffset,
+    factoryResetPayload,
+    factoryResetAllPayload,
     normalizeHexColor,
     decodeTravel,
     encodeTravel,

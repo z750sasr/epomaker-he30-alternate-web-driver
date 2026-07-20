@@ -12,7 +12,7 @@ A dependency-free, local-first configuration studio for supported Epomaker HE30-
 - Complete JSON profile import and export on the dedicated `/json_editor/` route
 - Twelve remap layers across three profiles, with FN/FN1–FN11 targets, F1–F24, media, mouse, and internal functions
 - Per-key Hall actuation, Rapid Trigger, supported travel resolution, and top/bottom dead zones
-- Mouse, pen, and touch drag-selection for tuning groups of Hall-effect keys together
+- Mouse, pen, and touch box-selection for tuning groups of Hall-effect keys together
 - Live Hall travel monitor with per-key fill animation, switch cutaway, actuation marker, and millimeter readout
 - Polling rate, tick rate, debounce, Windows/macOS mode, filtering, Tachyon, and shortcut locks
 - All 24 original main-key lighting presets, all 5 light-strip effects, and their effect-specific controls
@@ -35,6 +35,7 @@ Firmware update and bootloader flashing are intentionally not included.
 - Config byte 7 bit 0 is read under the internal name `tachyonMode`, while its unused setter is named `setBerserkMode`. The captured production interface does not call that setter, so HE30 Control preserves the bit without offering a toggle.
 - Live travel uses the original software's Dynamic Display mechanism: config byte 7 bit 3 enables `0xA0` diagnostic reports. Starting the monitor enables that bit in the active profile's 64-byte config bank when necessary; stopping it restores the same profile bank. The stream is unavailable in JSON and demo workspaces.
 - The same temporary Dynamic Display flag exposes command `0xDE`, a 384-byte RGB framebuffer. Its first 108 bytes are the live RGB triplets for the HE30's 36 physical keys; the remaining slots are zero. The light strip is configured separately and is not present in this live frame.
+- The original factory-reset flow sends subcommand `0xEE` with the active profile index (`0`–`2`), or `0xFF` for every onboard profile; the all-profile operation also clears macros. HE30 Control includes typed protocol helpers for these two scopes, but its reset controls remain disabled until a matching default-profile JSON file is bundled and its schema is validated.
 
 ## Supported captured devices
 

@@ -17,10 +17,14 @@
     [{ index: 19, label: "Shift" }, { index: 20, label: "Z" }, { index: 21, label: "X" }, { index: 22, label: "C" }, { index: 23, label: "V" }, { index: 24, label: "B" }],
     [{ index: 25, label: "Ctrl" }, { index: 26, label: "Fn" }, { index: 27, label: "Alt" }, { index: 28, label: "Space" }],
   ]);
+  const KEY_UNITS = Object.freeze({ Tab: 1.5, Caps: 1.75, Shift: 2.25, Ctrl: 1.25, Fn: 1.25, Alt: 1.25, Space: 2.75 });
+  const keyUnit = (keyItem) => KEY_UNITS[keyItem.label] || 1;
+  const keyWidth = (keyItem, unitSize = 70, gapSize = 8) => (keyUnit(keyItem) * unitSize) + ((keyUnit(keyItem) - 1) * gapSize);
   const PHYSICAL_KEYS = HE30_LAYOUT.flat();
   const physicalName = (index) => PHYSICAL_KEYS.find((key) => key.index === Number(index))?.label || `Key ${Number(index) + 1}`;
   const PHYSICAL_HID_CODES = Object.freeze({ 0: 41, 30: 58, 31: 59, 32: 60, 33: 61, 34: 62, 35: 63, 29: 53, 1: 30, 2: 31, 3: 32, 4: 33, 5: 34, 6: 35, 7: 43, 8: 20, 9: 26, 10: 8, 11: 21, 12: 23, 13: 57, 14: 4, 15: 22, 16: 7, 17: 9, 18: 10, 19: 225, 20: 29, 21: 27, 22: 6, 23: 25, 24: 5, 25: 224, 26: 255, 27: 226, 28: 44 });
   const TELEMETRY_INDEX = new Map(Object.entries(PHYSICAL_HID_CODES).map(([index, code]) => [code, Number(index)]));
+  const LIVE_LIGHTING_SMOOTHING_MS = 72;
 
   const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((name, index) => [name, 16, 0, index + 4, name]);
   const digits = [["1", 30], ["2", 31], ["3", 32], ["4", 33], ["5", 34], ["6", 35], ["7", 36], ["8", 37], ["9", 38], ["0", 39]].map(([name, code]) => [name, 16, 0, code, name]);
@@ -41,11 +45,12 @@
     { title: "Symbols", items: [["Minus", 45, "-"], ["Equals", 46, "="], ["Left bracket", 47, "["], ["Right bracket", 48, "]"], ["Backslash", 49, "\\"], ["Semicolon", 51, ";"], ["Apostrophe", 52, "'"], ["Grave", 53, "`"], ["Comma", 54, ","], ["Period", 55, "."], ["Slash", 56, "/"]].map(([name, code, short]) => key(name, 16, 0, code, short)) },
     { title: "Function keys", items: functionKeys.map((item) => key(...item)) },
     { title: "Extended keys", items: [["Insert", 73], ["Home", 74], ["Page Up", 75], ["Delete", 76], ["End", 77], ["Page Down", 78], ["Right Arrow", 79], ["Left Arrow", 80], ["Down Arrow", 81], ["Up Arrow", 82], ["Caps Lock", 57], ["Print Screen", 70], ["Scroll Lock", 71], ["Pause", 72], ["Application", 101]].map(([name, code]) => key(name, 16, 0, code)) },
-    { title: "Modifiers", items: [["Left Ctrl", 224, "LCtrl"], ["Left Shift", 225, "LShift"], ["Left Alt", 226, "LAlt"], ["Left GUI", 227, "LWin"], ["Right Ctrl", 228, "RCtrl"], ["Right Shift", 229, "RShift"], ["Right Alt", 230, "RAlt"], ["Right GUI", 231, "RWin"]].map(([name, code, short]) => key(name, 16, 0, code, short)) },
+    { title: "Modifiers", items: [key("Left Ctrl", 16, 1, 0, "LCtrl"), key("Left Shift", 16, 2, 0, "LShift"), { ...key("Left Alt", 16, 4, 0, "LAlt"), macName: "Left Option", macShort: "LOption" }, { ...key("Left GUI", 16, 8, 0, "LWin"), macName: "Left Command", macShort: "LCmd" }, key("Right Ctrl", 16, 16, 0, "RCtrl"), key("Right Shift", 16, 32, 0, "RShift"), { ...key("Right Alt", 16, 64, 0, "RAlt"), macName: "Right Option", macShort: "ROption" }, { ...key("Right GUI", 16, 128, 0, "RWin"), macName: "Right Command", macShort: "RCmd" }] },
     { title: "Layers and profiles", items: [...fnLayerMappings, ...[["Profile 1", 253, 0, "P1"], ["Profile 2", 252, 0, "P2"], ["Profile 3", 251, 0, "P3"]].map(([name, code1, code2, short]) => key(name, 240, code1, code2, short))] },
     { title: "Media and applications", items: [["Play / Pause", 205, 0, "Play"], ["Next track", 181, 0, "Next"], ["Previous track", 182, 0, "Prev"], ["Stop", 183, 0, "Stop"], ["Volume up", 233, 0, "Vol+"], ["Volume down", 234, 0, "Vol−"], ["Mute", 226, 0, "Mute"], ["Calculator", 146, 1, "Calc"], ["Browser home", 35, 2, "Home"], ["Browser back", 36, 2, "Back"], ["Browser forward", 37, 2, "Forward"]].map(([name, code1, code2, short]) => key(name, 48, code1, code2, short)) },
+    { title: "macOS", macOnly: true, items: [["Siri", 207, 0, "Siri"], ["Launchpad", 160, 2, "Launchpad"]].map(([name, code1, code2, short]) => key(name, 48, code1, code2, short)) },
     { title: "Mouse and system", items: [["Mouse left", 32, 1, 0, "M1"], ["Mouse right", 32, 2, 0, "M2"], ["Mouse middle", 32, 4, 0, "M3"], ["Mouse back", 32, 16, 0, "M4"], ["Mouse forward", 32, 8, 0, "M5"], ["Wheel up", 33, 0, 1, "Wheel+"], ["Wheel down", 33, 0, 255, "Wheel−"], ["Power", 64, 1, 0, "Power"], ["Sleep", 64, 2, 0, "Sleep"], ["Wake", 64, 4, 0, "Wake"]].map(([name, type, code1, code2, short]) => key(name, type, code1, code2, short)) },
-    { title: "Keyboard functions", items: [["N / All", 160, 0, "N/ALL"], ["RGB mode +", 46, 0, "RGB+"], ["RGB mode −", 47, 0, "RGB−"], ["RGB mode", 48, 0, "RGB"], ["Brightness +", 50, 0, "Bright+"], ["Brightness −", 51, 0, "Bright−"], ["Brightness off", 53, 0, "Light off"], ["Speed +", 54, 0, "Speed+"], ["Speed −", 55, 0, "Speed−"], ["Color +", 61, 0, "Color+"]].map(([name, code1, code2, short]) => key(name, 240, code1, code2, short)) },
+    { title: "Keyboard functions", items: [["Windows mode", 4, 0, "WinOS"], ["macOS mode", 5, 0, "MacOS"], ["Toggle Windows / macOS", 6, 0, "Win/Mac"], ["N / All", 160, 0, "N/ALL"], ["RGB mode +", 46, 0, "RGB+"], ["RGB mode −", 47, 0, "RGB−"], ["RGB mode", 48, 0, "RGB"], ["Brightness +", 50, 0, "Bright+"], ["Brightness −", 51, 0, "Bright−"], ["Brightness off", 53, 0, "Light off"], ["Speed +", 54, 0, "Speed+"], ["Speed −", 55, 0, "Speed−"], ["Color +", 61, 0, "Color+"]].map(([name, code1, code2, short]) => key(name, 240, code1, code2, short)) },
   ]);
   const ALL_MAPPINGS = MAPPING_GROUPS.flatMap((group) => group.items);
   const BASIC_MAPPING_CHOICES = ALL_MAPPINGS.filter((mapping) => mapping.type === 16 && mapping.code1 === 0);
@@ -79,7 +84,9 @@
     fileName: "",
     page: "overview",
     layer: 0,
-    hallSelection: new Set([0]),
+    hallSelection: new Set(),
+    hallEditSelection: new Set(),
+    hallEditPending: false,
     hallDrag: null,
     liveMonitorActive: false,
     liveMonitorBusy: false,
@@ -94,11 +101,21 @@
     liveTravelStatus: new Array(128).fill(0),
     liveLastIndex: 0,
     liveFrame: 0,
+    calibrationActive: false,
+    calibrationBusy: false,
+    calibrationOperationPromise: null,
+    calibrationUnsubscribe: null,
+    calibrationStatus: new Array(128).fill(null),
+    calibrationTravelRaw: new Array(128).fill(0),
+    calibrationLastIndex: null,
     liveLightingActive: false,
     liveLightingBusy: false,
     liveLightingTimer: 0,
     liveLightingGeneration: 0,
     liveLightingColors: new Array(128).fill(null),
+    liveLightingDisplayColors: new Array(128).fill(null),
+    liveLightingFrame: 0,
+    liveLightingFrameTime: 0,
     liveLightingUpdatedAt: 0,
     liveLightingError: "",
     colorSelection: new Set([0]),
@@ -111,11 +128,18 @@
   };
 
   function mappingFromPreset(preset, layer = state.layer) {
-    return { type: preset.type, code1: preset.code1, code2: preset.code2, code: preset.type === 16 && preset.code1 === 0 ? preset.code2 : -1, name: preset.short || preset.name, profile: state.profile?.profileIndex || 0, layer };
+    const macMode = Number(state.profile?.deviceSettings?.systemMode) === 1;
+    return { type: preset.type, code1: preset.code1, code2: preset.code2, code: preset.type === 16 && preset.code1 === 0 ? preset.code2 : -1, name: (macMode && preset.macShort) || preset.short || preset.name, profile: state.profile?.profileIndex || 0, layer };
   }
 
   function mappingLabel(mapping) {
     if (!mapping || mapping.type === 255) return "Unassigned";
+    if (Number(state.profile?.deviceSettings?.systemMode) === 1 && mapping.type === 16 && mapping.code1) {
+      const names = ["Ctrl", "Shift", "Option", "Command", "Right Ctrl", "Right Shift", "Right Option", "Right Command"];
+      const modifiers = names.filter((_, bit) => mapping.code1 & (1 << bit));
+      if (mapping.code2) modifiers.push(API.mappingName(16, 0, mapping.code2));
+      return modifiers.join("+") || "Unassigned";
+    }
     return mapping.name || API.mappingName(mapping.type, mapping.code1, mapping.code2);
   }
 
@@ -132,7 +156,12 @@
     for (let layer = 0; layer < API.LAYER_COUNT; layer += 1) {
       userKeys[layer] = Array.from({ length: 128 }, (_, index) => API.makeMapping(255, 255, 255, 0, layer));
       PHYSICAL_KEYS.forEach(({ index }) => {
-        if (layer === 0 && index !== 26 && PHYSICAL_HID_CODES[index] != null) userKeys[layer][index] = API.makeMapping(16, 0, PHYSICAL_HID_CODES[index], 0, layer);
+        if (layer === 0 && index !== 26 && PHYSICAL_HID_CODES[index] != null) {
+          const hidCode = PHYSICAL_HID_CODES[index];
+          userKeys[layer][index] = hidCode >= 224 && hidCode <= 231
+            ? API.makeMapping(16, 1 << (hidCode - 224), 0, 0, layer)
+            : API.makeMapping(16, 0, hidCode, 0, layer);
+        }
       });
       userKeys[layer][26] = API.makeMapping(240, 255, 1, 0, layer);
     }
@@ -224,7 +253,9 @@
     state.layer = clamp(metadata.layer ?? (metadata.preserveView ? previousLayer : 0), 0, API.LAYER_COUNT - 1);
     state.page = metadata.preserveView ? previousPage : "overview";
     state.dirty.clear();
-    state.hallSelection = new Set([0]);
+    state.hallSelection = new Set();
+    state.hallEditSelection = new Set();
+    state.hallEditPending = false;
     state.colorSelection = new Set([0]);
     $("#welcomeView").classList.add("hidden");
     $("#workspaceView").classList.remove("hidden");
@@ -260,7 +291,7 @@
   }
 
   function renderMiniKeyboard() {
-    if ($("#welcomeKeyboard")) $("#welcomeKeyboard").innerHTML = HE30_LAYOUT.map((row, rowIndex) => `<div class="mini-row">${row.map((_, keyIndex) => `<i class="mini-key${(rowIndex + keyIndex) % 7 === 2 ? " glow" : ""}"></i>`).join("")}</div>`).join("");
+    if ($("#welcomeKeyboard")) $("#welcomeKeyboard").innerHTML = HE30_LAYOUT.map((row, rowIndex) => `<div class="mini-row">${row.map((keyItem, keyIndex) => `<i class="mini-key${(rowIndex + keyIndex) % 7 === 2 ? " glow" : ""}" style="--mini-key-width:${keyWidth(keyItem, 56, 7)}px"></i>`).join("")}</div>`).join("");
   }
 
   function renderPage() {
@@ -277,15 +308,20 @@
 
   function keyboardHtml(mode, selected = new Set()) {
     const compiled = API.compileAdvanced(state.profile);
-    return `<div class="keyboard-grid" data-keyboard-mode="${mode}">${HE30_LAYOUT.map((row) => `<div class="key-row">${row.map(({ index, label }) => {
+    return `<div class="keyboard-grid" data-keyboard-mode="${mode}">${HE30_LAYOUT.map((row) => `<div class="key-row">${row.map((keyItem) => {
+      const { index, label } = keyItem;
       const mapping = compiled.userKeys[state.layer][index];
       const advanced = [112, 144, 145, 146, 147, 148].includes(mapping.type);
       const color = mode === "color" ? state.profile.colorKeys[index] : "";
       const mapped = mode === "hall" ? `${(state.profile.travelKeys[index].key_actuation / 100).toFixed(2)} mm` : mode === "color" ? color : mappingLabel(mapping);
       const livePercent = mode === "hall" ? clamp((state.liveTravel[index] / Math.max(0.01, state.profile.travelKeys[index].key_max_length || 4)) * 100, 0, 100) : 0;
-      const styles = [];
+      const calibrationStatus = mode === "hall" && state.calibrationActive ? state.calibrationStatus[index] : null;
+      const calibrationPercent = mode === "hall" && state.calibrationActive ? clamp((state.calibrationTravelRaw[index] / 340) * 100, 0, 100) : 0;
+      const calibrationClass = calibrationStatus === 255 ? " calibration-complete" : calibrationStatus === 0 ? " calibration-waiting" : calibrationStatus != null ? " calibration-progress" : "";
+      const styles = [`--key-width:${keyWidth(keyItem)}px`, `--key-u:${keyUnit(keyItem)}`];
       if (mode === "color") styles.push(`--key-led:${esc(color)}`);
       if (mode === "hall") styles.push(`--travel-pct:${livePercent.toFixed(2)}%`);
+      if (mode === "hall" && state.calibrationActive) styles.push(`--calibration-pct:${calibrationPercent.toFixed(2)}%`);
       const style = styles.length ? ` style="${styles.join(";")}"` : "";
       const content = mode === "mapping"
         ? `<span class="mapped primary-label">${esc(mapped)}</span><span class="physical secondary-label">Physical: ${esc(label)}</span>`
@@ -297,7 +333,8 @@
         : mode === "color" ? ` title="${esc(label)} saved color: ${esc(color.toUpperCase())}"` : "";
       const pressed = mode === "hall" || mode === "color" ? ` aria-pressed="${selected.has(index)}"` : "";
       const travelFill = mode === "hall" ? `<i class="travel-fill" aria-hidden="true"></i>` : "";
-      return `<button class="keycap${selected.has(index) ? " selected" : ""}${advanced ? " advanced" : ""}${livePercent > .5 ? " live-pressed" : ""}" type="button" data-key-index="${index}"${style}${title}${pressed}>${travelFill}${content}${state.dirty.size ? "<i class=\"key-dot\"></i>" : ""}</button>`;
+      const calibrationFill = mode === "hall" && state.calibrationActive ? `<i class="calibration-fill" aria-hidden="true"></i>` : "";
+      return `<button class="keycap${selected.has(index) ? " selected" : ""}${advanced ? " advanced" : ""}${livePercent > .5 ? " live-pressed" : ""}${calibrationClass}" type="button" data-key-index="${index}"${style}${title}${pressed}${state.calibrationActive && mode === "hall" ? " aria-disabled=\"true\"" : ""}>${travelFill}${calibrationFill}${content}${state.dirty.size ? "<i class=\"key-dot\"></i>" : ""}</button>`;
     }).join("")}</div>`).join("")}</div>`;
   }
 
@@ -313,7 +350,7 @@
     return `
       <div class="stats-grid">
         ${statCard("Current profile", `Profile ${state.profile.profileIndex + 1}`, state.identity?.multiProfile ? "Three onboard profiles · 12 total layers" : "Active workspace", "▣")}
-        ${statCard("Polling rate", `${reportRate} Hz`, `Tick rate ${settings.tickRate || "auto"}`, "⌁")}
+        ${statCard("Polling rate", `${reportRate} Hz`, `Tick rate ${(["Low", "Medium", "High"])[settings.tickRate] || `Reserved ${settings.tickRate}`}`, "⌁")}
         ${statCard("Rapid Trigger", `${rapidCount} keys`, rapidCount ? "Enabled per-key" : "Standard actuation", "↕")}
         ${statCard("Advanced actions", state.profile.advancedKeys.length, `${mappedCount}/36 keys mapped on ${globalLayerLabel(state.profile.profileIndex, state.layer)}`, "◆")}
       </div>
@@ -333,9 +370,32 @@
   function quickRow(icon, title, detail, page) { return `<div class="quick-row"><span>${icon}</span><div><strong>${esc(title)}</strong><small>${esc(detail)}</small></div><button class="icon-action" type="button" data-go-page="${page}">Open →</button></div>`; }
   function averageActuation() { return PHYSICAL_KEYS.reduce((sum, { index }) => sum + (Number(state.profile.travelKeys[index].key_actuation) || 0), 0) / PHYSICAL_KEYS.length / 100; }
   function precisionOptions() {
-    if ([102, 103, 105].includes(state.identity?.type)) return [[0, "0.01 mm"], [1, "0.005 mm"], [2, "0.001 mm"]];
+    if (state.identity?.type == null || [102, 103, 104, 105].includes(state.identity.type)) return [[0, "0.01 mm"], [1, "0.005 mm"], [2, "0.001 mm"]];
     if (state.identity?.type === 101) return [[0, "0.01 mm"], [1, "0.005 mm"]];
     return null;
+  }
+
+  function rtPrecisionMeta(mode) {
+    if (Number(mode) === 2) return { divisor: 1000, max: 500, decimals: 3, step: "0.001 mm" };
+    if (Number(mode) === 1) return { divisor: 200, max: 500, decimals: 3, step: "0.005 mm" };
+    return { divisor: 100, max: 340, decimals: 2, step: "0.01 mm" };
+  }
+
+  function rapidTriggerModeName(mode) {
+    return Number(mode) === 2 ? "Full Travel RT" : Number(mode) === 1 ? "Rapid Trigger" : "Standard";
+  }
+
+  function calibrationPanelHtml() {
+    const connected = state.source === "device" && Boolean(state.driver);
+    const completed = PHYSICAL_KEYS.filter(({ index }) => state.calibrationStatus[index] === 255).length;
+    const activeKeys = PHYSICAL_KEYS.filter(({ index }) => state.calibrationStatus[index] != null && ![0, 255].includes(state.calibrationStatus[index])).length;
+    const lastKey = state.calibrationLastIndex == null ? "Waiting for a key" : physicalName(state.calibrationLastIndex);
+    const buttonText = state.calibrationBusy ? "Working\u2026" : state.calibrationActive ? "Stop calibration" : "Start calibration";
+    return `<section class="panel calibration-panel${state.calibrationActive ? " active" : ""}">
+      <div class="calibration-heading"><div><span class="chip">SWITCH CALIBRATION</span><h2>${state.calibrationActive ? "Calibration in progress" : "Calibrate Hall switches"}</h2><p>${state.calibrationActive ? "Press every physical key one at a time until it turns blue." : "Re-measure the top and bottom range of all 36 magnetic switches using the keyboard's original calibration mode."}</p></div><button class="button ${state.calibrationActive ? "secondary" : "primary"}" id="calibrationButton" type="button"${!connected || state.calibrationBusy ? " disabled" : ""}>${buttonText}</button></div>
+      ${state.calibrationActive ? `<div class="calibration-progress"><div><span>Completed</span><strong id="calibrationCompleted">${completed} / ${PHYSICAL_KEYS.length}</strong></div><div class="calibration-progress-track"><i id="calibrationProgressFill" style="width:${((completed / PHYSICAL_KEYS.length) * 100).toFixed(2)}%"></i></div><div><span>Current key</span><strong id="calibrationLastKey">${esc(lastKey)}</strong></div></div>
+        <div class="calibration-instructions"><ol><li>Press each key at a steady pace using normal typing force until it fully bottoms out.</li><li>Calibrate one key at a time. Blue means that key is complete.</li><li>When all keys are complete, choose <b>Stop calibration</b> to exit safely.</li><li>Recalibrate after replacing any magnetic switch.</li></ol><div class="calibration-legend"><span><i class="waiting"></i>Awaiting</span><span><i class="progress"></i>Measuring${activeKeys ? ` (${activeKeys})` : ""}</span><span><i class="complete"></i>Complete</span></div></div>` : `<div class="calibration-idle-note">Calibration is a live hardware operation and does not create staged profile changes. Live Hall monitoring is stopped before calibration begins.</div>`}
+    </section>`;
   }
 
   function renderMapping() {
@@ -344,29 +404,41 @@
 
   function renderHall() {
     const selected = [...state.hallSelection];
-    const first = state.profile.travelKeys[selected[0] ?? 0];
+    const first = state.profile.travelKeys[selected[0] ?? 0] || defaultTravel();
     const precision = precisionOptions();
+    const rapidTrigger = Number(first.key_mode) > 0;
+    const fullTravel = Number(first.key_mode) === 2;
+    const independentRt = Number(first.rt_press) !== Number(first.rt_release) || Number(first.pressPrecision) !== Number(first.releasePrecision);
+    const insurance = Number(first.press_deadzone) > 0 && Number(first.release_deadzone) > 0;
     const withCurrentPrecision = (current) => precision && precision.some(([value]) => Number(value) === Number(current)) ? precision : precision ? [...precision, [current, `Reserved value ${current} (current)`]] : null;
     const precisionCard = precision
-      ? `<section class="panel form-card"><h3>Travel resolution</h3><p>Choose the measurement step used for press and release travel. This is resolution, not signal filtering.</p><div class="field-grid">${selectField("Press resolution", "hallPressPrecision", withCurrentPrecision(first.pressPrecision), first.pressPrecision)}${selectField("Release resolution", "hallReleasePrecision", withCurrentPrecision(first.releasePrecision), first.releasePrecision)}</div></section>`
-      : `<section class="panel form-card"><h3>Travel resolution</h3><p>The captured original software does not expose precision selection for this device type.</p><div class="callout">Existing precision bits are preserved, but this app will not change them. The original interface enables this control only for device types 101, 102, 103, and 105—not type 104.</div></section>`;
-    return `<div class="layer-bar"><div class="selection-bar"><b id="hallSelectionCount">${selected.length}</b> key<span id="hallSelectionPlural">${selected.length === 1 ? "" : "s"}</span> selected · Drag across keys, or Ctrl/Cmd-click to toggle</div><button class="button secondary" id="selectAllKeys" type="button">Select all 36</button></div>
-      <section class="panel keyboard-panel hall-selection-panel">${keyboardHtml("hall", state.hallSelection)}</section>
+      ? `<section class="panel form-card experimental-setting-card"><span class="chip caution-chip">HIDDEN SETTING · USE WITH CAUTION</span><h3>RT sensitivity accuracy</h3><p>Sets the stored measurement step for Rapid Trigger Press and Release. The original HE30 interface hides this selector, so back up the profile before using it.</p><div class="field-grid">${selectField("Press accuracy", "hallPressPrecision", withCurrentPrecision(first.pressPrecision), first.pressPrecision, !rapidTrigger)}${selectField("Release accuracy", "hallReleasePrecision", withCurrentPrecision(first.releasePrecision), first.releasePrecision, !rapidTrigger || !independentRt)}</div><div class="rt-preset-row"><span>Common sensitivity values</span><button class="button secondary" type="button" data-rt-sensitivity-preset="0.05"${!rapidTrigger ? " disabled" : ""}>0.05 mm</button><button class="button secondary" type="button" data-rt-sensitivity-preset="0.10"${!rapidTrigger ? " disabled" : ""}>0.10 mm</button></div><div class="callout caution-callout"><b>Experimental:</b> the firmware record has only two precision bits. The two buttons set valid 0.05/0.10 mm RT sensitivity values; they are not additional precision codes. Hardware precision remains 0.01, 0.005, or 0.001 mm.</div></section>`
+      : `<section class="panel form-card"><h3>RT sensitivity accuracy</h3><p>This HE30 model uses fixed 0.01 mm Rapid Trigger units in the original interface.</p><div class="callout">The precision bits remain intact when settings are saved. Like the original driver, this app hides the selector for device type 104.</div></section>`;
+    return `${calibrationPanelHtml()}<div class="hall-primary-grid">
+      <section class="panel keyboard-panel hall-selection-panel"><div class="hall-keyboard-heading"><div><h2>${state.calibrationActive ? "Calibration status" : "Switch selection"}</h2><p id="hallSelectionHint">${state.calibrationActive ? "Use the physical keyboard. Red is awaiting, yellow is measuring, and blue is complete." : `<b id="hallSelectionCount">${selected.length}</b> key<span id="hallSelectionPlural">${selected.length === 1 ? "" : "s"}</span> selected · ${state.hallEditPending ? "Stage these edits before choosing different keys" : "Hold and drag a box around keys, or Ctrl/Cmd-click to toggle"}`}</p></div><button class="button secondary" id="selectAllKeys" type="button"${state.calibrationActive || state.hallEditPending ? " disabled" : ""}>Select all 36</button></div>${keyboardHtml("hall", state.hallSelection)}</section>
       ${liveMonitorHtml()}
-      <div class="section-heading"><div><h2>Selected-key tuning</h2><p>Values are in hundredths of a millimeter. Mixed groups show the first selected key.</p></div><button class="button primary" id="stageHallButton" type="button">Stage on ${selected.length} selected key${selected.length === 1 ? "" : "s"}</button></div>
-      <div class="form-grid">
-        <section class="panel form-card"><h3>Actuation behavior</h3><p>Choose normal or dynamic release behavior.</p><div class="field-grid">
-          ${selectField("Key mode", "hallMode", [[0, "Standard"], [1, "Rapid Trigger"], [2, "Continuous Rapid Trigger"]], first.key_mode)}
-          ${rangeField("Actuation", "hallActuation", first.key_actuation, 1, 400, 1, "mm")}
-          ${rangeField("RT press", "hallPress", first.rt_press, 1, 400, 1, "mm")}
-          ${rangeField("RT release", "hallRelease", first.rt_release, 1, 400, 1, "mm")}
-        </div></section>
+    </div>
+      ${selected.length ? `<div class="section-heading hall-tuning-heading"><div><h2>Selected-key tuning</h2><p>${state.calibrationActive ? "Finish calibration before editing actuation settings." : state.hallEditPending ? `Pending edits are locked to ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}.` : "Change a setting to prepare it for the currently selected keys."}</p></div><button class="button primary hall-stage-button${state.hallEditPending ? " pending" : ""}" id="stageHallButton" type="button"${state.calibrationActive || !state.hallEditPending ? " disabled" : ""}>${state.hallEditPending ? `Stage on ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}` : "No changes to stage"}</button></div>
+      <div class="form-grid hall-tuning-grid${state.calibrationActive ? " calibration-locked" : ""}" id="hallTuningGrid">
+        <section class="panel form-card"><h3>Actuation and Rapid Trigger</h3><p>Set the fixed actuation point, then choose standard, regular RT, or the firmware's full-travel RT mode.</p><div class="switch-list hall-switch-list">
+          ${hallSwitchRow("Rapid Trigger", "Rapid Trigger dynamically actuates and resets your key based on your intention to press or release the key. Rapid Trigger starts and ends after the actuation point.", "hallRapidTrigger", rapidTrigger)}
+          ${hallSwitchRow("Continuous Rapid Trigger", "Hidden in the original HE30 interface. This experimental firmware mode uses key_mode 2; back up your profile and use it with caution.", "hallFullTravel", fullTravel, !rapidTrigger)}
+          ${hallSwitchRow("Set Press and Release independently", "Off keeps both RT sensitivity values the same", "hallIndependentRt", independentRt, !rapidTrigger)}
+        </div><div class="field-grid hall-distance-fields">
+          ${rangeField("Actuation", "hallActuation", first.key_actuation, 1, 400, 1, "mm", false, true)}
+          ${rtRangeField("RT Press", "hallPress", first.rt_press, first.pressPrecision, !rapidTrigger)}
+          ${rtRangeField("RT Release", "hallRelease", first.rt_release, first.releasePrecision, !rapidTrigger || !independentRt)}
+        </div><div class="callout">When enabled, Rapid Trigger ends when the entire key is released. When disabled, Rapid Trigger ends at the actuation point.</div></section>
+        <section class="panel form-card"><h3>Deadzone Settings</h3><p>Limits the usable travel at both ends of the switch to reduce accidental, disconnected, or missed triggers.</p><div class="switch-list hall-switch-list">
+          ${hallSwitchRow("Switch Deadzones", "Enable the top and bottom deadzones", "hallInsurance", insurance)}
+          ${hallSwitchRow("Switch Bottom Out", "Adds the firmware's forced 0.1 mm bottom zone", "hallTriggerBottom", Boolean(state.profile.deviceSettings.stabilityMode))}
+        </div><div class="field-grid hall-distance-fields">
+          ${rangeField("Top Deadzone", "hallPressDeadzone", first.press_deadzone, 0, 127, 1, "mm", !insurance, true)}
+          ${rangeField("Bottom Deadzone", "hallReleaseDeadzone", first.release_deadzone, 0, 127, 1, "mm", !insurance, true)}
+        </div><div class="callout">Trigger Bottom is profile-wide, not stored inside each key. It writes the original driver's stability-mode bit.</div></section>
         ${precisionCard}
-        <section class="panel form-card"><h3>Dead zones</h3><p>Ignore unstable travel near the top and bottom of the switch.</p><div class="field-grid">
-          ${rangeField("Top dead zone", "hallPressDeadzone", first.press_deadzone, 0, 127, 1, "mm")}
-          ${rangeField("Bottom dead zone", "hallReleaseDeadzone", first.release_deadzone, 0, 127, 1, "mm")}
-        </div></section>
-      </div>`;
+        <section class="panel form-card hall-data-card"><h3>Stored fields</h3><p>The per-key values are encoded directly into the keyboard's 8-byte Hall record.</p><dl class="hall-field-reference"><div><dt>key_mode</dt><dd>0 standard, 1 RT, 2 full-travel RT</dd></div><div><dt>pressPrecision</dt><dd>RT Press unit selector</dd></div><div><dt>releasePrecision</dt><dd>RT Release unit selector</dd></div><div><dt>deadzone_status</dt><dd>Derived: both insurance zones are above zero</dd></div></dl></section>
+      </div>` : `<section class="panel hall-selection-required"><span class="chip">SELECT KEYS FIRST</span><h2>Choose one or more switches to tune</h2><p>Click a key, Ctrl/Cmd-click multiple keys, or hold and drag a selection box. Trigger and actuation controls appear only after a selection is made.</p></section>`}`;
   }
 
   function liveMonitorHtml() {
@@ -380,16 +452,16 @@
     const actuationPercent = clamp((actuation / maxDistance) * 100, 0, 100);
     const mapped = API.compileAdvanced(state.profile).userKeys[state.layer][index];
     const status = distance < .01 ? "Released" : distance >= actuation ? "Actuated" : "Pre-travel";
-    const monitorText = state.liveMonitorBusy ? "Working…" : state.liveMonitorActive ? "Stop live monitor" : "Start live monitor";
-    return `<div class="section-heading live-heading"><div><h2>Live press distance</h2><p>See the physical Hall travel and actuation point as you press a key.</p></div><span class="live-session-note">${state.liveMonitorActive ? "Diagnostic stream active" : connected ? "Ready to monitor" : "Keyboard connection required"}</span></div>
-      <section class="panel live-monitor${state.liveMonitorActive ? " active" : ""}" id="liveMonitor" style="--live-travel:${travelPercent.toFixed(2)}%;--live-actuation:${actuationPercent.toFixed(2)}%;--live-offset:${(travelPercent * .44).toFixed(2)}px">
+    const monitorText = state.calibrationActive ? "Calibration owns the stream" : state.liveMonitorBusy ? "Working…" : state.liveMonitorActive ? "Stop live monitor" : "Start live monitor";
+    return `<section class="panel live-monitor hall-live-panel${state.liveMonitorActive ? " active" : ""}" id="liveMonitor" style="--live-travel:${travelPercent.toFixed(2)}%;--live-actuation:${actuationPercent.toFixed(2)}%;--live-offset:${(travelPercent * .44).toFixed(2)}px">
+        <div class="hall-live-heading"><div><h2>Live press distance</h2><p>See Hall travel and the actuation point while pressing a key.</p></div><span class="live-session-note">${state.calibrationActive ? "Paused for calibration" : state.liveMonitorActive ? "Diagnostic stream active" : connected ? "Ready to monitor" : "Keyboard connection required"}</span></div>
         <div class="live-monitor-copy">
           <div class="live-status-line"><span class="live-dot${state.liveMonitorActive ? " active" : ""}"></span><b id="liveConnectionStatus">${state.liveMonitorActive ? "Live" : "Paused"}</b></div>
           <h3 id="liveKeyName">${esc(physicalName(index))}</h3>
           <p id="liveMappedName">Mapped to ${esc(mappingLabel(mapped))}</p>
           <strong class="live-distance" id="liveDistance">${distance.toFixed(2)} <small>mm</small></strong>
           <span class="live-state" id="liveState">${esc(status)}</span>
-          <button class="button ${state.liveMonitorActive ? "secondary" : "primary"}" id="liveMonitorButton" type="button" ${!connected || state.liveMonitorBusy ? "disabled" : ""}>${monitorText}</button>
+          <button class="button ${state.liveMonitorActive ? "secondary" : "primary"}" id="liveMonitorButton" type="button" ${!connected || state.liveMonitorBusy || state.calibrationActive ? "disabled" : ""}>${monitorText}</button>
           <small class="live-safety">Temporarily uses the keyboard’s original Dynamic Display diagnostic flag and restores it when stopped.</small>
         </div>
         <div class="switch-infographic" aria-label="Live key travel infographic">
@@ -407,34 +479,60 @@
           <div class="live-metrics">
             <span><small>Travel</small><strong id="liveTravelPercent">${travelPercent.toFixed(0)}%</strong></span>
             <span><small>Actuation</small><strong id="liveActuationValue">${actuation.toFixed(2)} mm</strong></span>
-            <span><small>Mode</small><strong id="liveMode">${travel.key_mode > 0 ? "Rapid Trigger" : "Standard"}</strong></span>
+            <span><small>Mode</small><strong id="liveMode">${rapidTriggerModeName(travel.key_mode)}</strong></span>
           </div>
         </div>
       </section>`;
   }
 
-  function selectField(label, id, options, selected) { return `<label class="field"><span>${esc(label)}</span><select id="${id}">${options.map(([value, name]) => `<option value="${value}"${String(value) === String(selected) ? " selected" : ""}>${esc(name)}</option>`).join("")}</select></label>`; }
-  function rangeField(label, id, value, min, max, step, unit) { return `<label class="field"><span>${esc(label)}</span><div class="range-line"><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${value}" /><output class="range-value" for="${id}">${(Number(value) / 100).toFixed(2)} ${unit}</output></div></label>`; }
+  function selectField(label, id, options, selected, disabled = false) { return `<label class="field"><span>${esc(label)}</span><select id="${id}"${disabled ? " disabled" : ""}>${options.map(([value, name]) => `<option value="${value}"${String(value) === String(selected) ? " selected" : ""}>${esc(name)}</option>`).join("")}</select></label>`; }
+  function distanceNumberEditor(id, value, divisor, min, max, disabled = false) {
+    const millimeters = Number(value) / divisor;
+    const minimum = Math.max(0.01, Number(min) / divisor);
+    const maximum = Number(max) / divisor;
+    const decimals = divisor > 100 ? 3 : 2;
+    return `<span class="range-number-control"><input class="range-number" type="number" min="${minimum.toFixed(decimals)}" max="${maximum.toFixed(decimals)}" step="0.01" value="${millimeters.toFixed(decimals)}" inputmode="decimal" aria-label="${id} distance in millimeters" data-range-for="${id}"${disabled ? " disabled" : ""} /><span>mm</span></span>`;
+  }
+  function rangeField(label, id, value, min, max, step, unit, disabled = false, editable = false) { return `<label class="field"><span>${esc(label)}</span><div class="range-line${editable ? " editable" : ""}"><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${value}" data-distance-divisor="100" data-distance-decimals="2"${disabled ? " disabled" : ""} />${editable ? distanceNumberEditor(id, value, 100, min, max, disabled) : `<output class="range-value" for="${id}">${(Number(value) / 100).toFixed(2)} ${unit}</output>`}</div></label>`; }
+  function rtRangeField(label, id, value, precision, disabled = false) {
+    const meta = rtPrecisionMeta(precision);
+    const maximum = Math.min(511, Math.max(Math.round(4 * meta.divisor), Number(value) || 1));
+    return `<label class="field"><span>${esc(label)}</span><div class="range-line editable"><input id="${id}" type="range" min="1" max="${maximum}" step="1" value="${value}" data-distance-divisor="${meta.divisor}" data-distance-decimals="${meta.decimals}"${disabled ? " disabled" : ""} />${distanceNumberEditor(id, value, meta.divisor, 1, maximum, disabled)}</div><small>${esc(meta.step)} per stored step; arrows adjust 0.01 mm</small></label>`;
+  }
+
+  function hallSwitchRow(title, detail, id, checked, disabled = false) { return `<div class="switch-row"><div><strong>${esc(title)}</strong><small>${esc(detail)}</small></div><label class="switch"><input id="${id}" type="checkbox"${checked ? " checked" : ""}${disabled ? " disabled" : ""} /><i></i></label></div>`; }
+
+  function factoryResetCardHtml() {
+    const profileNumber = clamp((state.profile?.profileIndex ?? 0) + 1, 1, API.PROFILE_COUNT);
+    const unavailable = "A bundled default-profile JSON file has not been configured yet.";
+    return `<div class="section-heading factory-reset-heading"><div><h2>Factory reset</h2><p>Restore onboard configuration from a known, versioned default profile.</p></div><span class="chip factory-reset-status">DEFAULT FILE REQUIRED</span></div>
+      <section class="panel panel-pad factory-reset-panel" aria-describedby="factoryResetUnavailable">
+        <div class="factory-reset-grid">
+          <article class="factory-reset-action"><div><strong>Reset current profile</strong><p>Will restore only onboard Profile ${profileNumber} after the matching default JSON is bundled and validated.</p></div><button class="button secondary" type="button" data-factory-reset="current" disabled title="${esc(unavailable)}">Reset Profile ${profileNumber}</button></article>
+          <article class="factory-reset-action danger"><div><strong>Reset all profiles</strong><p>Will restore all three onboard profiles. The original driver also clears every stored macro during this operation.</p></div><button class="button secondary" type="button" data-factory-reset="all" disabled title="${esc(unavailable)}">Reset all profiles</button></article>
+        </div>
+        <div class="callout factory-reset-note" id="factoryResetUnavailable"><b>Not available yet.</b> ${esc(unavailable)} These controls cannot send a reset command until that file path and schema are added.</div>
+      </section>`;
+  }
 
   function renderSettings() {
     const settings = state.profile.deviceSettings;
     return `<div class="form-grid">
       <section class="panel form-card"><h3>USB performance</h3><p>Polling controls host reports; tick rate controls internal scanning.</p><div class="field-grid">
         ${selectField("Polling rate", "reportRate", [[1, "8,000 Hz"], [2, "4,000 Hz"], [3, "2,000 Hz"], [4, "1,000 Hz"]], settings.reportRate)}
-        ${selectField("Tick rate", "tickRate", [[0, "Automatic"], [1, "1"], [2, "2"], [3, "3"], [4, "4"]], settings.tickRate)}
-        ${selectField("Debounce", "debounce", Array.from({ length: 8 }, (_, index) => [index, `${index}`]), settings.debounce)}
+        ${selectField("Tick rate", "tickRate", [[0, "Low"], [1, "Medium"], [2, "High"]], settings.tickRate)}
+        ${selectField("Debounce", "debounce", [[0, "Close"], [1, "Low"], [4, "Medium"], [7, "High"]], settings.debounce)}
         ${selectField("OS mode", "systemMode", [[0, "Windows"], [1, "macOS"]], settings.systemMode)}
-      </div><div class="callout">8,000 Hz can use more CPU and may be less stable through some USB hubs. If input drops, test 1,000 Hz directly connected.</div></section>
+      </div><div class="callout">8,000 Hz can use more CPU and may be less stable through some USB hubs. The OS mode byte is valid firmware state, although the original driver changes it through remappable Windows/macOS function keys instead of showing this selector.</div></section>
       <section class="panel form-card"><h3>Input processing</h3><p>Compatibility modes exposed by the original software.</p><div class="switch-list">
-        ${switchRow("Bottom Rapid Trigger", "Driver method: stability mode", "stabilityMode", settings.stabilityMode)}
         ${switchRow("Check mode", "Additional signal checks", "checkMode", settings.checkMode)}
-      </div><div class="callout">The driver reads config bit 0 as “tachyonMode” and has an unused setter named “Berserk mode,” but the captured interface never exposes or calls it. The bit is preserved and intentionally not editable here.</div></section>
+      </div><div class="callout">Trigger Bottom is now grouped with Hall settings because it changes Rapid Trigger behavior. The hidden Tachyon/Berserk bit is still preserved and intentionally not editable.</div></section>
       <section class="panel form-card"><h3>Lock settings</h3><p>Prevent common shortcuts from interrupting a game.</p><div class="switch-list">
         ${switchRow("Windows key lock", "Blocks the GUI key", "lockWin", settings.lockWin)}
         ${switchRow("Alt + Tab lock", "Blocks app switching", "lockAltTab", settings.lockAltTab)}
         ${switchRow("Alt + F4 lock", "Blocks window close", "lockAltF4", settings.lockAltF4)}
       </div></section>
-    </div>`;
+    </div>${factoryResetCardHtml()}`;
   }
 
   function switchRow(title, detail, setting, checked) { return `<div class="switch-row"><div><strong>${esc(title)}</strong><small>${esc(detail)}</small></div><label class="switch"><input type="checkbox" data-setting="${setting}"${checked ? " checked" : ""} /><i></i></label></div>`; }
@@ -485,10 +583,11 @@
 
   function lightingKeyboardPreview() {
     const brightness = clamp(state.profile.light.brightness, 0, 100);
-    return `<div class="lighting-board" data-lighting-board aria-label="Configured 36-key lighting preview">${HE30_LAYOUT.map((row) => `<div class="lighting-board-row">${row.map(({ index, label }) => {
+    return `<div class="keyboard-grid lighting-board" data-lighting-board aria-label="Configured 36-key lighting preview">${HE30_LAYOUT.map((row) => `<div class="key-row">${row.map((keyItem) => {
+      const { index, label } = keyItem;
       const color = configuredLightingColor(index);
       const opacity = state.profile.light.effect === 255 ? 0.18 : 0.35 + brightness * 0.0065;
-      return `<i class="lighting-board-key" data-light-index="${index}" style="--key-led:${esc(color)};--key-opacity:${opacity.toFixed(2)};--key-glow:${Math.round(opacity * 45)}%" title="${esc(label)}: ${esc(color.toUpperCase())}"><span>${esc(label)}</span></i>`;
+      return `<i class="keycap lighting-board-key" data-light-index="${index}" style="--key-width:${keyWidth(keyItem)}px;--key-u:${keyUnit(keyItem)};--key-led:${esc(color)};--key-opacity:${opacity.toFixed(2)};--key-glow:${Math.round(opacity * 45)}%" title="${esc(label)}: ${esc(color.toUpperCase())}"><span>${esc(label)}</span></i>`;
     }).join("")}</div>`).join("")}</div>`;
   }
 
@@ -576,24 +675,30 @@
   }
 
   function bindPageControls() {
-    $$('[data-go-page]').forEach((button) => button.addEventListener("click", () => {
+    $$('[data-go-page]').forEach((button) => button.addEventListener("click", async () => {
       if (button.dataset.goPage === "export-profile") return exportProfile();
       if (button.dataset.goPage === "import-profile") return $("#fileInput")?.click();
       if (button.dataset.goPage === "json-editor") return window.location.assign("json_editor/");
+      if (state.calibrationActive && button.dataset.goPage !== "hall") await stopCalibration(false);
+      if (state.page === "hall" && button.dataset.goPage !== "hall") { state.hallEditPending = false; state.hallEditSelection.clear(); }
       state.page = button.dataset.goPage; renderPage();
     }));
     $$('[data-layer]').forEach((button) => button.addEventListener("click", () => { state.layer = Number(button.dataset.layer); renderPage(); }));
     $$('[data-keyboard-mode] .keycap').forEach((button) => button.addEventListener("click", (event) => {
       const mode = button.closest("[data-keyboard-mode]").dataset.keyboardMode;
+      if (mode === "hall" && state.calibrationActive) return;
       if (mode !== "hall" || event.detail === 0) handleKeyClick(button, event);
     }));
     bindHallDragSelection();
     $("#liveMonitorButton")?.addEventListener("click", toggleLiveMonitor);
+    $("#calibrationButton")?.addEventListener("click", toggleCalibration);
     if (state.page === "hall") scheduleLiveVisualUpdate();
     if (state.page === "lighting" && state.source === "device" && state.driver) void startLiveLighting();
-    $("#selectAllKeys")?.addEventListener("click", () => { state.hallSelection = new Set(PHYSICAL_KEYS.map((key) => key.index)); renderPage(); });
+    $("#selectAllKeys")?.addEventListener("click", () => { if (state.hallEditPending) return; state.hallSelection = new Set(PHYSICAL_KEYS.map((key) => key.index)); renderPage(); });
     $("#stageHallButton")?.addEventListener("click", stageHallSettings);
-    $$('input[type="range"]').forEach((input) => input.addEventListener("input", () => { const output = input.parentElement.querySelector("output"); if (output) output.textContent = `${(Number(input.value) / 100).toFixed(2)} mm`; }));
+    $$('input[type="range"]').forEach((input) => input.addEventListener("input", () => updateRangeOutput(input)));
+    bindDistanceInputs();
+    if (state.page === "hall") { bindHallControls(); updateHallSelectionUI(); }
     ["reportRate", "tickRate", "debounce", "systemMode"].forEach((id) => $(`#${id}`)?.addEventListener("change", (event) => { state.profile.deviceSettings[id] = Number(event.target.value); markDirty("settings"); log("change", `${id} staged`); }));
     $$('[data-setting]').forEach((input) => input.addEventListener("change", () => { state.profile.deviceSettings[input.dataset.setting] = input.checked ? true : false; markDirty("settings"); log("change", `${input.dataset.setting} staged`); }));
     ["light", "logoLight"].forEach((group) => {
@@ -618,78 +723,308 @@
     $("#exportLogButton")?.addEventListener("click", exportLog);
   }
 
+  function updateRangeOutput(input) {
+    if (!input) return;
+    const divisor = Number(input.dataset.distanceDivisor) || 100;
+    const decimals = Number(input.dataset.distanceDecimals ?? 2);
+    const millimeters = Number(input.value) / divisor;
+    const number = input.parentElement?.querySelector(`[data-range-for="${input.id}"]`);
+    if (number) number.value = millimeters.toFixed(Math.max(2, decimals));
+    const output = input.parentElement?.querySelector("output");
+    if (output) output.textContent = `${millimeters.toFixed(decimals)} mm`;
+  }
+
+  function setDistanceFromNumber(number, normalize = false) {
+    const range = $(`#${number?.dataset.rangeFor}`);
+    if (!range || number.value === "") return;
+    const divisor = Number(range.dataset.distanceDivisor) || 100;
+    const minimum = Number(number.min) || 0.01;
+    const maximum = Number(number.max) || 4;
+    const millimeters = clamp(Number(number.value), minimum, maximum);
+    range.value = clamp(Math.round(millimeters * divisor), Number(range.min), Number(range.max));
+    if (normalize) updateRangeOutput(range);
+  }
+
+  function nudgeDistanceControl(control, direction) {
+    const range = control.matches('input[type="range"]') ? control : $(`#${control.dataset.rangeFor}`);
+    if (!range) return;
+    const number = range.parentElement?.querySelector(`[data-range-for="${range.id}"]`);
+    const divisor = Number(range.dataset.distanceDivisor) || 100;
+    const current = Number(range.value) / divisor;
+    const minimum = number ? Number(number.min) : Number(range.min) / divisor;
+    const maximum = number ? Number(number.max) : Number(range.max) / divisor;
+    range.value = clamp(Math.round(clamp(current + direction * 0.01, minimum, maximum) * divisor), Number(range.min), Number(range.max));
+    updateRangeOutput(range);
+    range.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function bindDistanceInputs() {
+    $$('[data-range-for]').forEach((number) => {
+      number.addEventListener("input", () => setDistanceFromNumber(number));
+      number.addEventListener("change", () => setDistanceFromNumber(number, true));
+      number.addEventListener("blur", () => setDistanceFromNumber(number, true));
+      number.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        nudgeDistanceControl(number, event.key === "ArrowRight" ? 1 : -1);
+      });
+    });
+    $$('.range-line.editable input[type="range"]').forEach((range) => range.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      nudgeDistanceControl(range, event.key === "ArrowRight" ? 1 : -1);
+    }));
+  }
+
+  function configureRtInput(input, precision, value = input?.value) {
+    if (!input) return;
+    const meta = rtPrecisionMeta(precision);
+    input.dataset.distanceDivisor = meta.divisor;
+    input.dataset.distanceDecimals = meta.decimals;
+    input.max = Math.min(511, Math.max(Math.round(4 * meta.divisor), Number(value) || 1));
+    input.value = clamp(value, 1, Number(input.max));
+    const number = input.parentElement?.querySelector(`[data-range-for="${input.id}"]`);
+    if (number) {
+      number.min = Math.max(0.01, 1 / meta.divisor).toFixed(2);
+      number.max = (Number(input.max) / meta.divisor).toFixed(2);
+      number.step = "0.01";
+    }
+    const note = input.closest(".field")?.querySelector("small");
+    if (note) note.textContent = `${meta.step} per step`;
+    updateRangeOutput(input);
+  }
+
+  function setHallFieldDisabled(input, disabled) {
+    if (!input) return;
+    input.disabled = Boolean(disabled);
+    const number = input.parentElement?.querySelector(`[data-range-for="${input.id}"]`);
+    if (number) number.disabled = Boolean(disabled);
+    input.closest(".field")?.classList.toggle("disabled", Boolean(disabled));
+  }
+
+  function copyHallPressToRelease() {
+    const press = $("#hallPress");
+    const release = $("#hallRelease");
+    if (!press || !release) return;
+    const pressPrecision = $("#hallPressPrecision");
+    const releasePrecision = $("#hallReleasePrecision");
+    if (pressPrecision && releasePrecision) releasePrecision.value = pressPrecision.value;
+    configureRtInput(release, pressPrecision?.value ?? 0, press.value);
+  }
+
+  function syncHallControlAvailability() {
+    const rapid = Boolean($("#hallRapidTrigger")?.checked);
+    const independent = rapid && Boolean($("#hallIndependentRt")?.checked);
+    const insurance = Boolean($("#hallInsurance")?.checked);
+    const fullTravel = $("#hallFullTravel");
+    const independentSwitch = $("#hallIndependentRt");
+    if (fullTravel) fullTravel.disabled = !rapid;
+    if (independentSwitch) independentSwitch.disabled = !rapid;
+    setHallFieldDisabled($("#hallPress"), !rapid);
+    setHallFieldDisabled($("#hallRelease"), !independent);
+    setHallFieldDisabled($("#hallPressPrecision"), !rapid);
+    setHallFieldDisabled($("#hallReleasePrecision"), !independent);
+    setHallFieldDisabled($("#hallPressDeadzone"), !insurance);
+    setHallFieldDisabled($("#hallReleaseDeadzone"), !insurance);
+  }
+
+  function changeHallPrecision(kind) {
+    const precision = $(`#hall${kind}Precision`);
+    const input = $(`#hall${kind}`);
+    if (!precision || !input) return;
+    const oldDivisor = Number(input.dataset.distanceDivisor) || 100;
+    const millimeters = Number(input.value) / oldDivisor;
+    const next = rtPrecisionMeta(precision.value);
+    configureRtInput(input, precision.value, Math.round(millimeters * next.divisor));
+    if (kind === "Press" && !$("#hallIndependentRt")?.checked) copyHallPressToRelease();
+  }
+
+  function beginHallEdit() {
+    if (state.hallEditPending || !state.hallSelection.size || state.calibrationActive) return;
+    state.hallEditPending = true;
+    state.hallEditSelection = new Set(state.hallSelection);
+    updateHallSelectionUI();
+  }
+
+  function bindHallControls() {
+    const tuning = $("#hallTuningGrid");
+    tuning?.addEventListener("input", beginHallEdit);
+    tuning?.addEventListener("change", beginHallEdit);
+    $("#hallRapidTrigger")?.addEventListener("change", (event) => {
+      if (!event.target.checked && $("#hallFullTravel")) $("#hallFullTravel").checked = false;
+      syncHallControlAvailability();
+    });
+    $("#hallIndependentRt")?.addEventListener("change", (event) => {
+      if (!event.target.checked) copyHallPressToRelease();
+      syncHallControlAvailability();
+    });
+    $("#hallInsurance")?.addEventListener("change", (event) => {
+      [$("#hallPressDeadzone"), $("#hallReleaseDeadzone")].forEach((input) => {
+        if (!input) return;
+        input.value = event.target.checked ? (Number(input.value) || 10) : 0;
+        updateRangeOutput(input);
+      });
+      syncHallControlAvailability();
+    });
+    $("#hallPress")?.addEventListener("input", () => { if (!$("#hallIndependentRt")?.checked) copyHallPressToRelease(); });
+    $("#hallPressPrecision")?.addEventListener("change", () => changeHallPrecision("Press"));
+    $("#hallReleasePrecision")?.addEventListener("change", () => changeHallPrecision("Release"));
+    $$('[data-rt-sensitivity-preset]').forEach((button) => button.addEventListener("click", () => {
+      const millimeters = Number(button.dataset.rtSensitivityPreset);
+      const press = $("#hallPress");
+      const release = $("#hallRelease");
+      if (!press || !release || !Number.isFinite(millimeters)) return;
+      press.value = Math.round(millimeters * (Number(press.dataset.distanceDivisor) || 100));
+      updateRangeOutput(press);
+      if ($("#hallIndependentRt")?.checked) {
+        release.value = Math.round(millimeters * (Number(release.dataset.distanceDivisor) || 100));
+        updateRangeOutput(release);
+      } else {
+        copyHallPressToRelease();
+      }
+      press.dispatchEvent(new Event("input", { bubbles: true }));
+    }));
+    syncHallControlAvailability();
+  }
+
   function bindHallDragSelection() {
     const grid = $('[data-keyboard-mode="hall"]');
-    if (!grid) return;
-    const finish = (event) => {
+    if (!grid || state.calibrationActive) return;
+    const finish = (event, cancelled = false) => {
       const drag = state.hallDrag;
       if (!drag || drag.pointerId !== event.pointerId) return;
-      if (!state.hallSelection.size) state.hallSelection.add(drag.startIndex);
       state.hallDrag = null;
       try { if (grid.hasPointerCapture(event.pointerId)) grid.releasePointerCapture(event.pointerId); } catch (_) { /* no-op */ }
       grid.classList.remove("drag-selecting");
+      drag.box.remove();
+      if (cancelled) {
+        state.hallSelection = new Set(drag.initialSelection);
+      } else if (!drag.moved && drag.startIndex != null) {
+        const clickedSelection = selectionAfterHallBox(drag, new Set([drag.startIndex]));
+        state.hallSelection = clickedSelection.size ? clickedSelection : new Set(drag.initialSelection);
+      } else if (!state.hallSelection.size) {
+        state.hallSelection = new Set(drag.initialSelection);
+      }
+      if (!drag.initialSelection.size && state.hallSelection.size) return renderPage();
       updateHallSelectionUI();
       syncHallFormToSelection();
     };
     grid.addEventListener("pointerdown", (event) => {
+      if (state.hallDrag || state.hallEditPending) return;
       if (event.pointerType === "mouse" && event.button !== 0) return;
-      const keycap = event.target.closest(".keycap");
-      if (!keycap || !grid.contains(keycap)) return;
+      const keycap = event.target.closest(".keycap[data-key-index]");
       event.preventDefault();
-      const index = Number(keycap.dataset.keyIndex);
-      const toggle = event.ctrlKey || event.metaKey;
-      const mode = toggle && state.hallSelection.has(index) ? "remove" : "add";
-      if (!toggle) state.hallSelection.clear();
-      state.hallDrag = { pointerId: event.pointerId, startIndex: index, mode, touched: new Set() };
+      const box = document.createElement("i");
+      box.className = "hall-selection-box";
+      box.setAttribute("aria-hidden", "true");
+      box.hidden = true;
+      grid.append(box);
+      state.hallDrag = {
+        pointerId: event.pointerId,
+        startIndex: keycap && grid.contains(keycap) ? Number(keycap.dataset.keyIndex) : null,
+        startX: event.clientX,
+        startY: event.clientY,
+        currentX: event.clientX,
+        currentY: event.clientY,
+        moved: false,
+        toggle: event.ctrlKey || event.metaKey,
+        initialSelection: new Set(state.hallSelection),
+        box,
+      };
       grid.classList.add("drag-selecting");
       try { grid.setPointerCapture(event.pointerId); } catch (_) { /* no-op */ }
-      applyHallDragIndex(index);
     });
     grid.addEventListener("pointermove", (event) => {
-      if (!state.hallDrag || state.hallDrag.pointerId !== event.pointerId) return;
+      const drag = state.hallDrag;
+      if (!drag || drag.pointerId !== event.pointerId) return;
       event.preventDefault();
-      const hovered = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.keycap[data-key-index]');
-      if (hovered && grid.contains(hovered)) applyHallDragIndex(Number(hovered.dataset.keyIndex));
+      drag.currentX = event.clientX;
+      drag.currentY = event.clientY;
+      drag.moved ||= Math.hypot(drag.currentX - drag.startX, drag.currentY - drag.startY) >= 4;
+      if (!drag.moved) return;
+      updateHallSelectionBox(grid, drag);
     });
     grid.addEventListener("pointerup", finish);
-    grid.addEventListener("pointercancel", finish);
+    grid.addEventListener("pointercancel", (event) => finish(event, true));
     grid.addEventListener("lostpointercapture", (event) => { if (state.hallDrag?.pointerId === event.pointerId) finish(event); });
   }
 
-  function applyHallDragIndex(index) {
-    const drag = state.hallDrag;
-    if (!drag || drag.touched.has(index)) return;
-    drag.touched.add(index);
-    if (drag.mode === "remove") {
-      if (state.hallSelection.size > 1) state.hallSelection.delete(index);
-    } else state.hallSelection.add(index);
+  function selectionAfterHallBox(drag, boxedIndexes) {
+    if (!drag.toggle) return new Set(boxedIndexes);
+    const selected = new Set(drag.initialSelection);
+    boxedIndexes.forEach((index) => {
+      if (selected.has(index)) selected.delete(index); else selected.add(index);
+    });
+    return selected;
+  }
+
+  function updateHallSelectionBox(grid, drag) {
+    const gridRect = grid.getBoundingClientRect();
+    const left = Math.min(drag.startX, drag.currentX);
+    const top = Math.min(drag.startY, drag.currentY);
+    const right = Math.max(drag.startX, drag.currentX);
+    const bottom = Math.max(drag.startY, drag.currentY);
+    drag.box.hidden = false;
+    Object.assign(drag.box.style, {
+      left: `${left - gridRect.left}px`,
+      top: `${top - gridRect.top}px`,
+      width: `${right - left}px`,
+      height: `${bottom - top}px`,
+    });
+    const boxedIndexes = new Set();
+    $$('.keycap[data-key-index]', grid).forEach((button) => {
+      const keyRect = button.getBoundingClientRect();
+      if (keyRect.right >= left && keyRect.left <= right && keyRect.bottom >= top && keyRect.top <= bottom) {
+        boxedIndexes.add(Number(button.dataset.keyIndex));
+      }
+    });
+    state.hallSelection = selectionAfterHallBox(drag, boxedIndexes);
     updateHallSelectionUI();
   }
 
   function updateHallSelectionUI() {
+    const locked = state.hallEditPending;
+    const targetCount = locked ? state.hallEditSelection.size : state.hallSelection.size;
+    const grid = $('[data-keyboard-mode="hall"]');
+    grid?.classList.toggle("hall-selection-locked", locked);
     $$('[data-keyboard-mode="hall"] .keycap').forEach((button) => {
       const selected = state.hallSelection.has(Number(button.dataset.keyIndex));
       button.classList.toggle("selected", selected);
       button.setAttribute("aria-pressed", String(selected));
+      button.setAttribute("aria-disabled", String(locked || state.calibrationActive));
     });
     const count = $("#hallSelectionCount");
     const plural = $("#hallSelectionPlural");
     const stage = $("#stageHallButton");
     if (count) count.textContent = state.hallSelection.size;
     if (plural) plural.textContent = state.hallSelection.size === 1 ? "" : "s";
-    if (stage) stage.textContent = `Stage on ${state.hallSelection.size} selected key${state.hallSelection.size === 1 ? "" : "s"}`;
+    const selectAll = $("#selectAllKeys");
+    if (selectAll && !state.calibrationActive) selectAll.disabled = locked;
+    if (stage) {
+      stage.disabled = state.calibrationActive || !locked;
+      stage.classList.toggle("pending", locked);
+      stage.textContent = locked ? `Stage on ${targetCount} selected key${targetCount === 1 ? "" : "s"}` : "No changes to stage";
+    }
   }
 
   function syncHallFormToSelection() {
-    const travel = state.profile.travelKeys[[...state.hallSelection][0] ?? 0];
-    const values = { hallMode: travel.key_mode, hallActuation: travel.key_actuation, hallPress: travel.rt_press, hallRelease: travel.rt_release, hallPressPrecision: travel.pressPrecision, hallReleasePrecision: travel.releasePrecision, hallPressDeadzone: travel.press_deadzone, hallReleaseDeadzone: travel.release_deadzone };
+    if (state.hallEditPending || !state.hallSelection.size) return;
+    const travel = state.profile.travelKeys[[...state.hallSelection][0]];
+    const values = { hallActuation: travel.key_actuation, hallPress: travel.rt_press, hallRelease: travel.rt_release, hallPressPrecision: travel.pressPrecision, hallReleasePrecision: travel.releasePrecision, hallPressDeadzone: travel.press_deadzone, hallReleaseDeadzone: travel.release_deadzone };
     Object.entries(values).forEach(([id, value]) => {
       const input = $(`#${id}`);
       if (!input) return;
       input.value = value;
-      const output = input.parentElement?.querySelector("output");
-      if (output) output.textContent = `${(Number(value) / 100).toFixed(2)} mm`;
+      updateRangeOutput(input);
     });
+    configureRtInput($("#hallPress"), travel.pressPrecision, travel.rt_press);
+    configureRtInput($("#hallRelease"), travel.releasePrecision, travel.rt_release);
+    if ($("#hallRapidTrigger")) $("#hallRapidTrigger").checked = Number(travel.key_mode) > 0;
+    if ($("#hallFullTravel")) $("#hallFullTravel").checked = Number(travel.key_mode) === 2;
+    if ($("#hallIndependentRt")) $("#hallIndependentRt").checked = Number(travel.rt_press) !== Number(travel.rt_release) || Number(travel.pressPrecision) !== Number(travel.releasePrecision);
+    if ($("#hallInsurance")) $("#hallInsurance").checked = Number(travel.press_deadzone) > 0 && Number(travel.release_deadzone) > 0;
+    if ($("#hallTriggerBottom")) $("#hallTriggerBottom").checked = Boolean(state.profile.deviceSettings.stabilityMode);
+    syncHallControlAvailability();
   }
 
   function telemetryDivisor(index) {
@@ -745,7 +1080,7 @@
     text("#liveKeycapLabel", physicalName(index));
     text("#liveTravelPercent", `${travelPercent.toFixed(0)}%`);
     text("#liveActuationValue", `${actuation.toFixed(2)} mm`);
-    text("#liveMode", travel.key_mode > 0 ? "Rapid Trigger" : "Standard");
+    text("#liveMode", rapidTriggerModeName(travel.key_mode));
     $$('[data-keyboard-mode="hall"] .keycap').forEach((button) => {
       const keyIndex = Number(button.dataset.keyIndex);
       const keyTravel = state.profile.travelKeys[keyIndex] || defaultTravel();
@@ -763,6 +1098,7 @@
 
   async function startLiveMonitor() {
     if (!state.driver || state.source !== "device") return showToast("Connect the keyboard to view live Hall travel.", true);
+    if (state.calibrationActive || state.calibrationBusy) return showToast("Stop switch calibration before starting the live Hall monitor.", true);
     state.liveMonitorBusy = true;
     renderPage();
     try {
@@ -807,6 +1143,151 @@
     }
   }
 
+  function calibrationStatusClass(status) {
+    if (status === 255) return "calibration-complete";
+    if (status === 0) return "calibration-waiting";
+    return status == null ? "" : "calibration-progress";
+  }
+
+  function calibrationCompletedCount() {
+    return PHYSICAL_KEYS.filter(({ index }) => state.calibrationStatus[index] === 255).length;
+  }
+
+  function handleCalibrationTelemetry(event) {
+    const index = TELEMETRY_INDEX.get(event.keyCode);
+    if (index == null) return;
+    const completedBefore = calibrationCompletedCount();
+    state.calibrationStatus[index] = event.status;
+    state.calibrationTravelRaw[index] = event.rawTravel;
+    state.calibrationLastIndex = index;
+    const button = $(`[data-keyboard-mode="hall"] .keycap[data-key-index="${index}"]`);
+    if (button) {
+      button.classList.remove("calibration-waiting", "calibration-progress", "calibration-complete");
+      const statusClass = calibrationStatusClass(event.status);
+      if (statusClass) button.classList.add(statusClass);
+      button.style.setProperty("--calibration-pct", `${clamp((event.rawTravel / 340) * 100, 0, 100).toFixed(2)}%`);
+    }
+    const completed = calibrationCompletedCount();
+    const completedElement = $("#calibrationCompleted");
+    if (completedElement) completedElement.textContent = `${completed} / ${PHYSICAL_KEYS.length}`;
+    const progress = $("#calibrationProgressFill");
+    if (progress) progress.style.width = `${((completed / PHYSICAL_KEYS.length) * 100).toFixed(2)}%`;
+    const current = $("#calibrationLastKey");
+    if (current) current.textContent = physicalName(index);
+    if (completed === PHYSICAL_KEYS.length && completedBefore !== completed) showToast("All 36 switches report calibration complete. Stop calibration to exit safely.");
+  }
+
+  async function toggleCalibration() {
+    if (state.calibrationBusy) return;
+    if (state.calibrationActive) await stopCalibration(true);
+    else await startCalibration();
+  }
+
+  function startCalibration() {
+    if (!state.driver || state.source !== "device") return showToast("Connect the keyboard before starting calibration.", true);
+    if (state.calibrationOperationPromise) return state.calibrationOperationPromise;
+    state.calibrationBusy = true;
+    if (state.page === "hall") renderPage();
+    let operation;
+    operation = (async () => {
+      try {
+        if (state.liveMonitorActive || state.liveMonitorBusy) await stopLiveMonitor(false);
+        if (state.liveLightingActive || state.liveLightingBusy) await stopLiveLighting();
+        state.calibrationUnsubscribe?.();
+        state.calibrationUnsubscribe = state.driver.subscribeCalibration(handleCalibrationTelemetry);
+        state.calibrationStatus.fill(null);
+        state.calibrationTravelRaw.fill(0);
+        PHYSICAL_KEYS.forEach(({ index }) => { state.calibrationStatus[index] = 0; });
+        state.calibrationLastIndex = null;
+        await state.driver.startCalibration();
+        state.calibrationActive = true;
+        log("info", "Switch calibration mode started");
+        showToast("Calibration started. Press every key fully, one at a time.");
+      } catch (error) {
+        state.calibrationUnsubscribe?.();
+        state.calibrationUnsubscribe = null;
+        state.calibrationActive = false;
+        log("error", "Switch calibration could not start", error.message);
+        showToast(`Calibration could not start: ${error.message}`, true);
+      } finally {
+        if (state.calibrationOperationPromise === operation) state.calibrationOperationPromise = null;
+        state.calibrationBusy = false;
+        if (state.page === "hall") renderPage();
+      }
+    })();
+    state.calibrationOperationPromise = operation;
+    return operation;
+  }
+
+  async function stopCalibration(render = true) {
+    if (state.calibrationOperationPromise) {
+      try { await state.calibrationOperationPromise; } catch (_) { /* start failure is reported by startCalibration */ }
+    }
+    if (!state.driver || !state.calibrationActive) return;
+    state.calibrationBusy = true;
+    if (render && state.page === "hall") renderPage();
+    const completed = calibrationCompletedCount();
+    try {
+      if (state.driver) await state.driver.endCalibration();
+      log("info", `Switch calibration stopped with ${completed}/${PHYSICAL_KEYS.length} keys complete`);
+      showToast(`Calibration stopped. ${completed} of ${PHYSICAL_KEYS.length} keys completed.`);
+    } catch (error) {
+      log("warning", "Switch calibration stop command failed", error.message);
+      showToast(`Calibration ended locally, but the keyboard did not confirm: ${error.message}`, true);
+    } finally {
+      state.calibrationUnsubscribe?.();
+      state.calibrationUnsubscribe = null;
+      state.calibrationActive = false;
+      state.calibrationBusy = false;
+      if (render && state.page === "hall") renderPage();
+    }
+  }
+
+  function blendLightingColor(fromColor, toColor, amount) {
+    const from = API.normalizeHexColor(fromColor, "#000000").slice(1);
+    const to = API.normalizeHexColor(toColor, "#000000").slice(1);
+    const fromChannels = [0, 2, 4].map((offset) => Number.parseInt(from.slice(offset, offset + 2), 16));
+    const toChannels = [0, 2, 4].map((offset) => Number.parseInt(to.slice(offset, offset + 2), 16));
+    const channels = fromChannels.map((channel, index) => {
+      const difference = toChannels[index] - channel;
+      return Math.abs(difference) <= 2 ? toChannels[index] : Math.round(channel + difference * amount);
+    });
+    return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+  }
+
+  function cancelLiveLightingAnimation({ clearDisplay = false } = {}) {
+    if (state.liveLightingFrame) cancelAnimationFrame(state.liveLightingFrame);
+    state.liveLightingFrame = 0;
+    state.liveLightingFrameTime = 0;
+    if (clearDisplay) state.liveLightingDisplayColors.fill(null);
+  }
+
+  function animateLiveLighting(timestamp) {
+    state.liveLightingFrame = 0;
+    if (!state.liveLightingActive || state.page !== "lighting") return;
+    const elapsed = state.liveLightingFrameTime ? Math.min(50, Math.max(1, timestamp - state.liveLightingFrameTime)) : 16;
+    const blend = 1 - Math.exp(-elapsed / LIVE_LIGHTING_SMOOTHING_MS);
+    let moving = false;
+    PHYSICAL_KEYS.forEach(({ index }) => {
+      const target = state.liveLightingColors[index];
+      if (!target) return;
+      const current = state.liveLightingDisplayColors[index] || target;
+      const next = blendLightingColor(current, target, blend);
+      state.liveLightingDisplayColors[index] = next;
+      if (next !== target) moving = true;
+    });
+    state.liveLightingFrameTime = timestamp;
+    updateLiveLightingUI();
+    if (moving) state.liveLightingFrame = requestAnimationFrame(animateLiveLighting);
+    else state.liveLightingFrameTime = 0;
+  }
+
+  function scheduleLiveLightingAnimation() {
+    if (!state.liveLightingFrame && state.liveLightingActive && state.page === "lighting") {
+      state.liveLightingFrame = requestAnimationFrame(animateLiveLighting);
+    }
+  }
+
   function updateLiveLightingUI() {
     const status = $("#liveLightingStatus");
     if (status) {
@@ -815,7 +1296,7 @@
     }
     if (!state.liveLightingActive) return;
     PHYSICAL_KEYS.forEach(({ index, label }) => {
-      const color = state.liveLightingColors[index];
+      const color = state.liveLightingDisplayColors[index] || state.liveLightingColors[index];
       if (!color) return;
       const key = $(`[data-lighting-board] [data-light-index="${index}"]`);
       if (!key) return;
@@ -834,7 +1315,7 @@
       state.liveLightingColors = colors.map((color) => API.normalizeHexColor(color, "#000000"));
       state.liveLightingUpdatedAt = Date.now();
       state.liveLightingError = "";
-      updateLiveLightingUI();
+      scheduleLiveLightingAnimation();
     } catch (error) {
       if (generation !== state.liveLightingGeneration) return;
       if (!state.liveLightingError) log("warning", "Live RGB frame read failed; retrying", error.message);
@@ -842,14 +1323,18 @@
       updateLiveLightingUI();
     }
     if (generation !== state.liveLightingGeneration || !state.liveLightingActive) return;
-    const delay = [0, 3, 255].includes(state.profile?.light?.effect) ? 1000 : 300;
+    const delay = [0, 3, 255].includes(state.profile?.light?.effect) ? 500 : 50;
     state.liveLightingTimer = window.setTimeout(() => void pollLiveLighting(generation), state.liveLightingError ? 1200 : delay);
   }
 
   async function startLiveLighting() {
     if (!state.driver || state.source !== "device" || state.page !== "lighting" || state.liveLightingActive || state.liveLightingBusy) return;
+    if (state.calibrationActive || state.calibrationBusy) return;
     const driver = state.driver;
     const generation = ++state.liveLightingGeneration;
+    cancelLiveLightingAnimation({ clearDisplay: true });
+    PHYSICAL_KEYS.forEach(({ index }) => { state.liveLightingDisplayColors[index] = configuredLightingColor(index); });
+    state.liveLightingColors.fill(null);
     state.liveLightingBusy = true;
     state.liveLightingError = "";
     updateLiveLightingUI();
@@ -880,6 +1365,7 @@
     ++state.liveLightingGeneration;
     if (state.liveLightingTimer) window.clearTimeout(state.liveLightingTimer);
     state.liveLightingTimer = 0;
+    cancelLiveLightingAnimation({ clearDisplay: true });
     state.liveLightingActive = false;
     state.liveLightingBusy = false;
     state.liveLightingError = "";
@@ -920,26 +1406,50 @@
     const index = Number(button.dataset.keyIndex);
     const mode = button.closest("[data-keyboard-mode]").dataset.keyboardMode;
     if (mode === "mapping") return openMapping(index);
+    if (mode === "hall" && state.hallEditPending) return;
     const selected = mode === "hall" ? state.hallSelection : state.colorSelection;
+    const wasEmpty = selected.size === 0;
     if (event.ctrlKey || event.metaKey) {
       if (selected.has(index) && selected.size > 1) selected.delete(index); else selected.add(index);
     } else {
       selected.clear(); selected.add(index);
     }
-    if (mode === "hall") { updateHallSelectionUI(); syncHallFormToSelection(); }
+    if (mode === "hall") {
+      if (wasEmpty && selected.size) return renderPage();
+      updateHallSelectionUI(); syncHallFormToSelection();
+    }
     else renderPage();
   }
 
   function stageHallSettings() {
-    const values = { key_mode: Number($("#hallMode").value), key_actuation: Number($("#hallActuation").value), rt_press: Number($("#hallPress").value), rt_release: Number($("#hallRelease").value), press_deadzone: Number($("#hallPressDeadzone").value), release_deadzone: Number($("#hallReleaseDeadzone").value) };
+    const targetSelection = new Set(state.hallEditSelection);
+    if (!state.hallEditPending || !targetSelection.size) return;
+    const rapidTrigger = Boolean($("#hallRapidTrigger").checked);
+    const fullTravel = rapidTrigger && Boolean($("#hallFullTravel").checked);
+    const independentRt = rapidTrigger && Boolean($("#hallIndependentRt").checked);
+    const insurance = Boolean($("#hallInsurance").checked);
+    const values = {
+      key_mode: rapidTrigger ? (fullTravel ? 2 : 1) : 0,
+      key_actuation: Number($("#hallActuation").value),
+      rt_press: Number($("#hallPress").value),
+      rt_release: independentRt ? Number($("#hallRelease").value) : Number($("#hallPress").value),
+      press_deadzone: insurance ? Number($("#hallPressDeadzone").value) : 0,
+      release_deadzone: insurance ? Number($("#hallReleaseDeadzone").value) : 0,
+    };
     if (precisionOptions()) {
       values.pressPrecision = Number($("#hallPressPrecision").value);
-      values.releasePrecision = Number($("#hallReleasePrecision").value);
+      values.releasePrecision = independentRt ? Number($("#hallReleasePrecision").value) : values.pressPrecision;
     }
-    state.hallSelection.forEach((index) => Object.assign(state.profile.travelKeys[index], values, { deadzone_status: values.press_deadzone > 0 || values.release_deadzone > 0 }));
+    targetSelection.forEach((index) => Object.assign(state.profile.travelKeys[index], values, { deadzone_status: values.press_deadzone > 0 && values.release_deadzone > 0 }));
+    const triggerBottom = Boolean($("#hallTriggerBottom").checked);
+    const triggerBottomChanged = Boolean(state.profile.deviceSettings.stabilityMode) !== triggerBottom;
+    state.profile.deviceSettings.stabilityMode = triggerBottom;
     markDirty("hall");
-    log("change", `Hall settings staged on ${state.hallSelection.size} keys`);
-    showToast(`Hall settings staged on ${state.hallSelection.size} key${state.hallSelection.size === 1 ? "" : "s"}.`);
+    if (triggerBottomChanged) markDirty("settings");
+    state.hallEditPending = false;
+    state.hallEditSelection.clear();
+    log("change", `${rapidTriggerModeName(values.key_mode)} settings staged on ${targetSelection.size} keys`);
+    showToast(`Hall settings staged on ${targetSelection.size} key${targetSelection.size === 1 ? "" : "s"}.`);
     renderPage();
   }
 
@@ -958,10 +1468,12 @@
   function renderMappingGroups(query) {
     const normalized = query.trim().toLowerCase();
     const current = state.profile.userKeys[state.layer][state.mappingIndex] || {};
+    const macMode = Number(state.profile.deviceSettings.systemMode) === 1;
     $("#mappingGroups").innerHTML = MAPPING_GROUPS.map((group) => {
-      const items = group.items.filter((item) => !normalized || `${item.name} ${group.title}`.toLowerCase().includes(normalized));
+      if (group.macOnly && !macMode) return "";
+      const items = group.items.filter((item) => !normalized || `${item.name} ${item.macName || ""} ${group.title}`.toLowerCase().includes(normalized));
       if (!items.length) return "";
-      return `<section class="mapping-group"><h3>${esc(group.title)}</h3><div class="mapping-options">${items.map((item) => `<button class="mapping-option${item.type === current.type && item.code1 === current.code1 && item.code2 === current.code2 ? " active" : ""}" type="button" data-map="${item.type},${item.code1},${item.code2}"><strong>${esc(item.name)}</strong><small>${item.type} · ${item.code1} · ${item.code2}</small></button>`).join("")}</div></section>`;
+      return `<section class="mapping-group"><h3>${esc(group.title)}</h3><div class="mapping-options">${items.map((item) => `<button class="mapping-option${item.type === current.type && item.code1 === current.code1 && item.code2 === current.code2 ? " active" : ""}" type="button" data-map="${item.type},${item.code1},${item.code2}"><strong>${esc((macMode && item.macName) || item.name)}</strong><small>${item.type} · ${item.code1} · ${item.code2}</small></button>`).join("")}</div></section>`;
     }).join("") || `<div class="empty-state"><strong>No mappings found</strong><p>Try a shorter search.</p></div>`;
     $$('[data-map]', $("#mappingGroups")).forEach((button) => button.addEventListener("click", () => {
       const [type, code1, code2] = button.dataset.map.split(",").map(Number);
@@ -1186,6 +1698,7 @@
     state.profileSyncTarget = target;
     state.profileSyncLayer = targetLayer;
     try {
+      if (state.calibrationActive || state.calibrationBusy) await stopCalibration(false);
       if (state.liveMonitorActive) await stopLiveMonitor(false);
       if (state.liveLightingActive || state.liveLightingBusy) await stopLiveLighting();
       showProgress(`Loading profile ${target + 1}`, 5, activate ? "Switching the active onboard slot…" : "Keyboard profile changed. Refreshing its settings…");
@@ -1237,6 +1750,7 @@
 
   async function connectKeyboard() {
     try {
+      if (state.calibrationActive || state.calibrationBusy) await stopCalibration(false);
       if (state.liveMonitorActive) await stopLiveMonitor(false);
       if (state.liveLightingActive || state.liveLightingBusy) await stopLiveLighting();
       state.profileChangeUnsubscribe?.();
@@ -1267,6 +1781,7 @@
   async function loadFile(file) {
     if (!file) return;
     try {
+      if (state.calibrationActive || state.calibrationBusy) await stopCalibration(false);
       if (state.liveMonitorActive) await stopLiveMonitor(false);
       if (state.liveLightingActive || state.liveLightingBusy) await stopLiveLighting();
       const source = (await file.text()).replace(/^\uFEFF/, "");
@@ -1321,6 +1836,7 @@
     if (!state.driver || state.source !== "device" || !state.dirty.size) return;
     const dirty = [...state.dirty];
     try {
+      if (state.calibrationActive || state.calibrationBusy) await stopCalibration(false);
       if (state.liveMonitorActive) await stopLiveMonitor(false);
       if (state.liveLightingActive || state.liveLightingBusy) await stopLiveLighting();
       showProgress("Writing staged changes", 0, "Do not disconnect the keyboard.");
@@ -1366,6 +1882,9 @@
   async function resetToLanding({ closeDevice = false, stopMonitor = true, message = "" } = {}) {
     if (state.liveFrame) cancelAnimationFrame(state.liveFrame);
     state.liveFrame = 0;
+    if (stopMonitor && (state.calibrationActive || state.calibrationBusy) && state.driver) {
+      try { await stopCalibration(false); } catch (_) { /* the device may already be gone */ }
+    }
     if (stopMonitor && state.liveMonitorActive && state.driver) {
       try { await stopLiveMonitor(false); } catch (_) { /* the device may already be gone */ }
     }
@@ -1374,15 +1893,21 @@
     }
     state.liveTelemetryUnsubscribe?.();
     state.liveTelemetryUnsubscribe = null;
+    state.calibrationUnsubscribe?.();
+    state.calibrationUnsubscribe = null;
     state.profileChangeUnsubscribe?.();
     state.profileChangeUnsubscribe = null;
     state.liveMonitorActive = false;
     state.liveMonitorBusy = false;
+    state.calibrationActive = false;
+    state.calibrationBusy = false;
+    state.calibrationOperationPromise = null;
     state.liveLightingActive = false;
     state.liveLightingBusy = false;
     state.liveLightingGeneration += 1;
     if (state.liveLightingTimer) window.clearTimeout(state.liveLightingTimer);
     state.liveLightingTimer = 0;
+    cancelLiveLightingAnimation({ clearDisplay: true });
     state.liveLightingColors.fill(null);
     if (closeDevice && state.driver) {
       try { await state.driver.close(); } catch (_) { /* no-op */ }
@@ -1402,6 +1927,9 @@
     state.liveTravel.fill(0);
     state.liveTravelRaw.fill(0);
     state.liveTravelStatus.fill(0);
+    state.calibrationStatus.fill(null);
+    state.calibrationTravelRaw.fill(0);
+    state.calibrationLastIndex = null;
     $("#workspaceView")?.classList.add("hidden");
     $("#welcomeView")?.classList.remove("hidden");
     updateChrome();
@@ -1420,6 +1948,7 @@
     $("#welcomeFileButton")?.addEventListener("click", () => $("#fileInput")?.click());
     $("#fileInput")?.addEventListener("change", (event) => loadFile(event.target.files[0]));
     $("#demoButton")?.addEventListener("click", async () => {
+      if (state.calibrationActive || state.calibrationBusy) await stopCalibration(false);
       state.profileChangeUnsubscribe?.();
       state.profileChangeUnsubscribe = null;
       if (state.driver) { try { await state.driver.close(); } catch (_) { /* no-op */ } }
@@ -1428,7 +1957,16 @@
       log("info", "Demo workspace opened");
     });
     $("#homeButton")?.addEventListener("click", returnHome);
-    $("#sideNav")?.addEventListener("click", async (event) => { const button = event.target.closest("[data-page]"); if (!button) return; if (state.page === "hall" && button.dataset.page !== "hall" && state.liveMonitorActive) await stopLiveMonitor(false); if (state.page === "lighting" && button.dataset.page !== "lighting" && (state.liveLightingActive || state.liveLightingBusy)) await stopLiveLighting(); state.page = button.dataset.page; renderPage(); });
+    $("#sideNav")?.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-page]");
+      if (!button) return;
+      if (state.page === "hall" && button.dataset.page !== "hall" && (state.calibrationActive || state.calibrationBusy)) await stopCalibration(false);
+      if (state.page === "hall" && button.dataset.page !== "hall" && state.liveMonitorActive) await stopLiveMonitor(false);
+      if (state.page === "hall" && button.dataset.page !== "hall") { state.hallEditPending = false; state.hallEditSelection.clear(); }
+      if (state.page === "lighting" && button.dataset.page !== "lighting" && (state.liveLightingActive || state.liveLightingBusy)) await stopLiveLighting();
+      state.page = button.dataset.page;
+      renderPage();
+    });
     $("#exportButton")?.addEventListener("click", exportProfile);
     $("#revertButton")?.addEventListener("click", revertStaged);
     $("#applyButton")?.addEventListener("click", openApplyConfirmation);
@@ -1451,7 +1989,10 @@
       log("warning", "Keyboard disconnected");
       void resetToLanding({ stopMonitor: false, message: "Keyboard disconnected. Returned to the connection screen." });
     });
-    window.addEventListener("beforeunload", () => { if ((state.liveMonitorActive || state.liveLightingActive) && state.driver) void state.driver.stopLiveTelemetry(); });
+    window.addEventListener("beforeunload", () => {
+      if (state.calibrationActive && state.driver) void state.driver.endCalibration();
+      else if ((state.liveMonitorActive || state.liveLightingActive) && state.driver) void state.driver.stopLiveTelemetry();
+    });
   }
 
   renderMiniKeyboard();
