@@ -5,6 +5,9 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
   const APP_MODE = document.body.dataset.appMode || "live";
+  const APP_SCRIPT_URL = document.currentScript?.src || window.location.href;
+  const FACTORY_PROFILE_URL = new URL("src/factory_config.json", APP_SCRIPT_URL).href;
+  const FACTORY_RESET_SECTIONS = Object.freeze(["advanced", "keymap", "hall", "lighting"]);
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
   const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
@@ -50,7 +53,7 @@
     { title: "Media and applications", items: [["Play / Pause", 205, 0, "Play"], ["Next track", 181, 0, "Next"], ["Previous track", 182, 0, "Prev"], ["Stop", 183, 0, "Stop"], ["Volume up", 233, 0, "Vol+"], ["Volume down", 234, 0, "Vol−"], ["Mute", 226, 0, "Mute"], ["Calculator", 146, 1, "Calc"], ["Browser home", 35, 2, "Home"], ["Browser back", 36, 2, "Back"], ["Browser forward", 37, 2, "Forward"]].map(([name, code1, code2, short]) => key(name, 48, code1, code2, short)) },
     { title: "macOS", macOnly: true, items: [["Siri", 207, 0, "Siri"], ["Launchpad", 160, 2, "Launchpad"]].map(([name, code1, code2, short]) => key(name, 48, code1, code2, short)) },
     { title: "Mouse and system", items: [["Mouse left", 32, 1, 0, "M1"], ["Mouse right", 32, 2, 0, "M2"], ["Mouse middle", 32, 4, 0, "M3"], ["Mouse back", 32, 16, 0, "M4"], ["Mouse forward", 32, 8, 0, "M5"], ["Wheel up", 33, 0, 1, "Wheel+"], ["Wheel down", 33, 0, 255, "Wheel−"], ["Power", 64, 1, 0, "Power"], ["Sleep", 64, 2, 0, "Sleep"], ["Wake", 64, 4, 0, "Wake"]].map(([name, type, code1, code2, short]) => key(name, type, code1, code2, short)) },
-    { title: "Keyboard functions", items: [["Windows mode", 4, 0, "WinOS"], ["macOS mode", 5, 0, "MacOS"], ["Toggle Windows / macOS", 6, 0, "Win/Mac"], ["N / All", 160, 0, "N/ALL"], ["RGB mode +", 46, 0, "RGB+"], ["RGB mode −", 47, 0, "RGB−"], ["RGB mode", 48, 0, "RGB"], ["Brightness +", 50, 0, "Bright+"], ["Brightness −", 51, 0, "Bright−"], ["Brightness off", 53, 0, "Light off"], ["Speed +", 54, 0, "Speed+"], ["Speed −", 55, 0, "Speed−"], ["Color +", 61, 0, "Color+"]].map(([name, code1, code2, short]) => key(name, 240, code1, code2, short)) },
+    { title: "Keyboard functions", items: [["Factory reset (hold 3s)", 8, 0, "Reset 3s"], ["Open EPOMAKER web driver", 87, 0, "EPOMAKER Web"], ["Windows mode", 4, 0, "WinOS"], ["macOS mode", 5, 0, "MacOS"], ["Toggle Windows / macOS", 6, 0, "Win/Mac"], ["N / All", 160, 0, "N/ALL"], ["RGB mode +", 46, 0, "RGB+"], ["RGB mode −", 47, 0, "RGB−"], ["RGB mode", 48, 0, "RGB"], ["Brightness +", 50, 0, "Bright+"], ["Brightness −", 51, 0, "Bright−"], ["Brightness off", 53, 0, "Light off"], ["Speed +", 54, 0, "Speed+"], ["Speed −", 55, 0, "Speed−"], ["Color +", 61, 0, "Color+"]].map(([name, code1, code2, short]) => key(name, 240, code1, code2, short)) },
   ]);
   const ALL_MAPPINGS = MAPPING_GROUPS.flatMap((group) => group.items);
   const BASIC_MAPPING_CHOICES = ALL_MAPPINGS.filter((mapping) => mapping.type === 16 && mapping.code1 === 0);
@@ -125,6 +128,7 @@
     advancedEditIndex: null,
     advancedType: null,
     pendingProfile: null,
+    factoryResetBusy: false,
   };
 
   function mappingFromPreset(preset, layer = state.layer) {
@@ -392,7 +396,7 @@
     const lastKey = state.calibrationLastIndex == null ? "Waiting for a key" : physicalName(state.calibrationLastIndex);
     const buttonText = state.calibrationBusy ? "Working\u2026" : state.calibrationActive ? "Stop calibration" : "Start calibration";
     return `<section class="panel calibration-panel${state.calibrationActive ? " active" : ""}">
-      <div class="calibration-heading"><div><span class="chip">SWITCH CALIBRATION</span><h2>${state.calibrationActive ? "Calibration in progress" : "Calibrate Hall switches"}</h2><p>${state.calibrationActive ? "Press every physical key one at a time until it turns blue." : "Re-measure the top and bottom range of all 36 magnetic switches using the keyboard's original calibration mode."}</p></div><button class="button ${state.calibrationActive ? "secondary" : "primary"}" id="calibrationButton" type="button"${!connected || state.calibrationBusy ? " disabled" : ""}>${buttonText}</button></div>
+      <div class="calibration-heading"><div><span class="chip">SWITCH CALIBRATION</span><h2>${state.calibrationActive ? "Calibration in progress" : "Calibrate Magnetic Switches"}</h2><p>${state.calibrationActive ? "Press every physical key one at a time until it turns blue." : "Re-measure the top and bottom range of all 36 magnetic switches using the keyboard's original calibration mode."}</p></div><button class="button ${state.calibrationActive ? "secondary" : "primary"}" id="calibrationButton" type="button"${!connected || state.calibrationBusy ? " disabled" : ""}>${buttonText}</button></div>
       ${state.calibrationActive ? `<div class="calibration-progress"><div><span>Completed</span><strong id="calibrationCompleted">${completed} / ${PHYSICAL_KEYS.length}</strong></div><div class="calibration-progress-track"><i id="calibrationProgressFill" style="width:${((completed / PHYSICAL_KEYS.length) * 100).toFixed(2)}%"></i></div><div><span>Current key</span><strong id="calibrationLastKey">${esc(lastKey)}</strong></div></div>
         <div class="calibration-instructions"><ol><li>Press each key at a steady pace using normal typing force until it fully bottoms out.</li><li>Calibrate one key at a time. Blue means that key is complete.</li><li>When all keys are complete, choose <b>Stop calibration</b> to exit safely.</li><li>Recalibrate after replacing any magnetic switch.</li></ol><div class="calibration-legend"><span><i class="waiting"></i>Awaiting</span><span><i class="progress"></i>Measuring${activeKeys ? ` (${activeKeys})` : ""}</span><span><i class="complete"></i>Complete</span></div></div>` : `<div class="calibration-idle-note">Calibration is a live hardware operation and does not create staged profile changes. Live Hall monitoring is stopped before calibration begins.</div>`}
     </section>`;
@@ -504,14 +508,17 @@
 
   function factoryResetCardHtml() {
     const profileNumber = clamp((state.profile?.profileIndex ?? 0) + 1, 1, API.PROFILE_COUNT);
-    const unavailable = "A bundled default-profile JSON file has not been configured yet.";
-    return `<div class="section-heading factory-reset-heading"><div><h2>Factory reset</h2><p>Restore onboard configuration from a known, versioned default profile.</p></div><span class="chip factory-reset-status">DEFAULT FILE REQUIRED</span></div>
-      <section class="panel panel-pad factory-reset-panel" aria-describedby="factoryResetUnavailable">
+    const connected = state.source === "device" && Boolean(state.driver);
+    const disabled = !connected || state.factoryResetBusy;
+    const status = state.factoryResetBusy ? "RESETTING…" : connected ? "FACTORY PROFILE READY" : "CONNECT KEYBOARD";
+    const buttonTitle = connected ? "" : "Connect the keyboard to restore its onboard configuration.";
+    return `<div class="section-heading factory-reset-heading"><div><h2>Factory reset</h2><p>Restore onboard mappings and behavior from the bundled Profile 1 factory configuration.</p></div><span class="chip factory-reset-status">${status}</span></div>
+      <section class="panel panel-pad factory-reset-panel" aria-describedby="factoryResetScope">
         <div class="factory-reset-grid">
-          <article class="factory-reset-action"><div><strong>Reset current profile</strong><p>Will restore only onboard Profile ${profileNumber} after the matching default JSON is bundled and validated.</p></div><button class="button secondary" type="button" data-factory-reset="current" disabled title="${esc(unavailable)}">Reset Profile ${profileNumber}</button></article>
-          <article class="factory-reset-action danger"><div><strong>Reset all profiles</strong><p>Will restore all three onboard profiles. The original driver also clears every stored macro during this operation.</p></div><button class="button secondary" type="button" data-factory-reset="all" disabled title="${esc(unavailable)}">Reset all profiles</button></article>
+          <article class="factory-reset-action"><div><strong>Reset current profile</strong><p>Restores Profile ${profileNumber}'s four layers, Hall settings, advanced actions, macros, and lighting preset.</p></div><button class="button secondary" type="button" data-factory-reset="current"${disabled ? " disabled" : ""}${buttonTitle ? ` title="${esc(buttonTitle)}"` : ""}>${state.factoryResetBusy ? "Resetting…" : `Reset Profile ${profileNumber}`}</button></article>
+          <article class="factory-reset-action danger"><div><strong>Reset all profiles</strong><p>Restores all three onboard profiles and translates the factory FN/FN1/FN2/FN3 targets to each profile's own four layers.</p></div><button class="button secondary" type="button" data-factory-reset="all"${disabled ? " disabled" : ""}${buttonTitle ? ` title="${esc(buttonTitle)}"` : ""}>${state.factoryResetBusy ? "Resetting…" : "Reset all profiles"}</button></article>
         </div>
-        <div class="callout factory-reset-note" id="factoryResetUnavailable"><b>Not available yet.</b> ${esc(unavailable)} These controls cannot send a reset command until that file path and schema are added.</div>
+        <div class="callout factory-reset-note" id="factoryResetScope"><b>Exact scope:</b> the factory file does not contain device-performance settings or a per-key RGB bank, so those values are preserved. Each profile is read before writing and read back afterward for verification.</div>
       </section>`;
   }
 
@@ -611,7 +618,7 @@
       <section class="panel form-card main-light-card"><div class="lighting-card-heading"><div><h3>Main key lighting</h3><p>Current RGB output for all 36 keys when connected.</p></div><span class="lighting-zone-badge${state.liveLightingActive ? " live" : ""}" id="liveLightingStatus">${esc(liveStatus)}</span></div><div class="lighting-preview keyboard-lighting-preview">${lightingKeyboardPreview()}</div>${effectPicker("light", state.profile.light)}<div class="field-grid lighting-effect-fields">${lightFields("light", state.profile.light)}</div></section>
       <section class="panel form-card strip-light-card"><div class="lighting-card-heading"><div><h3>Light strip</h3><p>The small independent lighting strip on the keyboard.</p></div><span class="lighting-zone-badge">1 zone</span></div><div class="lighting-preview strip-lighting-preview">${lightStripPreview()}</div>${effectPicker("logoLight", state.profile.logoLight)}<div class="field-grid lighting-effect-fields">${lightFields("logoLight", state.profile.logoLight)}</div></section>
     </div>
-    <div class="section-heading lighting-section-heading"><div><h2>Per-key colors</h2><p>Configure the RGB color for each key individually. This effect is saved in the "Preset" effect above.</p></div><span class="configured-badge">Configured values</span></div>
+    <div class="section-heading lighting-section-heading"><div><h2>Per-key colors</h2><p>Configure the RGB color for each key individually. This effect is saved in the "Preset" effect above. Commit changes, then click on "Apply to keyboard"</p></div><span class="configured-badge">Configured values</span></div>
     <div class="color-toolbar panel">
       <label class="field color-picker-field"><span>Selected color</span><div class="color-input-row"><input id="perKeyColor" type="color" value="${esc(selectedColor)}" /><output id="selectedColorHex">${esc(selectedColor.toUpperCase())}</output></div></label>
       <div class="color-selection-summary"><small>Selection</small><strong>${esc(selectionLabel)}</strong></div>
@@ -720,6 +727,7 @@
     $$('[data-edit-advanced]').forEach((button) => button.addEventListener("click", () => openAdvanced(state.profile.advancedKeys[Number(button.dataset.editAdvanced)].type, Number(button.dataset.editAdvanced))));
     $$('[data-delete-advanced]').forEach((button) => button.addEventListener("click", () => deleteAdvanced(Number(button.dataset.deleteAdvanced))));
     $$('[data-profile]').forEach((button) => button.addEventListener("click", () => promptProfileSwitch(Number(button.dataset.profile))));
+    $$('[data-factory-reset]').forEach((button) => button.addEventListener("click", () => resetFromFactoryProfile(button.dataset.factoryReset)));
     $("#exportLogButton")?.addEventListener("click", exportLog);
   }
 
@@ -1822,6 +1830,112 @@
 
   function exportLog() { download(`he30-session-${new Date().toISOString().replace(/[:.]/g, "-")}.json`, JSON.stringify(state.logs, null, 2), "application/json"); }
   function download(fileName, content, type) { const anchor = document.createElement("a"); anchor.href = URL.createObjectURL(new Blob([content], { type })); anchor.download = fileName; anchor.click(); setTimeout(() => URL.revokeObjectURL(anchor.href), 1000); }
+
+  function validateFactoryProfileTemplate(profile) {
+    if (!profile || typeof profile !== "object") throw new Error("The bundled factory profile is not a JSON object.");
+    for (let layer = 0; layer < API.LAYER_COUNT; layer += 1) {
+      const mappings = profile.userKeys?.[layer] || profile.userKeys?.[String(layer)];
+      if (!Array.isArray(mappings) || mappings.length < API.KEY_COUNT) throw new Error(`Factory layer ${layer} must contain ${API.KEY_COUNT} mappings.`);
+      mappings.forEach((mapping, index) => {
+        if (!mapping || !["type", "code1", "code2"].every((field) => Number.isFinite(Number(mapping[field])))) {
+          throw new Error(`Factory layer ${layer}, key ${index + 1} has an invalid mapping.`);
+        }
+        if (Number(mapping.type) === 240 && Number(mapping.code1) === 255) {
+          const fnTarget = Number(mapping.code2);
+          if (!Number.isInteger(fnTarget) || fnTarget < 0 || fnTarget >= API.LAYER_COUNT) {
+            throw new Error(`Factory layer ${layer}, key ${index + 1} targets FN${fnTarget}, outside Profile 1's four-layer template.`);
+          }
+        }
+      });
+    }
+    if (!Array.isArray(profile.travelKeys) || profile.travelKeys.length < API.KEY_COUNT) throw new Error(`The factory profile must contain ${API.KEY_COUNT} Hall records.`);
+    if (!Array.isArray(profile.advancedKeys)) throw new Error("The factory advanced-action list is missing.");
+    if (!profile.light || !profile.logoLight) throw new Error("The factory lighting presets are missing.");
+    return profile;
+  }
+
+  async function loadFactoryProfileTemplate() {
+    const response = await fetch(FACTORY_PROFILE_URL, { cache: "no-cache" });
+    if (!response.ok) throw new Error(`Could not load the bundled factory profile (HTTP ${response.status}).`);
+    return validateFactoryProfileTemplate(await response.json());
+  }
+
+  function prepareFactoryProfile(template, targetProfileIndex, existingProfile) {
+    const target = clamp(targetProfileIndex, 0, API.PROFILE_COUNT - 1);
+    const prepared = clone(template);
+    prepared.profileIndex = target;
+    prepared.name = `HE30 Factory Profile ${target + 1}`;
+    prepared.userKeys = {};
+    for (let layer = 0; layer < API.LAYER_COUNT; layer += 1) {
+      const sourceMappings = template.userKeys?.[layer] || template.userKeys?.[String(layer)];
+      prepared.userKeys[layer] = sourceMappings.map((sourceMapping) => {
+        const mapping = { ...sourceMapping, type: Number(sourceMapping.type), code1: Number(sourceMapping.code1), code2: Number(sourceMapping.code2), profile: target, layer };
+        if (mapping.type === 240 && mapping.code1 === 255) mapping.code2 = API.translateFactoryFnLayer(mapping.code2, target);
+        mapping.name = API.mappingName(mapping.type, mapping.code1, mapping.code2);
+        if (mapping.name === "Unassigned") mapping.name = "";
+        return mapping;
+      });
+    }
+    prepared.deviceSettings = clone(existingProfile.deviceSettings);
+    prepared._rawConfig = clone(existingProfile._rawConfig);
+    prepared._hasRawConfig = true;
+    prepared.colorKeys = clone(existingProfile.colorKeys);
+    prepared._workspaceSections = [...FACTORY_RESET_SECTIONS];
+    return normalizeProfile(prepared);
+  }
+
+  async function resetFromFactoryProfile(scope) {
+    if (state.factoryResetBusy || !state.driver || state.source !== "device") return;
+    const resetAll = scope === "all";
+    if (!resetAll && scope !== "current") return;
+    const currentProfileIndex = state.profile.profileIndex;
+    const targets = resetAll ? Array.from({ length: API.PROFILE_COUNT }, (_, index) => index) : [currentProfileIndex];
+    const targetLabel = resetAll ? "all three onboard profiles" : `onboard Profile ${currentProfileIndex + 1}`;
+    const confirmation = `Restore ${targetLabel} from the bundled factory configuration?\n\nThis overwrites mappings, Hall settings, advanced actions/macros, and lighting presets. Device-performance settings and per-key RGB colors stay unchanged. Any staged changes in the affected profile${resetAll ? "s" : ""} will be discarded.`;
+    if (!window.confirm(confirmation)) return;
+
+    const driver = state.driver;
+    const verifiedProfiles = new Map();
+    let completed = 0;
+    state.factoryResetBusy = true;
+    renderPage();
+    try {
+      if (state.calibrationActive || state.calibrationBusy) await stopCalibration(false);
+      if (state.liveMonitorActive) await stopLiveMonitor(false);
+      if (state.liveLightingActive || state.liveLightingBusy) await stopLiveLighting();
+      showProgress(resetAll ? "Resetting all profiles" : `Resetting Profile ${currentProfileIndex + 1}`, 1, "Validating the bundled factory configuration…");
+      const template = await loadFactoryProfileTemplate();
+      const share = 100 / targets.length;
+      for (let targetIndex = 0; targetIndex < targets.length; targetIndex += 1) {
+        const target = targets[targetIndex];
+        const base = targetIndex * share;
+        const existing = await driver.readProfile(target, (percent, message) => updateProgress(Math.round(base + percent * share * 0.2), `Profile ${target + 1}: ${message}`));
+        if (driver !== state.driver || state.source !== "device") throw new Error("The keyboard connection changed during the reset.");
+        const factoryProfile = prepareFactoryProfile(template, target, existing);
+        const verified = await driver.writeProfile(factoryProfile, FACTORY_RESET_SECTIONS, (percent, message) => updateProgress(Math.round(base + share * 0.2 + percent * share * 0.8), `Profile ${target + 1}: ${message}`));
+        verifiedProfiles.set(target, verified);
+        completed += 1;
+        log("verify", `Factory configuration written and verified on Profile ${target + 1}`);
+      }
+      const restoredCurrent = verifiedProfiles.get(currentProfileIndex) || await driver.readProfile(currentProfileIndex);
+      setWorkspace(restoredCurrent, "device", { identity: state.identity, info: state.info, preserveView: true, layer: 0 });
+      updateProgress(100, "Factory configuration restored and verified.");
+      showToast(resetAll ? "All three profiles were restored and verified." : `Profile ${currentProfileIndex + 1} was restored and verified.`);
+    } catch (error) {
+      if (verifiedProfiles.has(currentProfileIndex)) {
+        setWorkspace(verifiedProfiles.get(currentProfileIndex), "device", { identity: state.identity, info: state.info, preserveView: true, layer: 0 });
+      }
+      const partial = completed ? ` ${completed} profile${completed === 1 ? " was" : "s were"} already restored and verified.` : "";
+      log("error", "Factory reset stopped", error.message);
+      showToast(`Factory reset stopped: ${error.message}${partial}`, true);
+    } finally {
+      state.factoryResetBusy = false;
+      hideProgress();
+      if (state.profile) renderPage();
+      updateChrome();
+      if (state.page === "lighting" && state.driver && state.source === "device") void startLiveLighting();
+    }
+  }
 
   function openApplyConfirmation() {
     $("#confirmList").innerHTML = [...state.dirty].map((section) => `<span>${esc(({ keymap: "Key mappings (all four layers)", hall: "Hall-effect travel settings", settings: "Polling, tick, debounce, locks, and modes", lighting: "Main-key and light-strip lighting", colors: "Per-key color bank", advanced: "Advanced action banks and their host mappings" })[section] || section)}</span>`).join("");

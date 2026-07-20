@@ -46,6 +46,7 @@
 
   const SPECIAL_NAMES = new Map([
     ...Array.from({ length: TOTAL_LAYER_COUNT }, (_, index) => [`255:${index}`, index === 0 ? "FN" : `FN${index}`]),
+    ["8:0", "Factory reset (hold 3s)"], ["87:0", "Open EPOMAKER web driver"],
     ["253:0", "Profile 1"], ["252:0", "Profile 2"], ["251:0", "Profile 3"],
     ["4:0", "Windows mode"], ["5:0", "macOS mode"], ["6:0", "Toggle Windows/macOS"],
     ["160:0", "N/ALL"], ["46:0", "RGB Mode+"], ["47:0", "RGB Mode-"],
@@ -75,6 +76,18 @@
 
   function profileConfigOffset(profileIndex) {
     return 64 * clamp(profileIndex, 0, PROFILE_COUNT - 1);
+  }
+
+  function translateFactoryFnLayer(sourceGlobalLayer, targetProfileIndex) {
+    const source = Number(sourceGlobalLayer);
+    const target = Number(targetProfileIndex);
+    if (!Number.isInteger(source) || source < 0 || source >= LAYER_COUNT) {
+      throw new Error("A factory Fn target must be one of Profile 1's local layers 0 through 3.");
+    }
+    if (!Number.isInteger(target) || target < 0 || target >= PROFILE_COUNT) {
+      throw new Error("A valid target profile is required for Fn translation.");
+    }
+    return target * LAYER_COUNT + source;
   }
 
   function factoryResetPayload(profileIndex) {
@@ -1016,6 +1029,7 @@
     makeMapping,
     inferProfileIndex,
     profileConfigOffset,
+    translateFactoryFnLayer,
     factoryResetPayload,
     factoryResetAllPayload,
     normalizeHexColor,

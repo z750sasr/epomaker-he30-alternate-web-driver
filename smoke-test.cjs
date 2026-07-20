@@ -7,6 +7,7 @@ const appSource = fs.readFileSync(`${root}/app.js`, "utf8");
 const htmlSource = fs.readFileSync(`${root}/index.html`, "utf8");
 const jsonEditorHtml = fs.readFileSync(`${root}/json_editor/index.html`, "utf8");
 const styleSource = fs.readFileSync(`${root}/styles.css`, "utf8");
+const factoryProfile = JSON.parse(fs.readFileSync(`${root}/src/factory_config.json`, "utf8"));
 
 new Function(protocolSource);
 new Function(appSource);
@@ -116,6 +117,18 @@ for (let layer = 0; layer < 12; layer += 1) {
   const expected = layer === 0 ? "FN" : `FN${layer}`;
   if (API.mappingName(240, 255, layer) !== expected) throw new Error(`Global Fn target ${expected} is missing.`);
 }
+if (API.mappingName(240, 8, 0) !== "Factory reset (hold 3s)") throw new Error("The factory Reset action still has a generic label.");
+if (API.mappingName(240, 87, 0) !== "Open EPOMAKER web driver") throw new Error("The factory web-driver shortcut still has a generic label.");
+equal([0, 1, 2].map((profileIndex) => API.translateFactoryFnLayer(1, profileIndex)), [1, 5, 9], "Factory FN1 targets were not translated per profile.");
+equal([0, 1, 2].map((profileIndex) => API.translateFactoryFnLayer(3, profileIndex)), [3, 7, 11], "Factory FN3 targets were not translated per profile.");
+for (let layer = 0; layer < API.LAYER_COUNT; layer += 1) {
+  if (!Array.isArray(factoryProfile.userKeys?.[layer]) || factoryProfile.userKeys[layer].length !== API.KEY_COUNT) throw new Error(`Factory layer ${layer} is incomplete.`);
+}
+if (factoryProfile.travelKeys?.length !== API.KEY_COUNT || !Array.isArray(factoryProfile.advancedKeys) || !factoryProfile.light || !factoryProfile.logoLight) throw new Error("The bundled factory-profile schema is incomplete.");
+const factoryFn1Space = factoryProfile.userKeys[1][28];
+const factoryFn1Escape = factoryProfile.userKeys[1][0];
+equal([factoryFn1Space.type, factoryFn1Space.code1, factoryFn1Space.code2], [240, 87, 0], "The factory Fn1+Space web-driver shortcut changed.");
+equal([factoryFn1Escape.type, factoryFn1Escape.code1, factoryFn1Escape.code2], [240, 8, 0], "The factory Fn1+Escape reset action changed.");
 
 for (const id of ["welcomeView", "workspaceView", "mappingDialog", "advancedDialog", "confirmDialog", "progressOverlay"]) {
   if (!htmlSource.includes(`id="${id}"`)) throw new Error(`Required UI surface is missing: ${id}`);
@@ -136,7 +149,7 @@ if (!appSource.includes("bindHallDragSelection") || !appSource.includes("updateH
 if (!styleSource.includes('data-keyboard-mode="hall"') || !styleSource.includes("touch-action: none") || !styleSource.includes("hall-selection-box")) throw new Error("Hall box-selection styles are missing.");
 if (!appSource.includes('class="mapped primary-label"') || !appSource.includes("Physical:")) throw new Error("Mapped output must be the primary keycap label.");
 if (appSource.includes('data-setting="tachyonMode"')) throw new Error("The capture-only Tachyon bit must not be exposed as a setting.");
-for (const fragment of ["factoryResetCardHtml", 'data-factory-reset="current" disabled', 'data-factory-reset="all" disabled', "DEFAULT FILE REQUIRED", "resetCurrentProfile", "resetAllProfiles"]) {
+for (const fragment of ["factoryResetCardHtml", "FACTORY_PROFILE_URL", "validateFactoryProfileTemplate", "prepareFactoryProfile", "resetFromFactoryProfile", "FACTORY PROFILE READY", "translateFactoryFnLayer", "Device-performance settings and per-key RGB colors stay unchanged"]) {
   if (!appSource.includes(fragment) && !protocolSource.includes(fragment)) throw new Error(`Safe partial factory-reset support is missing: ${fragment}`);
 }
 for (const fragment of ["[102, 103, 104, 105]", '[0, "0.01 mm"]', '[1, "0.005 mm"]', '[2, "0.001 mm"]', "HIDDEN SETTING · USE WITH CAUTION", 'data-rt-sensitivity-preset="0.05"', 'data-rt-sensitivity-preset="0.10"']) {
