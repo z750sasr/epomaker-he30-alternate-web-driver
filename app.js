@@ -63,7 +63,7 @@
     mapping: ["Remapping", "Key mapping", "Click a key to choose its output on any layer."],
     hall: ["Magnetic switches", "Hall effect", "Tune actuation, Rapid Trigger, precision, and dead zones per key."],
     settings: ["Performance", "Device settings", "Configure polling, scanning, debounce, compatibility, and locks."],
-    lighting: ["RGB", "Lighting", "Choose effects, brightness, speed, and per-key colors."],
+    lighting: ["RGB", "Lighting", "Preview and edit the saved colors for all 36 keys and the light strip."],
     advanced: ["Multi-action behavior", "Advanced functions", "Configure DKS, Mod-Tap, Toggle, pairs, combinations, and macros."],
     profiles: ["Onboard memory", "Onboard profiles", "Read, switch, back up, and configure profiles stored on the keyboard."],
     diagnostics: ["Transparency", "Diagnostics", "Inspect identity, connection state, and the local command log."],
@@ -94,6 +94,13 @@
     liveTravelStatus: new Array(128).fill(0),
     liveLastIndex: 0,
     liveFrame: 0,
+    liveLightingActive: false,
+    liveLightingBusy: false,
+    liveLightingTimer: 0,
+    liveLightingGeneration: 0,
+    liveLightingColors: new Array(128).fill(null),
+    liveLightingUpdatedAt: 0,
+    liveLightingError: "",
     colorSelection: new Set([0]),
     dirty: new Set(),
     logs: [],
@@ -277,13 +284,17 @@
       const mapped = mode === "hall" ? `${(state.profile.travelKeys[index].key_actuation / 100).toFixed(2)} mm` : mode === "color" ? color : mappingLabel(mapping);
       const livePercent = mode === "hall" ? clamp((state.liveTravel[index] / Math.max(0.01, state.profile.travelKeys[index].key_max_length || 4)) * 100, 0, 100) : 0;
       const styles = [];
-      if (mode === "color") styles.push(`border-color:${esc(color)}`, `box-shadow:inset 0 -4px rgb(0 0 0 / 18%),0 0 12px ${esc(color)}33`);
+      if (mode === "color") styles.push(`--key-led:${esc(color)}`);
       if (mode === "hall") styles.push(`--travel-pct:${livePercent.toFixed(2)}%`);
       const style = styles.length ? ` style="${styles.join(";")}"` : "";
       const content = mode === "mapping"
         ? `<span class="mapped primary-label">${esc(mapped)}</span><span class="physical secondary-label">Physical: ${esc(label)}</span>`
-        : `<span class="physical">${esc(label)}</span><span class="mapped">${esc(mapped)}</span>`;
-      const title = mode === "mapping" ? ` title="Physical ${esc(label)} is mapped to ${esc(mapped)}"` : "";
+        : mode === "color"
+          ? `<span class="physical">${esc(label)}</span><span class="key-color-value"><i style="--swatch:${esc(color)}"></i>${esc(color.toUpperCase())}</span>`
+          : `<span class="physical">${esc(label)}</span><span class="mapped">${esc(mapped)}</span>`;
+      const title = mode === "mapping"
+        ? ` title="Physical ${esc(label)} is mapped to ${esc(mapped)}"`
+        : mode === "color" ? ` title="${esc(label)} saved color: ${esc(color.toUpperCase())}"` : "";
       const pressed = mode === "hall" || mode === "color" ? ` aria-pressed="${selected.has(index)}"` : "";
       const travelFill = mode === "hall" ? `<i class="travel-fill" aria-hidden="true"></i>` : "";
       return `<button class="keycap${selected.has(index) ? " selected" : ""}${advanced ? " advanced" : ""}${livePercent > .5 ? " live-pressed" : ""}" type="button" data-key-index="${index}"${style}${title}${pressed}>${travelFill}${content}${state.dirty.size ? "<i class=\"key-dot\"></i>" : ""}</button>`;
@@ -311,7 +322,7 @@
         <section class="panel panel-pad"><div class="quick-list">
           ${quickRow("⌨", "Key mapping", `${mappedCount} physical keys mapped on ${globalLayerLabel(state.profile.profileIndex, state.layer)}`, "mapping")}
           ${quickRow("↕", "Hall effect", `${rapidCount} Rapid Trigger keys · ${(averageActuation()).toFixed(2)} mm average actuation`, "hall")}
-          ${quickRow("✦", "Lighting", `Effect ${state.profile.light.effect} · ${state.profile.light.brightness}% brightness`, "lighting")}
+          ${quickRow("✦", "Lighting", `${lightingEffectName("light", state.profile.light.effect)} · ${state.profile.light.brightness}% brightness`, "lighting")}
           ${quickRow("⌁", "Advanced functions", `${state.profile.advancedKeys.length} configured action${state.profile.advancedKeys.length === 1 ? "" : "s"}`, "advanced")}
         </div></section>
         <aside class="panel safety-card"><span class="chip">WRITE SAFETY</span><h2>Changes stay local first.</h2><p>Keyboard reads create a restorable workspace. Apply writes only changed data banks, then reads them back to verify exact bytes.</p><ul><li>No firmware commands in this build</li><li>No automatic writes from controls</li><li>JSON export works without WebHID</li><li>Diagnostics never leave your browser</li></ul></aside>
@@ -428,25 +439,108 @@
 
   function switchRow(title, detail, setting, checked) { return `<div class="switch-row"><div><strong>${esc(title)}</strong><small>${esc(detail)}</small></div><label class="switch"><input type="checkbox" data-setting="${setting}"${checked ? " checked" : ""} /><i></i></label></div>`; }
 
-  const LIGHT_EFFECTS = ["Off", "Static", "Breathing", "Wave", "Ripple", "Reactive", "Rain", "Spectrum", "Neon", "Comet", "Stars", "Laser", "Bloom", "Pulse", "Radar", "Snake", "Fireworks", "Heartbeat", "Aurora", "Waterfall", "Cross", "Spiral", "Music", "Custom"];
+  const MAIN_LIGHT_EFFECTS = Object.freeze([
+    { value: 1, name: "Spectrum", glyph: "▥", brightness: true, speed: true },
+    { value: 2, name: "Stairs", glyph: "▟", brightness: true, color: true, palette: true },
+    { value: 3, name: "Static", glyph: "≡", brightness: true, color: true, palette: true },
+    { value: 4, name: "Breathing", glyph: "≈", brightness: true, speed: true, color: true, palette: true },
+    { value: 5, name: "Hundred Flowers", glyph: "✿", brightness: true, speed: true },
+    { value: 6, name: "Waves", glyph: "≋", brightness: true, speed: true, direction: true, color: true, palette: true },
+    { value: 7, name: "Up and Down Waves", glyph: "≋", brightness: true, speed: true, color: true, palette: true },
+    { value: 8, name: "Fountain", glyph: "♨", brightness: true, speed: true, color: true, palette: true },
+    { value: 9, name: "Galaxy", glyph: "✺", brightness: true, speed: true, direction: true, color: true, palette: true },
+    { value: 10, name: "Rotation", glyph: "↻", brightness: true, speed: true, direction: true, color: true, palette: true },
+    { value: 11, name: "Tide", glyph: "≋", brightness: true, speed: true, color: true, palette: true },
+    { value: 12, name: "Ocean Waves", glyph: "♒", brightness: true, speed: true, color: true, palette: true },
+    { value: 13, name: "Ripples", glyph: "◎", brightness: true, speed: true, color: true, palette: true },
+    { value: 14, name: "Always On Ripples", glyph: "◉", brightness: true, speed: true, color: true, palette: true },
+    { value: 15, name: "Single Point", glyph: "⊙", brightness: true, color: true, palette: true },
+    { value: 16, name: "Grid", glyph: "▦", brightness: true, speed: true, color: true, palette: true },
+    { value: 17, name: "Piano", glyph: "▥", brightness: true, speed: true, color: true, palette: true },
+    { value: 18, name: "Flowing Light", glyph: "∿", brightness: true, speed: true, color: true, palette: true },
+    { value: 19, name: "Raindrops", glyph: "☂", brightness: true, speed: true, color: true, palette: true },
+    { value: 20, name: "Starlight", glyph: "★", brightness: true, speed: true, color: true, palette: true },
+    { value: 21, name: "Fireworks", glyph: "✺", brightness: true, speed: true, direction: true, color: true, palette: true },
+    { value: 22, name: "Waveband", glyph: "〰", brightness: true, speed: true, color: true, palette: true },
+    { value: 255, name: "Lights Off", glyph: "○" },
+    { value: 0, name: "Preset", glyph: "✣", brightness: true },
+  ]);
+  const LIGHT_STRIP_EFFECTS = Object.freeze([
+    { value: 0, name: "Spectrum", glyph: "▥", brightness: true, speed: true, color: true },
+    { value: 1, name: "Wave", glyph: "≋", brightness: true, speed: true, color: true },
+    { value: 2, name: "Close", glyph: "○" },
+    { value: 3, name: "Always on", glyph: "≡", brightness: true, speed: true, color: true },
+    { value: 4, name: "Breathing", glyph: "≈", brightness: true, speed: true, color: true },
+  ]);
+  const lightingEffects = (group) => group === "logoLight" ? LIGHT_STRIP_EFFECTS : MAIN_LIGHT_EFFECTS;
+  const lightingEffect = (group, value) => lightingEffects(group).find((effect) => effect.value === Number(value));
+  const lightingEffectName = (group, value) => lightingEffect(group, value)?.name || `Effect ${value}`;
+
+  function configuredLightingColor(index) {
+    if (state.liveLightingActive && state.liveLightingColors[index]) return state.liveLightingColors[index];
+    const light = state.profile.light;
+    if (light.effect === 255 || light.brightness === 0) return "#000000";
+    return API.normalizeHexColor(light.singleColor ? light.color : state.profile.colorKeys[index], "#000000");
+  }
+
+  function lightingKeyboardPreview() {
+    const brightness = clamp(state.profile.light.brightness, 0, 100);
+    return `<div class="lighting-board" data-lighting-board aria-label="Configured 36-key lighting preview">${HE30_LAYOUT.map((row) => `<div class="lighting-board-row">${row.map(({ index, label }) => {
+      const color = configuredLightingColor(index);
+      const opacity = state.profile.light.effect === 255 ? 0.18 : 0.35 + brightness * 0.0065;
+      return `<i class="lighting-board-key" data-light-index="${index}" style="--key-led:${esc(color)};--key-opacity:${opacity.toFixed(2)};--key-glow:${Math.round(opacity * 45)}%" title="${esc(label)}: ${esc(color.toUpperCase())}"><span>${esc(label)}</span></i>`;
+    }).join("")}</div>`).join("")}</div>`;
+  }
+
+  function lightStripPreview() {
+    const light = state.profile.logoLight;
+    const color = light.effect === 2 || light.brightness === 0 ? "#000000" : API.normalizeHexColor(light.color, "#000000");
+    const opacity = light.effect === 2 || light.brightness === 0 ? 0.15 : 0.35 + clamp(light.brightness, 0, 100) * 0.0065;
+    return `<div class="strip-device" style="--strip-color:${esc(color)};--strip-opacity:${opacity.toFixed(2)}">
+      <div class="light-strip" role="img" aria-label="Configured light strip color ${esc(color.toUpperCase())}"><i></i></div>
+      <span>${esc(lightingEffectName("logoLight", light.effect))} · ${light.brightness}% · ${esc(color.toUpperCase())}</span>
+    </div>`;
+  }
+
   function renderLighting() {
-    return `<div class="overview-grid">
-      <section class="panel form-card"><h3>Main key lighting</h3><p>Profile-wide RGB effect and behavior.</p><div class="lighting-preview" style="--preview-color:${esc(state.profile.light.color)}"><div class="preview-board">${Array.from({ length: 28 }, () => "<i></i>").join("")}</div></div><div class="field-grid" style="margin-top:16px">${lightFields("light", state.profile.light)}</div></section>
-      <section class="panel form-card"><h3>Logo lighting</h3><p>Independent controls for the keyboard logo zone.</p><div class="lighting-preview" style="--preview-color:${esc(state.profile.logoLight.color)}"><div class="brand-mark" style="width:76px;height:76px;font-size:36px">H</div></div><div class="field-grid" style="margin-top:16px">${lightFields("logoLight", state.profile.logoLight)}</div></section>
+    const selectedIndex = [...state.colorSelection][0];
+    const selectedColor = API.normalizeHexColor(state.profile.colorKeys[selectedIndex ?? 0], state.profile.light.color);
+    const selectedNames = [...state.colorSelection].map(physicalName);
+    const selectionLabel = !selectedNames.length ? "No keys selected" : selectedNames.length <= 3 ? selectedNames.join(", ") : `${selectedNames.slice(0, 2).join(", ")} + ${selectedNames.length - 2} more`;
+    const liveStatus = state.liveLightingActive ? "Live from keyboard" : state.liveLightingBusy ? "Starting live view" : state.source === "device" ? "Configured preview" : "Saved configuration";
+    return `<div class="lighting-control-grid">
+      <section class="panel form-card main-light-card"><div class="lighting-card-heading"><div><h3>Main key lighting</h3><p>Current RGB output for all 36 keys when connected.</p></div><span class="lighting-zone-badge${state.liveLightingActive ? " live" : ""}" id="liveLightingStatus">${esc(liveStatus)}</span></div><div class="lighting-preview keyboard-lighting-preview">${lightingKeyboardPreview()}</div>${effectPicker("light", state.profile.light)}<div class="field-grid lighting-effect-fields">${lightFields("light", state.profile.light)}</div></section>
+      <section class="panel form-card strip-light-card"><div class="lighting-card-heading"><div><h3>Light strip</h3><p>The small independent lighting strip on the keyboard.</p></div><span class="lighting-zone-badge">1 zone</span></div><div class="lighting-preview strip-lighting-preview">${lightStripPreview()}</div>${effectPicker("logoLight", state.profile.logoLight)}<div class="field-grid lighting-effect-fields">${lightFields("logoLight", state.profile.logoLight)}</div></section>
     </div>
-    <div class="section-heading"><div><h2>Per-key colors</h2><p>Select one or more keys, choose a color, then stage it.</p></div></div>
-    <div class="color-toolbar"><label class="field"><span>Selected color</span><input id="perKeyColor" type="color" value="${esc(state.profile.colorKeys[[...state.colorSelection][0] || 0])}" /></label><button class="button primary" id="applyColorButton" type="button">Stage color on ${state.colorSelection.size} key${state.colorSelection.size === 1 ? "" : "s"}</button><button class="button secondary" id="selectAllColors" type="button">Select all 36</button></div>
-    <section class="panel keyboard-panel">${keyboardHtml("color", state.colorSelection)}</section>`;
+    <div class="section-heading lighting-section-heading"><div><h2>Per-key colors</h2><p>The keyboard returned a saved RGB value for each of its 36 physical keys.</p></div><span class="configured-badge">Configured values</span></div>
+    <div class="color-toolbar panel">
+      <label class="field color-picker-field"><span>Selected color</span><div class="color-input-row"><input id="perKeyColor" type="color" value="${esc(selectedColor)}" /><output id="selectedColorHex">${esc(selectedColor.toUpperCase())}</output></div></label>
+      <div class="color-selection-summary"><small>Selection</small><strong>${esc(selectionLabel)}</strong></div>
+      <button class="button primary" id="applyColorButton" type="button"${state.colorSelection.size ? "" : " disabled"}>Stage on ${state.colorSelection.size} key${state.colorSelection.size === 1 ? "" : "s"}</button>
+      <button class="button secondary" id="useMainColorButton" type="button">Use main color</button>
+      <button class="button secondary" id="selectAllColors" type="button">Select all 36</button>
+    </div>
+    <section class="panel keyboard-panel color-keyboard-panel">${keyboardHtml("color", state.colorSelection)}<div class="keyboard-legend color-legend"><span><i class="selected-color-dot"></i>Selected</span><span>Click a key to select it · Ctrl/Cmd-click for multiple keys</span><span>Colors are staged locally until you apply them to the keyboard</span></div></section>
+    <div class="callout lighting-callout">The 36-key preview reads the keyboard's current RGB framebuffer while connected, including animated effects. The light strip exposes configuration controls but is not included in the live-frame report.</div>`;
+  }
+
+  function effectPicker(group, light) {
+    const label = group === "logoLight" ? "Light strip effect" : "Main key lighting effect";
+    return `<div class="effect-picker-block"><h4>Effect</h4><div class="effect-picker" role="radiogroup" aria-label="${label}">${lightingEffects(group).map((effect) => {
+      const active = effect.value === Number(light.effect);
+      return `<button class="effect-option${active ? " active" : ""}" type="button" role="radio" aria-checked="${active}" data-light-effect="${group}" data-effect-value="${effect.value}" title="${esc(effect.name)}"><span class="effect-glyph" aria-hidden="true">${effect.glyph}</span><strong>${esc(effect.name)}</strong></button>`;
+    }).join("")}</div></div>`;
   }
 
   function lightFields(group, light) {
-    const effects = LIGHT_EFFECTS.map((name, index) => [index, name]);
-    return `${selectField("Effect", `${group}-effect`, effects, light.effect)}
-      <label class="field"><span>Color</span><input type="color" data-light="${group}" data-light-prop="color" value="${esc(light.color)}" /></label>
-      ${selectField("Brightness", `${group}-brightness`, [[0, "Off"], [20, "20%"], [40, "40%"], [60, "60%"], [80, "80%"], [100, "100%"]], light.brightness)}
-      ${selectField("Speed", `${group}-speed`, [[0, "Slowest"], [1, "Slow"], [2, "Medium"], [3, "Fast"], [4, "Fastest"]], light.speed)}
-      ${selectField("Direction", `${group}-direction`, [[0, "Forward"], [1, "Reverse"]], light.direction)}
-      <div class="switch-row" style="grid-column:1/-1"><div><strong>Single color</strong><small>Use the selected color instead of the effect palette</small></div><label class="switch"><input type="checkbox" data-light="${group}" data-light-prop="singleColor"${light.singleColor ? " checked" : ""} /><i></i></label></div>`;
+    const effect = lightingEffect(group, light.effect) || lightingEffects(group)[0];
+    const fields = [];
+    if (effect.color) fields.push(`<label class="field"><span>Color</span><input type="color" data-light="${group}" data-light-prop="color" value="${esc(light.color)}" /></label>`);
+    if (effect.brightness) fields.push(selectField("Brightness", `${group}-brightness`, [[0, "Off"], [20, "20%"], [40, "40%"], [60, "60%"], [80, "80%"], [100, "100%"]], light.brightness));
+    if (effect.speed) fields.push(selectField("Speed", `${group}-speed`, [[0, "Slowest"], [1, "Slow"], [2, "Medium"], [3, "Fast"], [4, "Fastest"]], light.speed));
+    if (effect.direction) fields.push(selectField("Direction", `${group}-direction`, [[0, "Forward"], [1, "Reverse"]], light.direction));
+    if (effect.palette) fields.push(`<div class="switch-row lighting-palette-switch"><div><strong>Single color</strong><small>Use the selected color instead of the effect palette</small></div><label class="switch"><input type="checkbox" data-light="${group}" data-light-prop="singleColor"${light.singleColor ? " checked" : ""} /><i></i></label></div>`);
+    return fields.length ? fields.join("") : `<div class="effect-no-controls">${esc(effect.name)} has no additional controls.</div>`;
   }
 
   function renderAdvanced() {
@@ -496,16 +590,26 @@
     bindHallDragSelection();
     $("#liveMonitorButton")?.addEventListener("click", toggleLiveMonitor);
     if (state.page === "hall") scheduleLiveVisualUpdate();
+    if (state.page === "lighting" && state.source === "device" && state.driver) void startLiveLighting();
     $("#selectAllKeys")?.addEventListener("click", () => { state.hallSelection = new Set(PHYSICAL_KEYS.map((key) => key.index)); renderPage(); });
     $("#stageHallButton")?.addEventListener("click", stageHallSettings);
     $$('input[type="range"]').forEach((input) => input.addEventListener("input", () => { const output = input.parentElement.querySelector("output"); if (output) output.textContent = `${(Number(input.value) / 100).toFixed(2)} mm`; }));
     ["reportRate", "tickRate", "debounce", "systemMode"].forEach((id) => $(`#${id}`)?.addEventListener("change", (event) => { state.profile.deviceSettings[id] = Number(event.target.value); markDirty("settings"); log("change", `${id} staged`); }));
     $$('[data-setting]').forEach((input) => input.addEventListener("change", () => { state.profile.deviceSettings[input.dataset.setting] = input.checked ? true : false; markDirty("settings"); log("change", `${input.dataset.setting} staged`); }));
     ["light", "logoLight"].forEach((group) => {
-      ["effect", "brightness", "speed", "direction"].forEach((property) => $(`#${group}-${property}`)?.addEventListener("change", (event) => { state.profile[group][property] = Number(event.target.value); markDirty("lighting"); renderPage(); }));
+      ["brightness", "speed", "direction"].forEach((property) => $(`#${group}-${property}`)?.addEventListener("change", (event) => { state.profile[group][property] = Number(event.target.value); markDirty("lighting"); renderPage(); }));
     });
+    $$('[data-light-effect]').forEach((button) => button.addEventListener("click", () => {
+      const group = button.dataset.lightEffect;
+      state.profile[group].effect = Number(button.dataset.effectValue);
+      markDirty("lighting");
+      log("change", `${lightingEffectName(group, state.profile[group].effect)} lighting effect staged`);
+      renderPage();
+    }));
     $$('[data-light]').forEach((input) => input.addEventListener("change", () => { state.profile[input.dataset.light][input.dataset.lightProp] = input.type === "checkbox" ? input.checked : input.value; markDirty("lighting"); renderPage(); }));
+    $("#perKeyColor")?.addEventListener("input", (event) => previewSelectedKeyColor(event.target.value));
     $("#applyColorButton")?.addEventListener("click", () => { const color = $("#perKeyColor").value; state.colorSelection.forEach((index) => { state.profile.colorKeys[index] = color; }); markDirty("colors"); log("change", `Per-key color staged on ${state.colorSelection.size} keys`); renderPage(); });
+    $("#useMainColorButton")?.addEventListener("click", () => { const input = $("#perKeyColor"); input.value = API.normalizeHexColor(state.profile.light.color); previewSelectedKeyColor(input.value); });
     $("#selectAllColors")?.addEventListener("click", () => { state.colorSelection = new Set(PHYSICAL_KEYS.map((key) => key.index)); renderPage(); });
     $$('[data-add-advanced]').forEach((button) => button.addEventListener("click", () => openAdvanced(button.dataset.addAdvanced)));
     $$('[data-edit-advanced]').forEach((button) => button.addEventListener("click", () => openAdvanced(state.profile.advancedKeys[Number(button.dataset.editAdvanced)].type, Number(button.dataset.editAdvanced))));
@@ -701,6 +805,115 @@
       state.liveTravelStatus.fill(0);
       if (render && state.page === "hall") renderPage();
     }
+  }
+
+  function updateLiveLightingUI() {
+    const status = $("#liveLightingStatus");
+    if (status) {
+      status.textContent = state.liveLightingError ? "Live view retrying" : state.liveLightingActive ? "Live from keyboard" : state.liveLightingBusy ? "Starting live view" : "Configured preview";
+      status.classList.toggle("live", state.liveLightingActive && !state.liveLightingError);
+    }
+    if (!state.liveLightingActive) return;
+    PHYSICAL_KEYS.forEach(({ index, label }) => {
+      const color = state.liveLightingColors[index];
+      if (!color) return;
+      const key = $(`[data-lighting-board] [data-light-index="${index}"]`);
+      if (!key) return;
+      key.style.setProperty("--key-led", color);
+      key.style.setProperty("--key-opacity", "1");
+      key.style.setProperty("--key-glow", "45%");
+      key.title = `${label} live color: ${color.toUpperCase()}`;
+    });
+  }
+
+  async function pollLiveLighting(generation) {
+    if (generation !== state.liveLightingGeneration || !state.liveLightingActive || !state.driver || state.page !== "lighting") return;
+    try {
+      const colors = await state.driver.readLiveColors();
+      if (generation !== state.liveLightingGeneration || state.page !== "lighting") return;
+      state.liveLightingColors = colors.map((color) => API.normalizeHexColor(color, "#000000"));
+      state.liveLightingUpdatedAt = Date.now();
+      state.liveLightingError = "";
+      updateLiveLightingUI();
+    } catch (error) {
+      if (generation !== state.liveLightingGeneration) return;
+      if (!state.liveLightingError) log("warning", "Live RGB frame read failed; retrying", error.message);
+      state.liveLightingError = error.message;
+      updateLiveLightingUI();
+    }
+    if (generation !== state.liveLightingGeneration || !state.liveLightingActive) return;
+    const delay = [0, 3, 255].includes(state.profile?.light?.effect) ? 1000 : 300;
+    state.liveLightingTimer = window.setTimeout(() => void pollLiveLighting(generation), state.liveLightingError ? 1200 : delay);
+  }
+
+  async function startLiveLighting() {
+    if (!state.driver || state.source !== "device" || state.page !== "lighting" || state.liveLightingActive || state.liveLightingBusy) return;
+    const driver = state.driver;
+    const generation = ++state.liveLightingGeneration;
+    state.liveLightingBusy = true;
+    state.liveLightingError = "";
+    updateLiveLightingUI();
+    try {
+      await driver.startLiveTelemetry(state.profile.profileIndex);
+      if (generation !== state.liveLightingGeneration || driver !== state.driver || state.page !== "lighting") {
+        await driver.stopLiveTelemetry();
+        return;
+      }
+      state.liveLightingActive = true;
+      state.liveLightingBusy = false;
+      log("info", "Live RGB framebuffer started", { command: "0xDE", keys: PHYSICAL_KEYS.length });
+      updateLiveLightingUI();
+      await pollLiveLighting(generation);
+    } catch (error) {
+      if (generation !== state.liveLightingGeneration) return;
+      try { await driver.stopLiveTelemetry(); } catch (_) { /* no-op */ }
+      state.liveLightingActive = false;
+      state.liveLightingBusy = false;
+      state.liveLightingError = error.message;
+      log("warning", "Live RGB framebuffer could not start", error.message);
+      updateLiveLightingUI();
+    }
+  }
+
+  async function stopLiveLighting() {
+    if (!state.liveLightingActive && !state.liveLightingBusy) return;
+    ++state.liveLightingGeneration;
+    if (state.liveLightingTimer) window.clearTimeout(state.liveLightingTimer);
+    state.liveLightingTimer = 0;
+    state.liveLightingActive = false;
+    state.liveLightingBusy = false;
+    state.liveLightingError = "";
+    state.liveLightingColors.fill(null);
+    updateLiveLightingUI();
+    if (state.driver) {
+      try { await state.driver.stopLiveTelemetry(); }
+      catch (error) { log("warning", "Live RGB diagnostic flag restoration failed", error.message); }
+    }
+  }
+
+  function previewSelectedKeyColor(value) {
+    const color = API.normalizeHexColor(value, "#000000");
+    const colorLabel = color.toUpperCase();
+    const output = $("#selectedColorHex");
+    if (output) output.textContent = colorLabel;
+    state.colorSelection.forEach((index) => {
+      const keycap = $(`[data-keyboard-mode="color"] [data-key-index="${index}"]`);
+      if (keycap) {
+        keycap.style.setProperty("--key-led", color);
+        keycap.title = `${physicalName(index)} preview color: ${colorLabel}`;
+        const swatch = $(".key-color-value i", keycap);
+        if (swatch) swatch.style.setProperty("--swatch", color);
+        const label = $(".key-color-value", keycap);
+        if (label?.lastChild) label.lastChild.textContent = colorLabel;
+      }
+      if (!state.liveLightingActive && !state.profile.light.singleColor && state.profile.light.effect !== 255 && state.profile.light.brightness !== 0) {
+        const previewKey = $(`[data-lighting-board] [data-light-index="${index}"]`);
+        if (previewKey) {
+          previewKey.style.setProperty("--key-led", color);
+          previewKey.title = `${physicalName(index)} preview: ${colorLabel}`;
+        }
+      }
+    });
   }
 
   function handleKeyClick(button, event) {
@@ -974,6 +1187,7 @@
     state.profileSyncLayer = targetLayer;
     try {
       if (state.liveMonitorActive) await stopLiveMonitor(false);
+      if (state.liveLightingActive || state.liveLightingBusy) await stopLiveLighting();
       showProgress(`Loading profile ${target + 1}`, 5, activate ? "Switching the active onboard slot…" : "Keyboard profile changed. Refreshing its settings…");
       if (activate) await driver.setActiveProfile(target);
       const profile = await driver.readProfile(target, (percent, message) => updateProgress(10 + Math.round(percent * .9), message));
@@ -1024,6 +1238,7 @@
   async function connectKeyboard() {
     try {
       if (state.liveMonitorActive) await stopLiveMonitor(false);
+      if (state.liveLightingActive || state.liveLightingBusy) await stopLiveLighting();
       state.profileChangeUnsubscribe?.();
       state.profileChangeUnsubscribe = null;
       if (state.driver) { try { await state.driver.close(); } catch (_) { /* no-op */ } state.driver = null; }
@@ -1053,6 +1268,7 @@
     if (!file) return;
     try {
       if (state.liveMonitorActive) await stopLiveMonitor(false);
+      if (state.liveLightingActive || state.liveLightingBusy) await stopLiveLighting();
       const source = (await file.text()).replace(/^\uFEFF/, "");
       const parsed = JSON.parse(source);
       const profile = normalizeProfile(parsed);
@@ -1093,7 +1309,7 @@
   function download(fileName, content, type) { const anchor = document.createElement("a"); anchor.href = URL.createObjectURL(new Blob([content], { type })); anchor.download = fileName; anchor.click(); setTimeout(() => URL.revokeObjectURL(anchor.href), 1000); }
 
   function openApplyConfirmation() {
-    $("#confirmList").innerHTML = [...state.dirty].map((section) => `<span>${esc(({ keymap: "Key mappings (all four layers)", hall: "Hall-effect travel settings", settings: "Polling, tick, debounce, locks, and modes", lighting: "Main and logo lighting", colors: "Per-key color bank", advanced: "Advanced action banks and their host mappings" })[section] || section)}</span>`).join("");
+    $("#confirmList").innerHTML = [...state.dirty].map((section) => `<span>${esc(({ keymap: "Key mappings (all four layers)", hall: "Hall-effect travel settings", settings: "Polling, tick, debounce, locks, and modes", lighting: "Main-key and light-strip lighting", colors: "Per-key color bank", advanced: "Advanced action banks and their host mappings" })[section] || section)}</span>`).join("");
     $("#confirmBackupCheck").checked = false;
     $("#confirmApplyButton").disabled = true;
     $("#confirmDialog").showModal();
@@ -1106,6 +1322,7 @@
     const dirty = [...state.dirty];
     try {
       if (state.liveMonitorActive) await stopLiveMonitor(false);
+      if (state.liveLightingActive || state.liveLightingBusy) await stopLiveLighting();
       showProgress("Writing staged changes", 0, "Do not disconnect the keyboard.");
       const verified = await state.driver.writeProfile(state.profile, dirty, updateProgress);
       state.profile = normalizeProfile(verified);
@@ -1117,7 +1334,10 @@
     } catch (error) {
       log("error", "Write or verification failed", error.message);
       showToast(`Write stopped: ${error.message}`, true);
-    } finally { hideProgress(); updateChrome(); }
+    } finally {
+      hideProgress(); updateChrome();
+      if (state.page === "lighting" && state.driver && state.source === "device") void startLiveLighting();
+    }
   }
 
   function revertStaged() {
@@ -1149,12 +1369,21 @@
     if (stopMonitor && state.liveMonitorActive && state.driver) {
       try { await stopLiveMonitor(false); } catch (_) { /* the device may already be gone */ }
     }
+    if (stopMonitor && (state.liveLightingActive || state.liveLightingBusy) && state.driver) {
+      try { await stopLiveLighting(); } catch (_) { /* the device may already be gone */ }
+    }
     state.liveTelemetryUnsubscribe?.();
     state.liveTelemetryUnsubscribe = null;
     state.profileChangeUnsubscribe?.();
     state.profileChangeUnsubscribe = null;
     state.liveMonitorActive = false;
     state.liveMonitorBusy = false;
+    state.liveLightingActive = false;
+    state.liveLightingBusy = false;
+    state.liveLightingGeneration += 1;
+    if (state.liveLightingTimer) window.clearTimeout(state.liveLightingTimer);
+    state.liveLightingTimer = 0;
+    state.liveLightingColors.fill(null);
     if (closeDevice && state.driver) {
       try { await state.driver.close(); } catch (_) { /* no-op */ }
     }
@@ -1199,7 +1428,7 @@
       log("info", "Demo workspace opened");
     });
     $("#homeButton")?.addEventListener("click", returnHome);
-    $("#sideNav")?.addEventListener("click", async (event) => { const button = event.target.closest("[data-page]"); if (!button) return; if (state.page === "hall" && button.dataset.page !== "hall" && state.liveMonitorActive) await stopLiveMonitor(false); state.page = button.dataset.page; renderPage(); });
+    $("#sideNav")?.addEventListener("click", async (event) => { const button = event.target.closest("[data-page]"); if (!button) return; if (state.page === "hall" && button.dataset.page !== "hall" && state.liveMonitorActive) await stopLiveMonitor(false); if (state.page === "lighting" && button.dataset.page !== "lighting" && (state.liveLightingActive || state.liveLightingBusy)) await stopLiveLighting(); state.page = button.dataset.page; renderPage(); });
     $("#exportButton")?.addEventListener("click", exportProfile);
     $("#revertButton")?.addEventListener("click", revertStaged);
     $("#applyButton")?.addEventListener("click", openApplyConfirmation);
@@ -1222,7 +1451,7 @@
       log("warning", "Keyboard disconnected");
       void resetToLanding({ stopMonitor: false, message: "Keyboard disconnected. Returned to the connection screen." });
     });
-    window.addEventListener("beforeunload", () => { if (state.liveMonitorActive && state.driver) void state.driver.stopLiveTelemetry(); });
+    window.addEventListener("beforeunload", () => { if ((state.liveMonitorActive || state.liveLightingActive) && state.driver) void state.driver.stopLiveTelemetry(); });
   }
 
   renderMiniKeyboard();

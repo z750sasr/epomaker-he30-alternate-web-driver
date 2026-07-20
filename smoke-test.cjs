@@ -46,6 +46,9 @@ for (const field of ["switch_type", "key_mode", "priority", "key_actuation", "rt
   equal(travelRoundTrip.map((item) => item[field]), travel.map((item) => item[field]), `Hall field ${field} did not round-trip.`);
 }
 
+const colorValues = Array.from({ length: 128 }, (_, index) => `#${(index * 123457 % 0x1000000).toString(16).padStart(6, "0")}`);
+equal(API.decodeColors(API.encodeColors(colorValues)), colorValues, "Per-key RGB colors did not round-trip.");
+
 const profile = {
   profileIndex: 0,
   userKeys: Object.fromEntries([0, 1, 2, 3].map((layer) => [layer, Array.from({ length: 128 }, () => API.makeMapping(255, 255, 255, 0, layer))])),
@@ -139,6 +142,7 @@ if (routedProfileChange?.profileIndex !== 1 || routedProfileChange?.layer !== 2 
 for (const fragment of ["startLiveTelemetry", "stopLiveTelemetry", "subscribeTelemetry"]) {
   if (!protocolSource.includes(fragment)) throw new Error(`Live telemetry driver support is missing: ${fragment}`);
 }
+if (!protocolSource.includes("readLiveColors") || !protocolSource.includes("this.readBlock(0xde, 0, 384)")) throw new Error("Live RGB framebuffer command 0xDE is missing.");
 for (const fragment of ["subscribeProfileChange", "handleHardwareProfileChange", "syncDeviceProfile", "preserveView: true"]) {
   if (!protocolSource.includes(fragment) && !appSource.includes(fragment)) throw new Error(`Live profile synchronization support is missing: ${fragment}`);
 }
@@ -146,6 +150,20 @@ for (const fragment of ["liveMonitorHtml", "handleLiveTelemetry", "Live press di
   if (!appSource.includes(fragment)) throw new Error(`Live distance infographic support is missing: ${fragment}`);
 }
 if (!styleSource.includes(".switch-infographic") || !styleSource.includes(".travel-fill")) throw new Error("Live distance animation styles are missing.");
+for (const fragment of ["lightingKeyboardPreview", "configuredLightingColor", "data-lighting-board", "Light strip", "Select all 36", "previewSelectedKeyColor"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Lighting page feature is missing: ${fragment}`);
+}
+const mainEffectSource = appSource.match(/const MAIN_LIGHT_EFFECTS = Object\.freeze\(\[([\s\S]*?)\]\);\s*const LIGHT_STRIP_EFFECTS/)?.[1] || "";
+const stripEffectSource = appSource.match(/const LIGHT_STRIP_EFFECTS = Object\.freeze\(\[([\s\S]*?)\]\);\s*const lightingEffects/)?.[1] || "";
+equal([...mainEffectSource.matchAll(/\{ value: (\d+)/g)].map((match) => Number(match[1])), [...Array.from({ length: 22 }, (_, index) => index + 1), 255, 0], "The 24 main-light effect IDs or original-driver order changed.");
+equal([...stripEffectSource.matchAll(/\{ value: (\d+)/g)].map((match) => Number(match[1])), [0, 1, 2, 3, 4], "The five light-strip effect IDs or original-driver order changed.");
+for (const fragment of ["data-light-effect", "data-effect-value", "effectPicker", "lighting-effect-fields", "Hundred Flowers", "Always On Ripples", "Lights Off", "Preset", "Close", "Always on"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Original-driver lighting preset support is missing: ${fragment}`);
+}
+for (const fragment of ["startLiveLighting", "pollLiveLighting", "stopLiveLighting", "Live from keyboard", "readLiveColors"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Live lighting behavior is missing: ${fragment}`);
+}
+if (!styleSource.includes(".lighting-board-key") || !styleSource.includes(".light-strip") || !styleSource.includes('[data-keyboard-mode="color"]')) throw new Error("The 36-key and light-strip lighting previews are incomplete.");
 
 const forbiddenFirmwareTokens = ["flashFirmware", "writeFirmware", "bootloaderCommand", "firmwareFileInput"];
 for (const token of forbiddenFirmwareTokens) {

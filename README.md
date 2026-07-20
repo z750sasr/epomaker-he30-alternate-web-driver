@@ -15,7 +15,9 @@ A dependency-free, local-first configuration studio for supported Epomaker HE30-
 - Mouse, pen, and touch drag-selection for tuning groups of Hall-effect keys together
 - Live Hall travel monitor with per-key fill animation, switch cutaway, actuation marker, and millimeter readout
 - Polling rate, tick rate, debounce, Windows/macOS mode, filtering, Tachyon, and shortcut locks
-- Main/logo lighting plus per-key colors
+- All 24 original main-key lighting presets, all 5 light-strip effects, and their effect-specific controls
+- Main-key lighting, the small light-strip zone, and saved colors for all 36 physical keys
+- Live RGB framebuffer preview for all 36 keys, including onboard animated effects
 - Onboard profile switching on multi-profile models
 - Live profile and layer tracking: onboard profile-key presses automatically refresh every workspace page
 - DKS, Mod-Tap, Toggle, Rappy Snappy, SOCD, combination keys, and macros
@@ -32,6 +34,7 @@ Firmware update and bootloader flashing are intentionally not included.
 - The available resolution steps are `0.01 mm`, `0.005 mm`, and `0.001 mm` for types `102`, `103`, and `105`; type `101` omits `0.001 mm`.
 - Config byte 7 bit 0 is read under the internal name `tachyonMode`, while its unused setter is named `setBerserkMode`. The captured production interface does not call that setter, so HE30 Control preserves the bit without offering a toggle.
 - Live travel uses the original software's Dynamic Display mechanism: config byte 7 bit 3 enables `0xA0` diagnostic reports. Starting the monitor enables that bit in the active profile's 64-byte config bank when necessary; stopping it restores the same profile bank. The stream is unavailable in JSON and demo workspaces.
+- The same temporary Dynamic Display flag exposes command `0xDE`, a 384-byte RGB framebuffer. Its first 108 bytes are the live RGB triplets for the HE30's 36 physical keys; the remaining slots are zero. The light strip is configured separately and is not present in this live frame.
 
 ## Supported captured devices
 

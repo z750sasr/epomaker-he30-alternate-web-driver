@@ -832,7 +832,7 @@
         await this.writeAndVerify(6, 5, offset, enabled, "Live Hall monitor");
       }
       this.telemetryActive = true;
-      this.log("info", "Live Hall telemetry enabled", { profile, configOffset: offset, restoredAfterStop: this.telemetryRestoreNeeded });
+      this.log("info", "Dynamic Display diagnostics enabled", { profile, configOffset: offset, restoredAfterStop: this.telemetryRestoreNeeded });
     }
 
     async stopLiveTelemetry() {
@@ -848,7 +848,12 @@
         await this.writeAndVerify(6, 5, offset, disabled, "Live Hall monitor restoration");
       }
       this.telemetryRestoreNeeded = false;
-      this.log("info", "Live Hall telemetry disabled", { profile, restored: restore });
+      this.log("info", "Dynamic Display diagnostics disabled", { profile, restored: restore });
+    }
+
+    async readLiveColors() {
+      const bytes = await this.readBlock(0xde, 0, 384);
+      return decodeColors(bytes);
     }
 
     async readRawProfile(profileIndex = 0, progress = () => {}) {
