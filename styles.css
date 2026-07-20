@@ -140,7 +140,11 @@ button { color: inherit; }
 .tabs button.active { color: #07130f; background: var(--mint); }
 .keyboard-panel { padding: 22px; overflow: auto; }
 .keyboard-grid { width: max-content; min-width: 558px; display: grid; gap: 8px; margin-inline: auto; }
-.keyboard-grid[data-keyboard-mode="hall"] { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; }
+.keyboard-grid[data-keyboard-mode="hall"] { position: relative; gap: 9px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.keyboard-grid[data-keyboard-mode="hall"] .key-row { gap: 9px; }
+.keyboard-grid[data-keyboard-mode="hall"] .keycap { height: 66px; padding: 10px; }
+.keyboard-grid[data-keyboard-mode="hall"] .keycap .physical { font-size: 13px; }
+.keyboard-grid[data-keyboard-mode="hall"] .keycap .mapped { font-size: 11px; }
 .keyboard-grid[data-keyboard-mode="hall"].drag-selecting { cursor: crosshair; }
 .keyboard-grid[data-keyboard-mode="hall"].drag-selecting .keycap { cursor: crosshair; }
 .hall-selection-box { position: absolute; z-index: 8; border: 1px solid var(--mint); border-radius: 4px; background: rgb(102 247 194 / 13%); box-shadow: 0 0 0 1px rgb(102 247 194 / 10%), 0 0 18px rgb(102 247 194 / 10%); pointer-events: none; }
@@ -247,6 +251,7 @@ button { color: inherit; }
 .keyboard-grid[data-keyboard-mode="hall"].hall-selection-locked .keycap { cursor: not-allowed; }
 .keyboard-grid[data-keyboard-mode="hall"].hall-selection-locked .keycap:not(.selected) { opacity: .48; }
 .hall-stage-button.pending { border-color: rgb(102 247 194 / 70%); box-shadow: 0 0 0 3px rgb(102 247 194 / 9%), 0 0 20px rgb(102 247 194 / 12%); }
+.hall-edit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
 .hall-keyboard-heading, .hall-live-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 20px; }
 .hall-keyboard-heading h2, .hall-live-heading h2 { margin: 0 0 5px; font-size: 16px; }
 .hall-keyboard-heading p, .hall-live-heading p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
@@ -440,6 +445,10 @@ button { color: inherit; }
 .mapping-option:hover, .mapping-option.active { color: var(--mint); border-color: var(--mint); background: rgb(102 247 194 / 7%); }
 .mapping-option strong { display: block; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mapping-option small { display: block; color: var(--muted); font-size: 9px; margin-top: 4px; }
+.mapping-picker-control { width: 100%; min-height: 54px; display: grid; align-content: center; gap: 4px; border: 1px solid var(--line-strong); border-radius: 9px; background: #091522; padding: 9px 11px; color: var(--text); text-align: left; cursor: pointer; }
+.mapping-picker-control:hover, .mapping-picker-control:focus-visible { border-color: var(--mint); box-shadow: 0 0 0 2px rgb(102 247 194 / 10%); outline: 0; }
+.mapping-picker-control strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.mapping-picker-control small { color: var(--muted); font-size: 10px; }
 .modal-footer { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 9px; padding: 15px 24px; border-top: 1px solid var(--line); }
 .advanced-form { padding: 20px 24px; overflow: auto; }
 .form-section { padding: 16px 0; border-bottom: 1px solid var(--line); }
@@ -451,6 +460,28 @@ button { color: inherit; }
 .dks-grid select { min-width: 0; }
 .macro-rows { display: grid; gap: 8px; }
 .macro-row { display: grid; grid-template-columns: 1fr 120px 90px 34px; gap: 7px; align-items: end; }
+.advanced-layer-note { margin: 18px 0 0; }
+.advanced-layer-note b, .advanced-scope-note b { color: var(--mint); }
+.advanced-pair-hosts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.modifier-picker { display: grid; gap: 12px; }
+.modifier-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.modifier-option { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: #0b1827; cursor: pointer; text-align: left; }
+.modifier-option:hover, .modifier-option.selected { color: var(--text); border-color: var(--mint); background: rgb(102 247 194 / 7%); }
+.modifier-option i, .modifier-order-item > span i { width: 22px; height: 22px; flex: 0 0 22px; display: grid; place-items: center; border-radius: 7px; color: var(--mint); background: var(--mint-dark); font-style: normal; font-size: 10px; font-weight: 900; }
+.modifier-option span { overflow: hidden; font-size: 11px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.modifier-order-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-top: 3px; }
+.modifier-order-heading strong { font-size: 12px; }
+.modifier-order-heading small, .modifier-picker > p { color: var(--muted); font-size: 10px; }
+.modifier-order-list { display: grid; gap: 6px; }
+.modifier-order-item { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 9px; background: #0b1827; }
+.modifier-order-item > span { display: flex; align-items: center; gap: 9px; font-size: 11px; font-weight: 750; }
+.modifier-order-item > div { display: flex; gap: 5px; }
+.modifier-order-item button { width: 27px; height: 27px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: #112035; cursor: pointer; }
+.modifier-order-item button:hover:not(:disabled) { color: var(--mint); border-color: var(--mint); }
+.modifier-order-item button:disabled { opacity: .3; cursor: default; }
+.modifier-order-empty { padding: 13px; border: 1px dashed var(--line-strong); border-radius: 9px; color: var(--muted); font-size: 11px; text-align: center; }
+.modifier-picker > p { margin: 0; line-height: 1.5; }
+.combination-base-field { margin-top: 16px; }
 .confirm-list { margin: 20px 24px; display: grid; gap: 8px; }
 .confirm-list span { display: flex; gap: 9px; border: 1px solid var(--line); border-radius: 9px; padding: 11px; font-size: 12px; }
 .confirm-list span::before { content: "✓"; color: var(--mint); }
@@ -511,6 +542,7 @@ button { color: inherit; }
   .share-card-heading .button, .share-card-footer .button { width: 100%; }
   .share-target-grid { grid-template-columns: 1fr; }
   .mapping-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .modifier-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .field-grid { grid-template-columns: 1fr; }
   .lighting-preview { padding: 18px; }
   .main-light-card .effect-picker { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -526,6 +558,9 @@ button { color: inherit; }
   .calibration-instructions ol { grid-template-columns: 1fr; }
   .calibration-legend { justify-content: flex-start; }
   .hall-keyboard-heading, .hall-live-heading { align-items: flex-start; flex-direction: column; }
+  .hall-tuning-heading { align-items: stretch; flex-direction: column; }
+  .hall-edit-actions { justify-content: stretch; }
+  .hall-edit-actions .button { flex: 1 1 180px; }
   .hall-live-panel { max-width: none; }
   .hall-tuning-grid { grid-template-columns: 1fr; }
 }

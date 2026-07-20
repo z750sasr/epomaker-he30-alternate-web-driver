@@ -27,6 +27,7 @@
   const PHYSICAL_KEYS = HE30_LAYOUT.flat();
   const physicalName = (index) => PHYSICAL_KEYS.find((key) => key.index === Number(index))?.label || `Key ${Number(index) + 1}`;
   const PHYSICAL_HID_CODES = Object.freeze({ 0: 41, 30: 58, 31: 59, 32: 60, 33: 61, 34: 62, 35: 63, 29: 53, 1: 30, 2: 31, 3: 32, 4: 33, 5: 34, 6: 35, 7: 43, 8: 20, 9: 26, 10: 8, 11: 21, 12: 23, 13: 57, 14: 4, 15: 22, 16: 7, 17: 9, 18: 10, 19: 225, 20: 29, 21: 27, 22: 6, 23: 25, 24: 5, 25: 224, 26: 255, 27: 226, 28: 44 });
+  const MODIFIER_CHOICES = Object.freeze([[1, "Left Ctrl"], [2, "Left Shift"], [4, "Left Alt"], [8, "Left GUI"], [16, "Right Ctrl"], [32, "Right Shift"], [64, "Right Alt"], [128, "Right GUI"]]);
   const TELEMETRY_INDEX = new Map(Object.entries(PHYSICAL_HID_CODES).map(([index, code]) => [code, Number(index)]));
   const LIVE_LIGHTING_SMOOTHING_MS = 72;
 
@@ -126,6 +127,8 @@
     dirty: new Set(),
     logs: [],
     mappingIndex: null,
+    mappingPickerTarget: null,
+    mappingPickerScope: "all",
     advancedEditIndex: null,
     advancedType: null,
     pendingProfile: null,
@@ -152,6 +155,16 @@
       return modifiers.join("+") || "Unassigned";
     }
     return mapping.name || API.mappingName(mapping.type, mapping.code1, mapping.code2);
+  }
+
+  function defaultMappingForPhysical(index, layer = 0) {
+    const profileIndex = state.profile?.profileIndex || 0;
+    if (Number(index) === 26) return API.makeMapping(240, 255, globalLayerNumber(profileIndex, 1), profileIndex, layer);
+    const hidCode = PHYSICAL_HID_CODES[Number(index)];
+    if (hidCode == null || hidCode === 255) return API.makeMapping(255, 255, 255, profileIndex, layer);
+    return hidCode >= 224 && hidCode <= 231
+      ? API.makeMapping(16, 1 << (hidCode - 224), 0, profileIndex, layer)
+      : API.makeMapping(16, 0, hidCode, profileIndex, layer);
   }
 
   function defaultTravel() {
@@ -324,6 +337,7 @@
 
   function keyboardHtml(mode, selected = new Set()) {
     const compiled = API.compileAdvanced(state.profile);
+    const hallKeyboard = mode === "hall";
     return `<div class="keyboard-grid" data-keyboard-mode="${mode}">${HE30_LAYOUT.map((row) => `<div class="key-row">${row.map((keyItem) => {
       const { index, label } = keyItem;
       const mapping = compiled.userKeys[state.layer][index];
@@ -334,7 +348,7 @@
       const calibrationStatus = mode === "hall" && state.calibrationActive ? state.calibrationStatus[index] : null;
       const calibrationPercent = mode === "hall" && state.calibrationActive ? clamp((state.calibrationTravelRaw[index] / 340) * 100, 0, 100) : 0;
       const calibrationClass = calibrationStatus === 255 ? " calibration-complete" : calibrationStatus === 0 ? " calibration-waiting" : calibrationStatus != null ? " calibration-progress" : "";
-      const styles = [`--key-width:${keyWidth(keyItem)}px`, `--key-u:${keyUnit(keyItem)}`];
+      const styles = [`--key-width:${hallKeyboard ? keyWidth(keyItem, 74, 9) : keyWidth(keyItem)}px`, `--key-u:${keyUnit(keyItem)}`];
       if (mode === "color") styles.push(`--key-led:${esc(color)}`);
       if (mode === "hall") styles.push(`--travel-pct:${livePercent.toFixed(2)}%`);
       if (mode === "hall" && state.calibrationActive) styles.push(`--calibration-pct:${calibrationPercent.toFixed(2)}%`);
@@ -431,10 +445,10 @@
       ? `<section class="panel form-card experimental-setting-card"><span class="chip caution-chip">HIDDEN SETTING · USE WITH CAUTION</span><h3>RT sensitivity accuracy</h3><p>Sets the stored measurement step for Rapid Trigger Press and Release. The original HE30 interface hides this selector, so back up the profile before using it.</p><div class="field-grid">${selectField("Press accuracy", "hallPressPrecision", withCurrentPrecision(first.pressPrecision), first.pressPrecision, !rapidTrigger)}${selectField("Release accuracy", "hallReleasePrecision", withCurrentPrecision(first.releasePrecision), first.releasePrecision, !rapidTrigger || !independentRt)}</div><div class="rt-preset-row"><span>Common sensitivity values</span><button class="button secondary" type="button" data-rt-sensitivity-preset="0.05"${!rapidTrigger ? " disabled" : ""}>0.05 mm</button><button class="button secondary" type="button" data-rt-sensitivity-preset="0.10"${!rapidTrigger ? " disabled" : ""}>0.10 mm</button></div><div class="callout caution-callout"><b>Experimental:</b> the firmware record has only two precision bits. The two buttons set valid 0.05/0.10 mm RT sensitivity values; they are not additional precision codes. Hardware precision remains 0.01, 0.005, or 0.001 mm.</div></section>`
       : `<section class="panel form-card"><h3>RT sensitivity accuracy</h3><p>This HE30 model uses fixed 0.01 mm Rapid Trigger units in the original interface.</p><div class="callout">The precision bits remain intact when settings are saved. Like the original driver, this app hides the selector for device type 104.</div></section>`;
     return `${calibrationPanelHtml()}<div class="hall-primary-grid">
-      <section class="panel keyboard-panel hall-selection-panel"><div class="hall-keyboard-heading"><div><h2>${state.calibrationActive ? "Calibration status" : "Switch selection"}</h2><p id="hallSelectionHint">${state.calibrationActive ? "Use the physical keyboard. Red is awaiting, yellow is measuring, and blue is complete." : `<b id="hallSelectionCount">${selected.length}</b> key<span id="hallSelectionPlural">${selected.length === 1 ? "" : "s"}</span> selected · ${state.hallEditPending ? "Stage these edits before choosing different keys" : "Hold and drag a box around keys, or Ctrl/Cmd-click to toggle"}`}</p></div><button class="button secondary" id="selectAllKeys" type="button"${state.calibrationActive || state.hallEditPending ? " disabled" : ""}>Select all 36</button></div>${keyboardHtml("hall", state.hallSelection)}</section>
+      <section class="panel keyboard-panel hall-selection-panel"><div class="hall-keyboard-heading"><div><h2>${state.calibrationActive ? "Calibration status" : "Switch selection"}</h2><p id="hallSelectionHint">${state.calibrationActive ? "Use the physical keyboard. Red is awaiting, yellow is measuring, and blue is complete." : `<b id="hallSelectionCount">${selected.length}</b> key<span id="hallSelectionPlural">${selected.length === 1 ? "" : "s"}</span> selected · <span id="hallSelectionInstruction">${state.hallEditPending ? "Commit or discard these edits before choosing different keys" : "Hold and drag a box around keys, or Ctrl/Cmd-click to toggle"}</span>`}</p></div><button class="button secondary" id="selectAllKeys" type="button"${state.calibrationActive || state.hallEditPending ? " disabled" : ""}>Select all 36</button></div>${keyboardHtml("hall", state.hallSelection)}</section>
       ${liveMonitorHtml()}
     </div>
-      ${selected.length ? `<div class="section-heading hall-tuning-heading"><div><h2>Selected-key tuning</h2><p>${state.calibrationActive ? "Finish calibration before editing actuation settings." : state.hallEditPending ? `Pending edits are locked to ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}.` : "Change a setting to prepare it for the currently selected keys."}</p></div><button class="button primary hall-stage-button${state.hallEditPending ? " pending" : ""}" id="stageHallButton" type="button"${state.calibrationActive || !state.hallEditPending ? " disabled" : ""}>${state.hallEditPending ? `Commit changes on ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}` : "No changes to stage"}</button></div>
+      ${selected.length ? `<div class="section-heading hall-tuning-heading"><div><h2>Selected-key tuning</h2><p id="hallEditStatus">${state.calibrationActive ? "Finish calibration before editing actuation settings." : state.hallEditPending ? `Pending edits are locked to ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}. Commit them or discard this edit batch.` : "Change a setting to prepare it for the currently selected keys."}</p></div><div class="hall-edit-actions"><button class="button secondary" id="discardHallButton" type="button"${state.calibrationActive || !state.hallEditPending ? " disabled" : ""}>Discard changes</button><button class="button primary hall-stage-button${state.hallEditPending ? " pending" : ""}" id="stageHallButton" type="button"${state.calibrationActive || !state.hallEditPending ? " disabled" : ""}>${state.hallEditPending ? `Commit changes on ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}` : "No changes to stage"}</button></div></div>
       <div class="form-grid hall-tuning-grid${state.calibrationActive ? " calibration-locked" : ""}" id="hallTuningGrid">
         <section class="panel form-card"><h3>Actuation and Rapid Trigger</h3><p>Set the fixed actuation point, then choose standard, regular RT, or the firmware's full-travel RT mode.</p><div class="switch-list hall-switch-list">
           ${hallSwitchRow("Rapid Trigger", "Rapid Trigger dynamically actuates and resets your key based on your intention to press or release the key. Rapid Trigger starts and ends after the actuation point.", "hallRapidTrigger", rapidTrigger)}
@@ -666,6 +680,7 @@
     const count = (type) => state.profile.advancedKeys.filter((item) => item.type === type).length;
     const shared = count("mt") + 2 * (count("rs") + count("socd"));
     return `<div class="advanced-cards">${Object.entries(ADVANCED_META).map(([type, meta]) => `<article class="panel action-card"><span class="action-icon">${meta.icon}</span><h3>${meta.name}</h3><p>${meta.description}</p><button class="icon-action" type="button" data-add-advanced="${type}">+ Add ${meta.name}</button></article>`).join("")}</div>
+      <div class="callout advanced-scope-note"><b>Layer 0 only:</b> new and edited Advanced actions are assigned to the profile's base layer. Imported actions from another layer remain visible so they can be removed; editing one moves it to Layer 0.</div>
       <div class="callout">Device banks: DKS ${count("dks")}/32 · Toggle ${count("tgl")}/32 · Shared Mod-Tap/pair bank ${shared}/32 · Macros ${count("macro")}/32. Pair actions use two shared slots.</div>
       <div class="section-heading"><div><h2>Configured actions</h2><p>Actions are compiled into device banks only when you apply.</p></div></div>
       <div class="configured-list">${state.profile.advancedKeys.length ? state.profile.advancedKeys.map((item, index) => configuredAction(item, index)).join("") : `<div class="panel empty-state"><strong>No advanced actions configured</strong><p>Add one above. The host mapping and underlying bank entry will be staged together.</p></div>`}</div>`;
@@ -736,6 +751,7 @@
     if (state.page === "hall") scheduleLiveVisualUpdate();
     if (state.page === "lighting" && state.source === "device" && state.driver) void startLiveLighting();
     $("#selectAllKeys")?.addEventListener("click", () => { if (state.hallEditPending) return; state.hallSelection = new Set(PHYSICAL_KEYS.map((key) => key.index)); renderPage(); });
+    $("#discardHallButton")?.addEventListener("click", discardHallEdit);
     $("#stageHallButton")?.addEventListener("click", stageHallSettings);
     $$('input[type="range"]').forEach((input) => input.addEventListener("input", () => updateRangeOutput(input)));
     bindDistanceInputs();
@@ -1049,11 +1065,17 @@
     });
     const count = $("#hallSelectionCount");
     const plural = $("#hallSelectionPlural");
+    const instruction = $("#hallSelectionInstruction");
+    const editStatus = $("#hallEditStatus");
     const stage = $("#stageHallButton");
     if (count) count.textContent = state.hallSelection.size;
     if (plural) plural.textContent = state.hallSelection.size === 1 ? "" : "s";
+    if (instruction) instruction.textContent = locked ? "Commit or discard these edits before choosing different keys" : "Hold and drag a box around keys, or Ctrl/Cmd-click to toggle";
+    if (editStatus && locked) editStatus.textContent = `Pending edits are locked to ${targetCount} selected key${targetCount === 1 ? "" : "s"}. Commit them or discard this edit batch.`;
     const selectAll = $("#selectAllKeys");
     if (selectAll && !state.calibrationActive) selectAll.disabled = locked;
+    const discard = $("#discardHallButton");
+    if (discard) discard.disabled = state.calibrationActive || !locked;
     if (stage) {
       stage.disabled = state.calibrationActive || !locked;
       stage.classList.toggle("pending", locked);
@@ -1507,12 +1529,26 @@
     renderPage();
   }
 
+  function discardHallEdit() {
+    if (!state.hallEditPending) return;
+    const targetCount = state.hallEditSelection.size;
+    state.hallEditPending = false;
+    state.hallEditSelection.clear();
+    state.hallSelection.clear();
+    log("info", `Pending Hall edits discarded for ${targetCount} keys`);
+    showToast("Pending Hall edits discarded. Select another key or group.");
+    renderPage();
+  }
+
   function openMapping(index) {
+    state.mappingPickerTarget = null;
+    state.mappingPickerScope = "all";
     state.mappingIndex = index;
     const mapping = API.compileAdvanced(state.profile).userKeys[state.layer][index];
     $("#mappingTitle").textContent = `Remap ${physicalName(index)}`;
     $("#mappingCurrent").textContent = `Currently: ${mappingLabel(mapping)}`;
     $("#mappingAddress").textContent = `${globalLayerLabel(state.profile.profileIndex, state.layer)} · Key ${index}`;
+    $("#clearMappingButton").textContent = "Unassign key";
     $("#mappingSearch").value = "";
     renderMappingGroups("");
     $("#mappingDialog").showModal();
@@ -1521,11 +1557,15 @@
 
   function renderMappingGroups(query) {
     const normalized = query.trim().toLowerCase();
-    const current = state.profile.userKeys[state.layer][state.mappingIndex] || {};
+    const pickerControl = state.mappingPickerTarget ? $(`#${state.mappingPickerTarget}`) : null;
+    const current = pickerControl ? mappingFromControl(pickerControl) : state.profile.userKeys[state.layer][state.mappingIndex] || {};
     const macMode = Number(state.profile.deviceSettings.systemMode) === 1;
     $("#mappingGroups").innerHTML = MAPPING_GROUPS.map((group) => {
       if (group.macOnly && !macMode) return "";
-      const items = group.items.filter((item) => !normalized || `${item.name} ${item.macName || ""} ${group.title}`.toLowerCase().includes(normalized));
+      const items = group.items.filter((item) => {
+        if (state.mappingPickerScope === "basic" && (item.type !== 16 || item.code1 !== 0)) return false;
+        return !normalized || `${item.name} ${item.macName || ""} ${group.title}`.toLowerCase().includes(normalized);
+      });
       if (!items.length) return "";
       return `<section class="mapping-group"><h3>${esc(group.title)}</h3><div class="mapping-options">${items.map((item) => `<button class="mapping-option${item.type === current.type && item.code1 === current.code1 && item.code2 === current.code2 ? " active" : ""}" type="button" data-map="${item.type},${item.code1},${item.code2}"><strong>${esc((macMode && item.macName) || item.name)}</strong><small>${item.type} · ${item.code1} · ${item.code2}</small></button>`).join("")}</div></section>`;
     }).join("") || `<div class="empty-state"><strong>No mappings found</strong><p>Try a shorter search.</p></div>`;
@@ -1546,6 +1586,13 @@
   }
 
   function applyMapping(preset) {
+    if (state.mappingPickerTarget) {
+      const control = $(`#${state.mappingPickerTarget}`);
+      if (control) setMappingControl(control, mappingFromPreset(preset, 0));
+      $("#mappingDialog").close();
+      control?.focus();
+      return;
+    }
     const removedAdvanced = removeAdvancedAtHost(state.mappingIndex, state.layer);
     state.profile.userKeys[state.layer][state.mappingIndex] = mappingFromPreset(preset);
     markDirty("keymap", ...(removedAdvanced.advanced ? ["advanced"] : []), ...(removedAdvanced.hall ? ["hall"] : []));
@@ -1556,18 +1603,49 @@
   }
 
   function clearMapping() {
+    if (state.mappingPickerTarget) {
+      const control = $(`#${state.mappingPickerTarget}`);
+      if (control) setMappingControl(control, API.makeMapping(255, 255, 255, state.profile.profileIndex, 0));
+      $("#mappingDialog").close();
+      control?.focus();
+      return;
+    }
     const removedAdvanced = removeAdvancedAtHost(state.mappingIndex, state.layer);
     state.profile.userKeys[state.layer][state.mappingIndex] = API.makeMapping(255, 255, 255, state.profile.profileIndex, state.layer);
     markDirty("keymap", ...(removedAdvanced.advanced ? ["advanced"] : []), ...(removedAdvanced.hall ? ["hall"] : []));
     $("#mappingDialog").close(); renderPage(); showToast(`${physicalName(state.mappingIndex)} is now unassigned.`);
   }
 
-  function mappingSelect(id, selected, label, choices = ALL_MAPPINGS) {
+  function mappingPickerField(id, selected, label, choices = ALL_MAPPINGS) {
     const current = selected || choices[0];
-    const available = choices.some((mapping) => mapping.type === current.type && mapping.code1 === current.code1 && mapping.code2 === current.code2)
-      ? choices
-      : [{ ...current, name: mappingLabel(current) }, ...choices];
-    return `<label class="field"><span>${esc(label)}</span><select id="${id}">${available.map((mapping) => `<option value="${mapping.type},${mapping.code1},${mapping.code2}"${mapping.type === current.type && mapping.code1 === current.code1 && mapping.code2 === current.code2 ? " selected" : ""}>${esc(mapping.name)}</option>`).join("")}</select></label>`;
+    const scope = choices === BASIC_MAPPING_CHOICES ? "basic" : "all";
+    return `<div class="field"><span>${esc(label)}</span><button class="mapping-picker-control" id="${id}" type="button" data-open-mapping-picker data-mapping-label="${esc(label)}" data-mapping-scope="${scope}" data-mapping-value="${current.type},${current.code1},${current.code2}"><strong>${esc(mappingLabel(current))}</strong><small>Browse the key-mapping library →</small></button></div>`;
+  }
+
+  function mappingFromControl(control) {
+    const [type = 255, code1 = 255, code2 = 255] = String(control?.dataset.mappingValue || "255,255,255").split(",").map(Number);
+    const preset = ALL_MAPPINGS.find((item) => item.type === type && item.code1 === code1 && item.code2 === code2);
+    return mappingFromPreset({ ...(preset || {}), type, code1, code2, name: preset?.name || API.mappingName(type, code1, code2) }, 0);
+  }
+
+  function setMappingControl(control, mapping) {
+    control.dataset.mappingValue = `${mapping.type},${mapping.code1},${mapping.code2}`;
+    const label = $("strong", control);
+    if (label) label.textContent = mappingLabel(mapping);
+  }
+
+  function openAdvancedMappingPicker(control) {
+    state.mappingPickerTarget = control.id;
+    state.mappingPickerScope = control.dataset.mappingScope || "all";
+    const current = mappingFromControl(control);
+    $("#mappingTitle").textContent = `Choose ${control.dataset.mappingLabel || "output"}`;
+    $("#mappingCurrent").textContent = `Currently: ${mappingLabel(current)}`;
+    $("#mappingAddress").textContent = "Advanced action · Layer 0";
+    $("#clearMappingButton").textContent = "Use Unassigned";
+    $("#mappingSearch").value = "";
+    renderMappingGroups("");
+    $("#mappingDialog").showModal();
+    setTimeout(() => $("#mappingSearch").focus(), 30);
   }
 
   function hostSelect(id, selected, label, exclude = null) {
@@ -1586,60 +1664,143 @@
     bindAdvancedForm();
   }
 
+  function advancedLayerNote(originalLayer = 0) {
+    const migrated = Number(originalLayer) !== 0 ? " This imported action is on another layer; staging it will move it to Layer 0." : "";
+    return `<div class="callout advanced-layer-note"><b>Layer 0 only.</b> Advanced actions created or edited here are assigned to the profile's base layer.${migrated}</div>`;
+  }
+
+  function normalizeModifierOrder(order, modifiers = 0) {
+    const validBits = new Set(MODIFIER_CHOICES.map(([bit]) => bit));
+    const result = [];
+    (Array.isArray(order) ? order : []).map(Number).forEach((bit) => {
+      if (validBits.has(bit) && (modifiers & bit) && !result.includes(bit)) result.push(bit);
+    });
+    MODIFIER_CHOICES.forEach(([bit]) => { if ((modifiers & bit) && !result.includes(bit)) result.push(bit); });
+    return result;
+  }
+
+  function modifierSequenceHtml(order) {
+    if (!order.length) return `<div class="modifier-order-empty">Choose modifiers above in the order you want them displayed.</div>`;
+    return order.map((bit, index) => {
+      const name = MODIFIER_CHOICES.find(([value]) => value === bit)?.[1] || `Modifier ${bit}`;
+      return `<div class="modifier-order-item"><span><i>${index + 1}</i>${esc(name)}</span><div><button type="button" data-modifier-move="-1" data-modifier-bit="${bit}" aria-label="Move ${esc(name)} earlier"${index === 0 ? " disabled" : ""}>←</button><button type="button" data-modifier-move="1" data-modifier-bit="${bit}" aria-label="Move ${esc(name)} later"${index === order.length - 1 ? " disabled" : ""}>→</button><button type="button" data-modifier-remove="${bit}" aria-label="Remove ${esc(name)}">×</button></div></div>`;
+    }).join("");
+  }
+
+  function modifierPickerHtml(item) {
+    const modifiers = Number(item.modifiers) || 0;
+    const order = normalizeModifierOrder(item.modifierOrder, modifiers);
+    return `<div class="modifier-picker" data-modifier-picker><input id="comboModifierOrder" type="hidden" value="${order.join(",")}" /><div class="modifier-options">${MODIFIER_CHOICES.map(([bit, name]) => {
+      const position = order.indexOf(bit);
+      return `<button class="modifier-option${position >= 0 ? " selected" : ""}" type="button" data-modifier-option="${bit}" aria-pressed="${position >= 0}"><i>${position >= 0 ? position + 1 : "+"}</i><span>${esc(name)}</span></button>`;
+    }).join("")}</div><div class="modifier-order-heading"><strong>Selected order</strong><small>Use the arrows to reorder the chosen modifiers.</small></div><div class="modifier-order-list" id="comboModifierSequence">${modifierSequenceHtml(order)}</div><p>The selection order is preserved in this workspace and exported backups. The keyboard firmware encodes the active modifiers as one HID mask and sends them together.</p></div>`;
+  }
+
   function advancedFormHtml(type, item) {
-    const layer = item.layer || 0;
+    const originalLayer = item.layer || 0;
     const index1 = item.index1 ?? PHYSICAL_KEYS[0].index;
-    const host = `<div class="form-section"><h3>Host assignment</h3><div class="field-grid">${selectField("Layer", "advLayer", [[0, "Layer 0"], [1, "Layer 1"], [2, "Layer 2"], [3, "Layer 3"]], layer)}${hostSelect("advIndex1", index1, "Host key")}</div></div>`;
+    const host = `<div class="form-section"><h3>Host assignment</h3><div class="field-grid">${hostSelect("advIndex1", index1, "Host key")}</div></div>`;
+    const finish = (content) => `${content}${advancedLayerNote(originalLayer)}`;
     if (type === "dks") {
       const points = item.dksPoint || [40, 160, 300, 80];
       const dksKeys = item.dksKeys || [0, 1, 2, 3].map(() => ({ key: mappingFromPreset(BASIC_MAPPING_CHOICES[0]), downStart: 1, downEnd: 2, upStart: 2, upEnd: 1 }));
       const statusOptions = [[0, "Off"], [1, "Stage 1"], [2, "Stage 2"], [3, "Stage 3"], [4, "Full travel"]];
-      return `${host}<div class="form-section"><h3>Travel points</h3><div class="field-grid">${points.map((point, index) => rangeField(`Point ${index + 1}`, `dksPoint${index}`, point, 1, 400, 1, "mm")).join("")}</div></div><div class="form-section"><h3>Four output actions</h3><div class="field-grid">${dksKeys.map((entry, index) => mappingSelect(`dksKey${index}`, entry.key, `Action ${index + 1}`)).join("")}</div><div class="dks-grid" style="margin-top:14px"><span>Output</span><span>Press start</span><span>Press end</span><span>Release start</span><span>Release end</span>${dksKeys.map((entry, index) => `<strong>Action ${index + 1}</strong>${selectField("", `dks${index}DownStart`, statusOptions, entry.downStart)}${selectField("", `dks${index}DownEnd`, statusOptions, entry.downEnd)}${selectField("", `dks${index}UpStart`, statusOptions, entry.upStart)}${selectField("", `dks${index}UpEnd`, statusOptions, entry.upEnd)}`).join("")}</div><div class="callout">Stage paths define when each output presses and releases across the four travel points.</div></div>`;
+      return finish(`${host}<div class="form-section"><h3>Travel points</h3><div class="field-grid">${points.map((point, index) => rangeField(`Point ${index + 1}`, `dksPoint${index}`, point, 1, 400, 1, "mm")).join("")}</div></div><div class="form-section"><h3>Four output actions</h3><div class="field-grid">${dksKeys.map((entry, index) => mappingPickerField(`dksKey${index}`, entry.key, `Action ${index + 1}`)).join("")}</div><div class="dks-grid" style="margin-top:14px"><span>Output</span><span>Press start</span><span>Press end</span><span>Release start</span><span>Release end</span>${dksKeys.map((entry, index) => `<strong>Action ${index + 1}</strong>${selectField("", `dks${index}DownStart`, statusOptions, entry.downStart)}${selectField("", `dks${index}DownEnd`, statusOptions, entry.downEnd)}${selectField("", `dks${index}UpStart`, statusOptions, entry.upStart)}${selectField("", `dks${index}UpEnd`, statusOptions, entry.upEnd)}`).join("")}</div><div class="callout">Stage paths define when each output presses and releases across the four travel points.</div></div>`);
     }
-    if (type === "mt") return `${host}<div class="form-section"><h3>Tap and hold outputs</h3><div class="field-grid">${mappingSelect("mtClickKey", item.mtClickKey, "Tap output")}${mappingSelect("mtDownKey", item.mtDownKey, "Hold output")}<label class="field"><span>Hold threshold</span><input id="mtTime" type="number" min="10" max="2550" step="10" value="${item.mtTime || 200}" /><small>10–2550 ms, stored in 10 ms steps</small></label></div></div>`;
-    if (type === "tgl") return `${host}<div class="form-section"><h3>Toggle output</h3><div class="field-grid">${mappingSelect("tglKey", item.tglKey, "Output key")}</div></div>`;
+    if (type === "mt") return finish(`${host}<div class="form-section"><h3>Tap and hold outputs</h3><div class="field-grid">${mappingPickerField("mtClickKey", item.mtClickKey, "Tap output")}${mappingPickerField("mtDownKey", item.mtDownKey, "Hold output")}<label class="field"><span>Hold threshold</span><input id="mtTime" type="number" min="10" max="2550" step="10" value="${item.mtTime || 200}" /><small>10–2550 ms, stored in 10 ms steps</small></label></div></div>`);
+    if (type === "tgl") return finish(`${host}<div class="form-section"><h3>Toggle output</h3><div class="field-grid">${mappingPickerField("tglKey", item.tglKey, "Output key")}</div></div>`);
     if (type === "rs" || type === "socd") {
       const option = item.option || {};
-      return `${host}<div class="form-section"><h3>Paired key</h3><div class="field-grid">${hostSelect("advIndex2", item.index2 ?? PHYSICAL_KEYS[1].index, "Second host key", index1)}${mappingSelect("pairKey1", item.key1, "First output")}${mappingSelect("pairKey2", item.key2, "Second output")}${type === "socd" ? selectField("Priority", "pairPriority", [[0, "Neutral / last input"], [1, "First key wins"], [2, "Second key wins"]], option.priority || 0) : ""}</div></div><div class="form-section"><h3>Pair actuation</h3><div class="field-grid">${rangeField("Actuation", "pairActuation", option.actuation || 40, 1, 400, 1, "mm")}${rangeField("RT press", "pairPress", option.press || 10, 1, 400, 1, "mm")}${rangeField("RT release", "pairRelease", option.release || 10, 1, 400, 1, "mm")}</div></div>`;
+      const index2 = item.index2 ?? PHYSICAL_KEYS[1].index;
+      return finish(`<div class="form-section"><h3>Host assignment</h3><div class="field-grid advanced-pair-hosts">${hostSelect("advIndex1", index1, "Host key", index2)}${hostSelect("advIndex2", index2, "Second host key", index1)}</div></div><div class="form-section"><h3>Paired outputs</h3><div class="field-grid">${mappingPickerField("pairKey1", item.key1, "First output")}${mappingPickerField("pairKey2", item.key2, "Second output")}${type === "socd" ? selectField("Priority", "pairPriority", [[0, "Last Input Priority"], [1, "Absolute 1st key"], [2, "Absolute 2nd key"], [3, "Neutral"]], option.priority ?? 0) : ""}</div></div><div class="form-section"><h3>Pair actuation</h3><div class="field-grid">${rangeField("Actuation", "pairActuation", option.actuation || 40, 1, 400, 1, "mm")}${rangeField("RT press", "pairPress", option.press || 10, 1, 400, 1, "mm")}${rangeField("RT release", "pairRelease", option.release || 10, 1, 400, 1, "mm")}</div></div>`);
     }
     if (type === "cb") {
-      const modifiers = item.modifiers || 0;
-      return `${host}<div class="form-section"><h3>Combination</h3><div class="field-grid"><div class="field full"><span>Modifiers</span><div class="switch-list">${[[1, "Left Ctrl"], [2, "Left Shift"], [4, "Left Alt"], [8, "Left GUI"], [16, "Right Ctrl"], [32, "Right Shift"], [64, "Right Alt"], [128, "Right GUI"]].map(([bit, name]) => switchRow(name, `Modifier mask ${bit}`, `modifier-${bit}`, Boolean(modifiers & bit))).join("")}</div></div>${mappingSelect("comboBase", item.baseKey, "Base key", BASIC_MAPPING_CHOICES)}</div></div>`;
+      return finish(`${host}<div class="form-section"><h3>Combination</h3>${modifierPickerHtml(item)}<div class="field-grid combination-base-field">${mappingPickerField("comboBase", item.baseKey, "Base key", BASIC_MAPPING_CHOICES)}</div></div>`);
     }
     const actions = item.actions?.length ? item.actions : [{ action: "keydown", code: 4, delay: 0 }, { action: "keyup", code: 4, delay: 50 }];
-    return `${host}<div class="form-section"><h3>Playback</h3><div class="field-grid"><label class="field"><span>Repeat count</span><input id="macroRepeat" type="number" min="1" max="255" value="${item.macroRepeatCount || 1}" /></label></div></div><div class="form-section"><h3>Macro events</h3><div class="macro-rows" id="macroRows">${actions.map((action, index) => macroRow(action, index)).join("")}</div><button class="icon-action" id="addMacroRow" type="button" style="margin-top:10px">+ Add event</button><div class="callout">Delays are stored per event in milliseconds. Keep matched key-down and key-up events to avoid a stuck key.</div></div>`;
+    return finish(`${host}<div class="form-section"><h3>Playback</h3><div class="field-grid"><label class="field"><span>Repeat count</span><input id="macroRepeat" type="number" min="1" max="255" value="${item.macroRepeatCount || 1}" /></label></div></div><div class="form-section"><h3>Macro events</h3><div class="macro-rows" id="macroRows">${actions.map((action, index) => macroRow(action, index)).join("")}</div><button class="icon-action" id="addMacroRow" type="button" style="margin-top:10px">+ Add event</button><div class="callout">Delays are stored per event in milliseconds. Keep matched key-down and key-up events to avoid a stuck key.</div></div>`);
   }
 
   function macroRow(action, index) {
     const selected = BASIC_MAPPING_CHOICES.find((mapping) => mapping.code2 === Number(action.code)) || BASIC_MAPPING_CHOICES[0];
-    return `<div class="macro-row" data-macro-row>${mappingSelect(`macroKey${index}`, selected, `Event ${index + 1}`, BASIC_MAPPING_CHOICES)}${selectField("Action", `macroAction${index}`, [["keydown", "Key down"], ["keyup", "Key up"]], action.action)}<label class="field"><span>Delay ms</span><input id="macroDelay${index}" type="number" min="0" max="65535" value="${action.delay || 0}" /></label><button class="icon-action delete" type="button" data-remove-macro aria-label="Remove event">×</button></div>`;
+    return `<div class="macro-row" data-macro-row data-macro-index="${index}">${mappingPickerField(`macroKey${index}`, selected, `Event ${index + 1}`, BASIC_MAPPING_CHOICES)}${selectField("Action", `macroAction${index}`, [["keydown", "Key down"], ["keyup", "Key up"]], action.action)}<label class="field"><span>Delay ms</span><input id="macroDelay${index}" type="number" min="0" max="65535" value="${action.delay || 0}" /></label><button class="icon-action delete" type="button" data-remove-macro aria-label="Remove event">×</button></div>`;
+  }
+
+  function currentModifierOrder() {
+    return String($("#comboModifierOrder")?.value || "").split(",").filter(Boolean).map(Number).filter((bit, index, values) => MODIFIER_CHOICES.some(([value]) => value === bit) && values.indexOf(bit) === index);
+  }
+
+  function syncModifierPicker(order) {
+    const hidden = $("#comboModifierOrder");
+    if (!hidden) return;
+    hidden.value = order.join(",");
+    $$('[data-modifier-option]', $("[data-modifier-picker]")).forEach((button) => {
+      const position = order.indexOf(Number(button.dataset.modifierOption));
+      button.classList.toggle("selected", position >= 0);
+      button.setAttribute("aria-pressed", String(position >= 0));
+      const badge = $("i", button);
+      if (badge) badge.textContent = position >= 0 ? position + 1 : "+";
+    });
+    const sequence = $("#comboModifierSequence");
+    if (sequence) sequence.innerHTML = modifierSequenceHtml(order);
+  }
+
+  function bindModifierPicker() {
+    const picker = $("[data-modifier-picker]");
+    if (!picker) return;
+    picker.onclick = (event) => {
+      const order = currentModifierOrder();
+      const option = event.target.closest("[data-modifier-option]");
+      const remove = event.target.closest("[data-modifier-remove]");
+      const move = event.target.closest("[data-modifier-move]");
+      if (option) {
+        const bit = Number(option.dataset.modifierOption);
+        const position = order.indexOf(bit);
+        if (position >= 0) order.splice(position, 1); else order.push(bit);
+      } else if (remove) {
+        const position = order.indexOf(Number(remove.dataset.modifierRemove));
+        if (position >= 0) order.splice(position, 1);
+      } else if (move) {
+        const position = order.indexOf(Number(move.dataset.modifierBit));
+        const next = position + Number(move.dataset.modifierMove);
+        if (position >= 0 && next >= 0 && next < order.length) [order[position], order[next]] = [order[next], order[position]];
+      } else return;
+      syncModifierPicker(order);
+    };
   }
 
   function bindAdvancedForm() {
-    $$('input[type="range"]', $("#advancedFields")).forEach((input) => input.addEventListener("input", () => { const output = input.parentElement.querySelector("output"); if (output) output.textContent = `${(Number(input.value) / 100).toFixed(2)} mm`; }));
-    $("#addMacroRow")?.addEventListener("click", () => { const rows = $$('[data-macro-row]', $("#macroRows")); $("#macroRows").insertAdjacentHTML("beforeend", macroRow({ action: "keydown", code: 4, delay: 0 }, rows.length)); bindAdvancedForm(); });
+    $$('input[type="range"]', $("#advancedFields")).forEach((input) => { input.oninput = () => { const output = input.parentElement.querySelector("output"); if (output) output.textContent = `${(Number(input.value) / 100).toFixed(2)} mm`; }; });
+    $$('[data-open-mapping-picker]', $("#advancedFields")).forEach((button) => { button.onclick = () => openAdvancedMappingPicker(button); });
+    const addMacro = $("#addMacroRow");
+    if (addMacro) addMacro.onclick = () => {
+      const indexes = $$('[data-macro-row]', $("#macroRows")).map((row) => Number(row.dataset.macroIndex));
+      const nextIndex = Math.max(-1, ...indexes) + 1;
+      $("#macroRows").insertAdjacentHTML("beforeend", macroRow({ action: "keydown", code: 4, delay: 0 }, nextIndex));
+      bindAdvancedForm();
+    };
     $$('[data-remove-macro]', $("#advancedFields")).forEach((button) => button.onclick = () => button.closest('[data-macro-row]').remove());
+    bindModifierPicker();
   }
 
   function parseMappingSelect(id) {
-    const [type, code1, code2] = $(`#${id}`).value.split(",").map(Number);
-    const preset = ALL_MAPPINGS.find((item) => item.type === type && item.code1 === code1 && item.code2 === code2) || { name: API.mappingName(type, code1, code2), short: "" };
-    return mappingFromPreset({ ...preset, type, code1, code2 }, Number($("#advLayer").value));
+    return mappingFromControl($(`#${id}`));
   }
 
   function baseMappingForHost(layer, index) {
     const owner = state.profile.advancedKeys.find((entry) => (entry.layer || 0) === layer && (entry.index1 === index || entry.index2 === index));
     if (owner) {
       const stored = owner.index1 === index ? owner.baseMapping : owner.baseMapping2;
-      return clone(stored || API.makeMapping(255, 255, 255, state.profile.profileIndex, layer));
+      return clone(stored || defaultMappingForPhysical(index, layer));
     }
-    return clone(state.profile.userKeys[layer][index]);
+    const current = state.profile.userKeys[layer][index];
+    return clone([112, 144, 145, 146, 147, 148].includes(current?.type) ? defaultMappingForPhysical(index, layer) : current || defaultMappingForPhysical(index, layer));
   }
 
   function restoreAdvancedHosts(item) {
     const layer = item.layer || 0;
-    state.profile.userKeys[layer][item.index1] = clone(item.baseMapping || API.makeMapping(255, 255, 255, state.profile.profileIndex, layer));
-    if (item.index2 != null) state.profile.userKeys[layer][item.index2] = clone(item.baseMapping2 || API.makeMapping(255, 255, 255, state.profile.profileIndex, layer));
+    state.profile.userKeys[layer][item.index1] = clone(item.baseMapping || defaultMappingForPhysical(item.index1, layer));
+    if (item.index2 != null) state.profile.userKeys[layer][item.index2] = clone(item.baseMapping2 || defaultMappingForPhysical(item.index2, layer));
   }
 
   function restorePairTravel(item) {
@@ -1651,7 +1812,7 @@
   function saveAdvanced(event) {
     event.preventDefault();
     const type = state.advancedType;
-    const layer = Number($("#advLayer").value);
+    const layer = 0;
     const index1 = Number($("#advIndex1").value);
     const existing = state.advancedEditIndex == null ? null : state.profile.advancedKeys[state.advancedEditIndex];
     const base = { type, layer, index1, baseMapping: existing && (existing.layer || 0) === layer && existing.index1 === index1 ? existing.baseMapping || baseMappingForHost(layer, index1) : baseMappingForHost(layer, index1) };
@@ -1665,14 +1826,15 @@
       item = { ...base, index2, baseMapping2: existing && (existing.layer || 0) === layer && existing.index2 === index2 ? existing.baseMapping2 || baseMappingForHost(layer, index2) : baseMappingForHost(layer, index2), baseTravel1: existing && (existing.layer || 0) === layer && existing.index1 === index1 ? existing.baseTravel1 || clone(state.profile.travelKeys[index1]) : clone(state.profile.travelKeys[index1]), baseTravel2: existing && (existing.layer || 0) === layer && existing.index2 === index2 ? existing.baseTravel2 || clone(state.profile.travelKeys[index2]) : clone(state.profile.travelKeys[index2]), key1: parseMappingSelect("pairKey1"), key2: parseMappingSelect("pairKey2"), option: { actuation: Number($("#pairActuation").value), press: Number($("#pairPress").value), release: Number($("#pairRelease").value), priority: type === "socd" ? Number($("#pairPriority").value) : 0 } };
     }
     if (type === "cb") {
-      const modifiers = $$('[data-setting^="modifier-"]', $("#advancedFields")).filter((input) => input.checked).reduce((sum, input) => sum + Number(input.dataset.setting.split("-")[1]), 0);
-      if (!modifiers) return showAdvancedError("Choose at least one modifier.");
-      item = { ...base, modifiers, baseKey: parseMappingSelect("comboBase") };
+      const modifierOrder = currentModifierOrder();
+      const modifiers = modifierOrder.reduce((mask, bit) => mask | bit, 0);
+      if (!modifierOrder.length) return showAdvancedError("Choose at least one modifier.");
+      item = { ...base, modifiers, modifierOrder, baseKey: parseMappingSelect("comboBase") };
     }
     if (type === "macro") {
       const actions = $$('[data-macro-row]', $("#macroRows")).map((row) => {
-        const select = $("select[id^=macroKey]", row);
-        const code = Number(select.value.split(",")[2]);
+        const keyControl = $("[data-open-mapping-picker][id^=macroKey]", row);
+        const code = mappingFromControl(keyControl).code2;
         return { action: $("select[id^=macroAction]", row).value, code, delay: clamp($("input[id^=macroDelay]", row).value, 0, 65535), kind: "key" };
       });
       if (!actions.length) return showAdvancedError("Add at least one macro event.");
@@ -1695,7 +1857,7 @@
       const option = item.option;
       [item.index1, item.index2].forEach((index) => Object.assign(state.profile.travelKeys[index], { key_mode: 1, key_actuation: option.actuation, rt_press: option.press, rt_release: option.release }));
       state.profile.travelKeys[item.index1].priority = type === "socd" ? option.priority : 0;
-      state.profile.travelKeys[item.index2].priority = type === "socd" ? (option.priority === 1 ? 2 : option.priority === 2 ? 1 : 0) : 0;
+      state.profile.travelKeys[item.index2].priority = type === "socd" ? (option.priority === 1 ? 2 : option.priority === 2 ? 1 : option.priority) : 0;
     }
     const hallChanged = type === "rs" || type === "socd" || displaced.some((entry) => entry.type === "rs" || entry.type === "socd");
     markDirty("advanced", "keymap", ...(hallChanged ? ["hall"] : []));
@@ -1709,12 +1871,30 @@
     const item = state.profile.advancedKeys[index];
     if (!item) return;
     state.profile.advancedKeys.splice(index, 1);
-    state.profile.userKeys[item.layer || 0][item.index1] = item.baseMapping || API.makeMapping(255, 255, 255, state.profile.profileIndex, item.layer || 0);
-    if (item.index2 != null) state.profile.userKeys[item.layer || 0][item.index2] = item.baseMapping2 || API.makeMapping(255, 255, 255, state.profile.profileIndex, item.layer || 0);
+    restoreAdvancedHosts(item);
     restorePairTravel(item);
     markDirty("advanced", "keymap", ...(item.type === "rs" || item.type === "socd" ? ["hall"] : []));
     log("change", `${ADVANCED_META[item.type]?.name || item.type} removed`);
     renderPage(); showToast("Advanced action removed and host mapping restored.");
+  }
+
+  function preserveAdvancedUiMetadata(profile, stagedActions) {
+    const used = new Set();
+    profile.advancedKeys.forEach((decoded) => {
+      const matchIndex = stagedActions.findIndex((staged, index) => !used.has(index)
+        && staged.type === decoded.type
+        && Number(staged.layer || 0) === Number(decoded.layer || 0)
+        && Number(staged.index1) === Number(decoded.index1)
+        && (decoded.index2 == null || Number(staged.index2) === Number(decoded.index2)));
+      if (matchIndex < 0) return;
+      used.add(matchIndex);
+      const staged = stagedActions[matchIndex];
+      ["baseMapping", "baseMapping2", "baseTravel1", "baseTravel2"].forEach((property) => {
+        if (staged[property] != null) decoded[property] = clone(staged[property]);
+      });
+      if (decoded.type === "cb") decoded.modifierOrder = normalizeModifierOrder(staged.modifierOrder, decoded.modifiers);
+    });
+    return profile;
   }
 
   function preserveStagedProfileForSwitch(nextProfileIndex) {
@@ -2101,8 +2281,9 @@
       if (state.liveMonitorActive) await stopLiveMonitor(false);
       if (state.liveLightingActive || state.liveLightingBusy) await stopLiveLighting();
       showProgress("Writing staged changes", 0, "Do not disconnect the keyboard.");
+      const stagedAdvanced = clone(state.profile.advancedKeys);
       const verified = await state.driver.writeProfile(state.profile, dirty, updateProgress);
-      state.profile = normalizeProfile(verified);
+      state.profile = preserveAdvancedUiMetadata(normalizeProfile(verified), stagedAdvanced);
       state.original = clone(state.profile);
       state.dirty.clear();
       log("verify", `Applied and verified: ${dirty.join(", ")}`);
@@ -2236,6 +2417,7 @@
     $("#confirmSwitchButton")?.addEventListener("click", switchProfile);
     $("#mappingSearch")?.addEventListener("input", (event) => renderMappingGroups(event.target.value));
     $("#clearMappingButton")?.addEventListener("click", clearMapping);
+    $("#mappingDialog")?.addEventListener("close", () => { state.mappingPickerTarget = null; state.mappingPickerScope = "all"; });
     $("#saveAdvancedButton")?.addEventListener("click", saveAdvanced);
     document.addEventListener("keydown", (event) => {
       if (state.source !== "device" || !state.driver) return;

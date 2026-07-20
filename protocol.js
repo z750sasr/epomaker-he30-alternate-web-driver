@@ -858,8 +858,8 @@
         key.rt_release = option.release || key.rt_release;
       });
       if (item.type === "socd") {
-        first.priority = clamp(option.priority || 0, 0, 2);
-        second.priority = first.priority === 1 ? 2 : first.priority === 2 ? 1 : 0;
+        first.priority = clamp(option.priority ?? 0, 0, 3);
+        second.priority = first.priority === 1 ? 2 : first.priority === 2 ? 1 : first.priority;
       }
     });
     return { userKeys, travelKeys, banks };

@@ -82,13 +82,23 @@ const profile = {
     { type: "tgl", layer: 0, index1: 2, tglKey: API.makeMapping(16, 0, 5) },
     { type: "rs", layer: 0, index1: 3, index2: 4, key1: API.makeMapping(16, 0, 4), key2: API.makeMapping(16, 0, 7), option: { actuation: 40, press: 10, release: 10 } },
     { type: "socd", layer: 0, index1: 5, index2: 6, key1: API.makeMapping(16, 0, 80), key2: API.makeMapping(16, 0, 79), option: { actuation: 40, press: 10, release: 10, priority: 1 } },
-    { type: "cb", layer: 0, index1: 7, modifiers: 3, baseKey: API.makeMapping(16, 0, 7) },
+    { type: "cb", layer: 0, index1: 7, modifiers: 3, modifierOrder: [2, 1], baseKey: API.makeMapping(16, 0, 7) },
     { type: "macro", layer: 0, index1: 8, macroRepeatCount: 1, actions: [{ action: "keydown", code: 4, delay: 0 }, { action: "keyup", code: 4, delay: 25 }] },
   ],
 };
 const compiled = API.compileAdvanced(profile);
 if (compiled.banks.dks.length !== 1 || compiled.banks.mt.length !== 5 || compiled.banks.tgl.length !== 1 || compiled.banks.macros.length !== 1) throw new Error("Advanced actions did not compile into the expected banks.");
 if (API.encodeDksBank(compiled.banks.dks).length !== 1024 || API.encodeMtBank(compiled.banks.mt).length !== 256 || API.encodeTglBank(compiled.banks.tgl).length !== 128 || API.encodeMacros(compiled.banks.macros).length !== 2048) throw new Error("An advanced bank has the wrong size.");
+for (const [priority, expectedPair] of [[0, [0, 0]], [1, [1, 2]], [2, [2, 1]], [3, [3, 3]]]) {
+  const socdModeProfile = {
+    ...profile,
+    advancedKeys: profile.advancedKeys.map((item) => item.type === "socd" ? { ...item, option: { ...item.option, priority } } : item),
+  };
+  const socdModeCompiled = API.compileAdvanced(socdModeProfile);
+  equal([socdModeCompiled.travelKeys[5].priority, socdModeCompiled.travelKeys[6].priority], expectedPair, `SOCD mode ${priority} compiled to the wrong priority pair.`);
+  const socdTravelRoundTrip = API.decodeTravel(API.encodeTravel(socdModeCompiled.travelKeys));
+  equal([socdTravelRoundTrip[5].priority, socdTravelRoundTrip[6].priority], expectedPair, `SOCD mode ${priority} was not preserved by the Hall codec.`);
+}
 const shareReadyProfile = {
   ...profile,
   name: "Share-code smoke profile",
@@ -103,6 +113,7 @@ const shareCode = await API.encodeProfileShare(shareReadyProfile);
 if (!shareCode.startsWith("HE30P1.") || shareCode.length >= JSON.stringify(shareReadyProfile).length) throw new Error("The profile share code was not versioned and compressed.");
 const sharedRoundTrip = await API.decodeProfileShare(shareCode);
 if (sharedRoundTrip.profileIndex !== 0 || sharedRoundTrip.userKeys[0].length !== 128 || sharedRoundTrip.travelKeys.length !== 128 || sharedRoundTrip.advancedKeys.length !== profile.advancedKeys.length || !sharedRoundTrip.deviceSettings.tachyonMode) throw new Error("The compressed profile share code did not round-trip all configuration sections.");
+equal(sharedRoundTrip.advancedKeys.find((item) => item.type === "cb")?.modifierOrder, [2, 1], "Combination-key modifier order was not preserved by profile sharing.");
 let rejectedCorruptShare = false;
 try {
   const corruptIndex = Math.floor(shareCode.length / 2);
@@ -123,6 +134,19 @@ for (const fragment of [
   "Macro",
 ]) {
   if (!appSource.includes(fragment)) throw new Error(`Required application feature is missing: ${fragment}`);
+}
+for (const mode of ["Last Input Priority", "Absolute 1st key", "Absolute 2nd key", "Neutral"]) {
+  if (!appSource.includes(mode)) throw new Error(`SOCD mode is missing: ${mode}`);
+}
+if (appSource.includes("Neutral / last input")) throw new Error("Neutral and Last Input Priority must remain separate SOCD modes.");
+for (const fragment of ["defaultMappingForPhysical", "restoreAdvancedHosts(item)", "preserveAdvancedUiMetadata", "mappingPickerField", "openAdvancedMappingPicker", "data-open-mapping-picker", "Advanced action · Layer 0", "advanced-pair-hosts", "modifierPickerHtml", "comboModifierOrder", "modifierOrder", "Layer 0 only."]) {
+  if (!appSource.includes(fragment)) throw new Error(`Advanced-editor revamp is missing: ${fragment}`);
+}
+if (appSource.includes('id="advLayer"') || appSource.includes('Number($("#advLayer").value)')) throw new Error("Advanced actions must no longer expose or read a nonzero layer selector.");
+const deleteAdvancedSource = appSource.match(/function deleteAdvanced\(index\) \{([\s\S]*?)\n  \}/)?.[1] || "";
+if (!deleteAdvancedSource.includes("restoreAdvancedHosts(item)") || deleteAdvancedSource.includes("makeMapping(255")) throw new Error("Deleting an Advanced action must restore its saved or physical-default host mappings.");
+for (const fragment of [".mapping-picker-control", ".modifier-options", ".modifier-order-item", ".advanced-pair-hosts"]) {
+  if (!styleSource.includes(fragment)) throw new Error(`Advanced-editor styling is missing: ${fragment}`);
 }
 if (API.PROFILE_COUNT !== 3 || API.LAYER_COUNT !== 4 || API.TOTAL_LAYER_COUNT !== 12) throw new Error("The three-profile, twelve-layer topology is incorrect.");
 equal([0, 1, 2].map(API.profileConfigOffset), [0, 64, 128], "Live telemetry config offsets must follow the active profile.");
@@ -269,6 +293,9 @@ for (const fragment of ["const KEY_UNITS", "Tab: 1.5", "Caps: 1.75", "Shift: 2.2
 }
 for (const fragment of ["hall-primary-grid", "hall-selection-panel", "hall-live-panel", "keyboard-grid lighting-board", "--key-width"]) {
   if (!appSource.includes(fragment) && !styleSource.includes(fragment)) throw new Error(`Shared keyboard or Hall workbench layout is missing: ${fragment}`);
+}
+for (const fragment of ["keyWidth(keyItem, 74, 9)", "discardHallButton", "discardHallEdit", "Pending Hall edits discarded", ".hall-edit-actions"]) {
+  if (!appSource.includes(fragment) && !styleSource.includes(fragment)) throw new Error(`Hall keyboard sizing or draft-discard behavior is missing: ${fragment}`);
 }
 if (styleSource.includes(".key-row:last-child .keycap:last-child") || styleSource.includes(".lighting-board-row:last-child")) throw new Error("Legacy stretched Space-key layout must not be used.");
 for (const fragment of ["lightingKeyboardPreview", "configuredLightingColor", "data-lighting-board", "Light strip", "Select all 36", "previewSelectedKeyColor"]) {
