@@ -418,7 +418,7 @@
       <section class="panel keyboard-panel hall-selection-panel"><div class="hall-keyboard-heading"><div><h2>${state.calibrationActive ? "Calibration status" : "Switch selection"}</h2><p id="hallSelectionHint">${state.calibrationActive ? "Use the physical keyboard. Red is awaiting, yellow is measuring, and blue is complete." : `<b id="hallSelectionCount">${selected.length}</b> key<span id="hallSelectionPlural">${selected.length === 1 ? "" : "s"}</span> selected · ${state.hallEditPending ? "Stage these edits before choosing different keys" : "Hold and drag a box around keys, or Ctrl/Cmd-click to toggle"}`}</p></div><button class="button secondary" id="selectAllKeys" type="button"${state.calibrationActive || state.hallEditPending ? " disabled" : ""}>Select all 36</button></div>${keyboardHtml("hall", state.hallSelection)}</section>
       ${liveMonitorHtml()}
     </div>
-      ${selected.length ? `<div class="section-heading hall-tuning-heading"><div><h2>Selected-key tuning</h2><p>${state.calibrationActive ? "Finish calibration before editing actuation settings." : state.hallEditPending ? `Pending edits are locked to ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}.` : "Change a setting to prepare it for the currently selected keys."}</p></div><button class="button primary hall-stage-button${state.hallEditPending ? " pending" : ""}" id="stageHallButton" type="button"${state.calibrationActive || !state.hallEditPending ? " disabled" : ""}>${state.hallEditPending ? `Stage on ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}` : "No changes to stage"}</button></div>
+      ${selected.length ? `<div class="section-heading hall-tuning-heading"><div><h2>Selected-key tuning</h2><p>${state.calibrationActive ? "Finish calibration before editing actuation settings." : state.hallEditPending ? `Pending edits are locked to ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}.` : "Change a setting to prepare it for the currently selected keys."}</p></div><button class="button primary hall-stage-button${state.hallEditPending ? " pending" : ""}" id="stageHallButton" type="button"${state.calibrationActive || !state.hallEditPending ? " disabled" : ""}>${state.hallEditPending ? `Commit changes on ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}` : "No changes to stage"}</button></div>
       <div class="form-grid hall-tuning-grid${state.calibrationActive ? " calibration-locked" : ""}" id="hallTuningGrid">
         <section class="panel form-card"><h3>Actuation and Rapid Trigger</h3><p>Set the fixed actuation point, then choose standard, regular RT, or the firmware's full-travel RT mode.</p><div class="switch-list hall-switch-list">
           ${hallSwitchRow("Rapid Trigger", "Rapid Trigger dynamically actuates and resets your key based on your intention to press or release the key. Rapid Trigger starts and ends after the actuation point.", "hallRapidTrigger", rapidTrigger)}
@@ -611,11 +611,11 @@
       <section class="panel form-card main-light-card"><div class="lighting-card-heading"><div><h3>Main key lighting</h3><p>Current RGB output for all 36 keys when connected.</p></div><span class="lighting-zone-badge${state.liveLightingActive ? " live" : ""}" id="liveLightingStatus">${esc(liveStatus)}</span></div><div class="lighting-preview keyboard-lighting-preview">${lightingKeyboardPreview()}</div>${effectPicker("light", state.profile.light)}<div class="field-grid lighting-effect-fields">${lightFields("light", state.profile.light)}</div></section>
       <section class="panel form-card strip-light-card"><div class="lighting-card-heading"><div><h3>Light strip</h3><p>The small independent lighting strip on the keyboard.</p></div><span class="lighting-zone-badge">1 zone</span></div><div class="lighting-preview strip-lighting-preview">${lightStripPreview()}</div>${effectPicker("logoLight", state.profile.logoLight)}<div class="field-grid lighting-effect-fields">${lightFields("logoLight", state.profile.logoLight)}</div></section>
     </div>
-    <div class="section-heading lighting-section-heading"><div><h2>Per-key colors</h2><p>The keyboard returned a saved RGB value for each of its 36 physical keys.</p></div><span class="configured-badge">Configured values</span></div>
+    <div class="section-heading lighting-section-heading"><div><h2>Per-key colors</h2><p>Configure the RGB color for each key individually. This effect is saved in the "Preset" effect above.</p></div><span class="configured-badge">Configured values</span></div>
     <div class="color-toolbar panel">
       <label class="field color-picker-field"><span>Selected color</span><div class="color-input-row"><input id="perKeyColor" type="color" value="${esc(selectedColor)}" /><output id="selectedColorHex">${esc(selectedColor.toUpperCase())}</output></div></label>
       <div class="color-selection-summary"><small>Selection</small><strong>${esc(selectionLabel)}</strong></div>
-      <button class="button primary" id="applyColorButton" type="button"${state.colorSelection.size ? "" : " disabled"}>Stage on ${state.colorSelection.size} key${state.colorSelection.size === 1 ? "" : "s"}</button>
+      <button class="button primary" id="applyColorButton" type="button"${state.colorSelection.size ? "" : " disabled"}>Commit changes on ${state.colorSelection.size} key${state.colorSelection.size === 1 ? "" : "s"}</button>
       <button class="button secondary" id="useMainColorButton" type="button">Use main color</button>
       <button class="button secondary" id="selectAllColors" type="button">Select all 36</button>
     </div>
@@ -1003,7 +1003,7 @@
     if (stage) {
       stage.disabled = state.calibrationActive || !locked;
       stage.classList.toggle("pending", locked);
-      stage.textContent = locked ? `Stage on ${targetCount} selected key${targetCount === 1 ? "" : "s"}` : "No changes to stage";
+      stage.textContent = locked ? `Commit changes on ${targetCount} selected key${targetCount === 1 ? "" : "s"}` : "No changes to stage";
     }
   }
 
