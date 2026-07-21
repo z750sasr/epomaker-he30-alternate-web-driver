@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://z750sasr.github.io/epomaker-he30-alternate-web-driver/sitemap.xml

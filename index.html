@@ -3,10 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="A local-first HE30 keyboard configuration studio for remapping, Hall-effect tuning, lighting, profiles, and advanced actions." />
+    <meta name="description" content="An unofficial EPOMAKER HE30 web driver for key remapping, Hall-effect and rapid-trigger tuning, lighting, onboard profiles, and advanced actions." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
     <meta name="theme-color" content="#07111f" />
-    <title>EPOMAKER HE30 Control Panel</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Unofficial EPOMAKER HE30 Web Driver" />
+    <meta property="og:title" content="EPOMAKER HE30 Web Driver and Control Panel" />
+    <meta property="og:description" content="Configure HE30 key mappings, Hall-effect switches, rapid trigger, lighting, and onboard profiles directly in Chrome or Edge." />
+    <meta property="og:url" content="https://z750sasr.github.io/epomaker-he30-alternate-web-driver/" />
+    <meta property="og:image" content="https://z750sasr.github.io/epomaker-he30-alternate-web-driver/images/EPOMAKERHE30_black.webp" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="EPOMAKER HE30 Web Driver and Control Panel" />
+    <meta name="twitter:description" content="Configure HE30 mappings, Hall-effect switches, rapid trigger, lighting, and profiles in your browser." />
+    <meta name="twitter:image" content="https://z750sasr.github.io/epomaker-he30-alternate-web-driver/images/EPOMAKERHE30_black.webp" />
+    <link rel="canonical" href="https://z750sasr.github.io/epomaker-he30-alternate-web-driver/" />
+    <title>EPOMAKER HE30 Web Driver and Control Panel</title>
     <link rel="stylesheet" href="styles.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Unofficial EPOMAKER HE30 Web Driver",
+        "url": "https://z750sasr.github.io/epomaker-he30-alternate-web-driver/",
+        "description": "A browser-based EPOMAKER HE30 configuration tool for key mapping, Hall-effect tuning, rapid trigger, lighting, and onboard profiles.",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Windows, macOS, Linux, ChromeOS",
+        "browserRequirements": "Requires a desktop browser with WebHID support, such as Chrome or Edge",
+        "isAccessibleForFree": true
+      }
+    </script>
   </head>
   <body data-app-mode="live">
     <div class="app-shell">
@@ -26,8 +51,8 @@
         <section class="welcome" id="welcomeView">
           <div class="welcome-copy">
             <p class="eyebrow">Alternative EPOMAKER HE30 Web Driver</p>
-            <h1>I am jobless, I failed my only interview at Amazon.<br /><span>Now I use AI to made this.</span></h1>
-            <p class="lead">Configure your HE30 directly in the browser. Read the keyboard first, stage changes locally, then write and verify only when you choose.</p>
+            <h1>EPOMAKER HE30 Web Driver.<br /><span>Full keyboard control in your browser.</span></h1>
+            <p class="lead">Configure your HE30 key mappings, Hall-effect switches, rapid trigger, lighting, and onboard profiles directly in Chrome or Edge. Read the keyboard first, stage changes locally, then write and verify only when you choose.</p>
             <div class="welcome-actions">
               <button class="button primary large" id="welcomeConnectButton" type="button">Connect with WebHID</button>
               <a class="text-link route-link" href="json_editor/">Open the offline JSON editor &rarr;</a>
