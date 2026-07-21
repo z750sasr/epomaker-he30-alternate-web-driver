@@ -6,6 +6,7 @@
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
   const APP_MODE = document.body.dataset.appMode || "live";
   const APP_SCRIPT_URL = document.currentScript?.src || window.location.href;
+  const appAssetUrl = (path) => new URL(path, APP_SCRIPT_URL).href;
   const FACTORY_PROFILE_URL = new URL("src/factory_config.json", APP_SCRIPT_URL).href;
   const FACTORY_RESET_SECTIONS = Object.freeze(["advanced", "keymap", "hall", "lighting"]);
   const PROFILE_SHARE_SECTIONS = Object.freeze(["advanced", "keymap", "hall", "settings", "lighting", "colors"]);
@@ -29,10 +30,34 @@
   const PHYSICAL_HID_CODES = Object.freeze({ 0: 41, 30: 58, 31: 59, 32: 60, 33: 61, 34: 62, 35: 63, 29: 53, 1: 30, 2: 31, 3: 32, 4: 33, 5: 34, 6: 35, 7: 43, 8: 20, 9: 26, 10: 8, 11: 21, 12: 23, 13: 57, 14: 4, 15: 22, 16: 7, 17: 9, 18: 10, 19: 225, 20: 29, 21: 27, 22: 6, 23: 25, 24: 5, 25: 224, 26: 255, 27: 226, 28: 44 });
   const MODIFIER_CHOICES = Object.freeze([[1, "Left Ctrl"], [2, "Left Shift"], [4, "Left Alt"], [8, "Left GUI"], [16, "Right Ctrl"], [32, "Right Shift"], [64, "Right Alt"], [128, "Right GUI"]]);
   const SWITCH_TYPES = Object.freeze([
-    { value: 0, name: "Aurora Purple Switches", short: "AP", color: "#b985ff", maxTravel: 3.4, factory: true },
-    { value: 1, name: "Gateron Jade Pro HE", short: "JP", color: "#7de7ff", maxTravel: 3.5 },
-    { value: 2, name: "Gateron Magnetic Jade Gaming HE", short: "MJ", color: "#66f7c2", maxTravel: 3.5 },
-    { value: 3, name: "Mount Tai GT HE", short: "MT", color: "#ffbe5c", maxTravel: 3.5 },
+    {
+      value: 0, name: "Aurora Purple Switches", short: "AP", color: "#b985ff", maxTravel: 3.4, factory: true,
+      images: [
+        { src: "images/aurora_purple_1.png", alt: "Aurora Purple magnetic switch close-up", label: "Product close-up" },
+        { src: "images/aurora_purple_2.png", alt: "Collection of Aurora Purple magnetic switches", label: "Switch collection" },
+      ],
+    },
+    {
+      value: 1, name: "Gateron Jade Pro HE", short: "JP", color: "#7de7ff", maxTravel: 3.5,
+      images: [
+        { src: "images/gateron_jade_pro_1.webp", alt: "Gateron Jade Pro HE switch close-up", label: "Product close-up" },
+        { src: "images/gateron_jade_pro_2.webp", alt: "Gateron Jade Pro HE switches shown from multiple angles", label: "Multi-angle view" },
+      ],
+    },
+    {
+      value: 2, name: "Gateron Magnetic Jade Gaming HE", short: "MJ", color: "#66f7c2", maxTravel: 3.5,
+      images: [
+        { src: "images/gateron_jade_gaming_1.webp", alt: "Gateron Magnetic Jade Gaming HE switch front and rear views", label: "Front and rear" },
+        { src: "images/gateron_jade_gaming_2.png", alt: "Collection of Gateron Magnetic Jade Gaming HE switches", label: "Switch collection" },
+      ],
+    },
+    {
+      value: 3, name: "Mount Tai GT HE", short: "MT", color: "#ffbe5c", maxTravel: 3.5,
+      images: [
+        { src: "images/mount_tai_gt_he_1.webp", alt: "Mount Tai GT HE magnetic switches product lineup", label: "Product lineup" },
+        { src: "images/mount_tai_gt_he_2.png", alt: "Collection of Mount Tai GT HE magnetic switches", label: "Switch collection" },
+      ],
+    },
   ]);
   const SWITCH_COMPARISON_ROWS = Object.freeze([
     ["Total travel", "3.4 ± 0.3 mm", "3.5 ± 0.2 mm", "3.5 ± 0.1 mm", "3.5 mm or 3.4 ± 0.2 mm?"],
@@ -524,11 +549,11 @@
   }
 
   function switchComparisonHtml() {
-    const imageSlots = SWITCH_TYPES.map((type) => `<article class="switch-image-card"><h4><i style="--switch-color:${type.color}">${esc(type.short)}</i>${esc(type.name)}</h4><div class="switch-image-slots"><div class="switch-image-placeholder" role="img" aria-label="First image placeholder for ${esc(type.name)}" data-switch-image-slot="${type.value}-1"><span>IMAGE 01</span><small>Switch view</small></div><div class="switch-image-placeholder" role="img" aria-label="Second image placeholder for ${esc(type.name)}" data-switch-image-slot="${type.value}-2"><span>IMAGE 02</span><small>Installed view</small></div></div></article>`).join("");
+    const imageSlots = SWITCH_TYPES.map((type) => `<article class="switch-image-card"><h4><i style="--switch-color:${type.color}">${esc(type.short)}</i>${esc(type.name)}</h4><div class="switch-image-slots">${type.images.map((image, index) => `<figure class="switch-image-frame" data-switch-image-slot="${type.value}-${index + 1}"><img src="${esc(appAssetUrl(image.src))}" alt="${esc(image.alt)}" loading="lazy" decoding="async"><figcaption>${esc(image.label)}</figcaption></figure>`).join("")}</div></article>`).join("");
     const headers = SWITCH_TYPES.map((type) => `<th scope="col"><i style="--switch-color:${type.color}">${esc(type.short)}</i><span>${esc(type.name)}${type.factory ? "<small>Factory</small>" : ""}</span></th>`).join("");
     const rows = SWITCH_COMPARISON_ROWS.map(([label, ...values]) => `<tr><th scope="row">${esc(label)}</th>${values.map((value) => `<td>${esc(value)}</td>`).join("")}</tr>`).join("");
     const sources = SWITCH_SOURCE_LINKS.map((links) => `<td><span class="switch-source-links">${links.map((source) => `<a href="${esc(source.href)}" target="_blank" rel="noopener noreferrer">${esc(source.label)}<span aria-hidden="true">↗</span></a>`).join("")}</span></td>`).join("");
-    return `<details class="switch-comparison"><summary><span><strong>Compare all four switches</strong><small>Specifications and eight image placeholders</small></span><i aria-hidden="true">+</i></summary><div class="switch-comparison-content"><div class="switch-image-grid" aria-label="Switch image placeholders">${imageSlots}</div><div class="switch-comparison-table-wrap"><table><caption>Magnetic switch comparison from Switch Comparision.xlsx</caption><thead><tr><th scope="col">Specification</th>${headers}</tr></thead><tbody>${rows}<tr><th scope="row">Sources</th>${sources}</tr></tbody></table></div><p class="switch-comparison-note"><b>Workbook notes:</b> Question marks and the disputed Mount Tai travel value are preserved as supplied. Blank specifications are shown as —.</p></div></details>`;
+    return `<details class="switch-comparison"><summary><span><strong>Compare all four switches</strong><small>Specifications and eight product images</small></span><i aria-hidden="true">+</i></summary><div class="switch-comparison-content"><div class="switch-image-grid" aria-label="Switch product images">${imageSlots}</div><div class="switch-comparison-table-wrap"><table><caption>Magnetic switch comparison from Switch Comparision.xlsx</caption><thead><tr><th scope="col">Specification</th>${headers}</tr></thead><tbody>${rows}<tr><th scope="row">Sources</th>${sources}</tr></tbody></table></div><p class="switch-comparison-note"><b>Workbook notes:</b> Question marks and the disputed Mount Tai travel value are preserved as supplied. Blank specifications are shown as —.</p></div></details>`;
   }
 
   function calibrationPanelHtml() {

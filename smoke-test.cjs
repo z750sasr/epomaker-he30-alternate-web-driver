@@ -291,7 +291,10 @@ for (const fragment of ["Aurora Purple Switches", "Gateron Jade Pro HE", "Gatero
 for (const fragment of ["SWITCH_COMPARISON_ROWS", "Compare all four switches", "Switch Comparision.xlsx", "data-switch-image-slot", "Magnetic-flux test basis", "3.5 mm or 3.4 ± 0.2 mm?"]) {
   if (!appSource.includes(fragment)) throw new Error(`Switch comparison content is missing: ${fragment}`);
 }
-if ((appSource.match(/data-switch-image-slot=/g) || []).length !== 2 || !appSource.includes('${type.value}-1') || !appSource.includes('${type.value}-2')) throw new Error("Each switch must render two image placeholders.");
+for (const fragment of ["aurora_purple_1.png", "aurora_purple_2.png", "gateron_jade_pro_1.webp", "gateron_jade_pro_2.webp", "gateron_jade_gaming_1.webp", "gateron_jade_gaming_2.png", "mount_tai_gt_he_1.webp", "mount_tai_gt_he_2.png", "type.images.map", 'loading="lazy"', "appAssetUrl(image.src)"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Switch product image support is missing: ${fragment}`);
+}
+if ((appSource.match(/data-switch-image-slot=/g) || []).length !== 1 || !appSource.includes('${type.value}-${index + 1}')) throw new Error("Each switch must render its two configured product images.");
 for (const fragment of ["SWITCH_SOURCE_LINKS", "gateron-magnetic-jade-pro-switch-set", "gateron-magnetic-jade-gaming-switch-set", "mchose-ace-68-turbo", "mchose-ace-68-air", 'target="_blank" rel="noopener noreferrer"']) {
   if (!appSource.includes(fragment)) throw new Error(`Clickable switch source is missing: ${fragment}`);
 }
@@ -299,7 +302,7 @@ for (const fragment of ["hallWorkspaceView", "setHallWorkspaceView", "Actuation 
   if (!appSource.includes(fragment)) throw new Error(`Hall workspace toggle is missing: ${fragment}`);
 }
 if (!styleSource.includes(".keycap .key-dot") || !styleSource.includes("left: 7px") || !styleSource.includes(".keycap .switch-type-indicator") || !styleSource.includes("right: 6px")) throw new Error("Hall keycaps must keep the staged marker at top-left and show switch type at top-right.");
-for (const fragment of [".switch-comparison", ".switch-image-grid", ".switch-image-placeholder", ".switch-comparison-table-wrap", ".switch-source-links a", ".hall-workspace-toggle", ".hall-workspace-pane[hidden]"]) {
+for (const fragment of [".switch-comparison", ".switch-image-grid", ".switch-image-frame img", ".switch-image-frame figcaption", ".switch-comparison-table-wrap", ".switch-source-links a", ".hall-workspace-toggle", ".hall-workspace-pane[hidden]"]) {
   if (!styleSource.includes(fragment)) throw new Error(`Switch comparison styling is missing: ${fragment}`);
 }
 for (const fragment of ["liveMonitorHtml", "handleLiveTelemetry", "Live press distance", "Dynamic Display diagnostic flag", "resumeLiveMonitor"]) {

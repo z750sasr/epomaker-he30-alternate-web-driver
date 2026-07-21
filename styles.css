@@ -291,9 +291,9 @@ button { color: inherit; }
 .switch-image-card h4 { min-height: 34px; display: flex; align-items: flex-start; gap: 7px; margin: 0 0 9px; font-size: 10px; line-height: 1.35; }
 .switch-image-card h4 i, .switch-comparison-table-wrap thead i { min-width: 25px; height: 17px; display: inline-grid; place-items: center; flex: 0 0 auto; border: 1px solid color-mix(in srgb, var(--switch-color) 70%, white); border-radius: 99px; background: color-mix(in srgb, var(--switch-color) 23%, #07111f); color: color-mix(in srgb, var(--switch-color) 72%, white); font: 850 8px/1 ui-monospace, SFMono-Regular, Consolas, monospace; font-style: normal; }
 .switch-image-slots { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.switch-image-placeholder { aspect-ratio: 4 / 3; display: grid; place-content: center; gap: 4px; min-width: 0; border: 1px dashed #40566b; border-radius: 8px; background: repeating-linear-gradient(135deg, rgb(125 231 255 / 3%) 0 8px, transparent 8px 16px); color: #7890a6; text-align: center; }
-.switch-image-placeholder span { font: 800 8px/1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .08em; }
-.switch-image-placeholder small { font-size: 8px; }
+.switch-image-frame { min-width: 0; margin: 0; overflow: hidden; border: 1px solid #30465a; border-radius: 8px; background: #07111f; }
+.switch-image-frame img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: linear-gradient(145deg, #edf5f5, #dbe9ea); }
+.switch-image-frame figcaption { overflow: hidden; padding: 6px 7px; color: #91a8ba; font: 700 8px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .switch-comparison-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
 .switch-comparison-table-wrap table { width: 100%; min-width: 900px; border-collapse: collapse; background: #091522; font-size: 10px; line-height: 1.4; }
 .switch-comparison-table-wrap caption { padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--muted); text-align: left; font-size: 10px; }
