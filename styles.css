@@ -376,8 +376,10 @@ button { color: inherit; }
 .strip-lighting-preview { min-height: 220px; }
 .strip-device { width: min(100%, 320px); display: grid; justify-items: center; gap: 22px; }
 .strip-device::before { content: "HE30 LIGHT STRIP"; color: #547087; font-size: 10px; font-weight: 850; letter-spacing: .16em; }
-.light-strip { width: 88%; height: 22px; padding: 4px; border: 1px solid #38516a; border-radius: 999px; background: #02070b; box-shadow: 0 16px 32px rgb(0 0 0 / 45%), 0 0 30px color-mix(in srgb, var(--strip-color) 38%, transparent); transform: perspective(500px) rotateX(12deg); }
-.light-strip i { width: 100%; height: 100%; display: block; border-radius: 999px; background: linear-gradient(180deg, color-mix(in srgb, var(--strip-color) 75%, white), var(--strip-color) 52%, color-mix(in srgb, var(--strip-color) 72%, black)); box-shadow: 0 0 14px var(--strip-color); opacity: var(--strip-opacity); }
+.light-strip { width: 88%; height: 22px; display: flex; gap: 2px; padding: 4px; border: 1px solid #38516a; border-radius: 999px; background: #02070b; box-shadow: 0 16px 32px rgb(0 0 0 / 45%), 0 0 30px color-mix(in srgb, var(--strip-color) 38%, transparent); transform: perspective(500px) rotateX(12deg); }
+.light-strip i { min-width: 0; height: 100%; display: block; flex: 1 1 0; border-radius: 3px; background: linear-gradient(180deg, color-mix(in srgb, var(--strip-color) 75%, white), var(--strip-color) 52%, color-mix(in srgb, var(--strip-color) 72%, black)); box-shadow: 0 0 10px var(--strip-color); opacity: var(--strip-opacity); transition: background 45ms linear, box-shadow 45ms linear; }
+.light-strip i:first-child { border-radius: 999px 3px 3px 999px; }
+.light-strip i:last-child { border-radius: 3px 999px 999px 3px; }
 .strip-device > span { color: var(--muted); font-size: 11px; font-weight: 750; text-align: center; }
 .effect-picker-block { margin-top: 18px; }
 .effect-picker-block h4 { margin: 0 0 10px; color: #dceaf4; font-size: 13px; }

@@ -76,7 +76,7 @@ Firefox and Safari do not currently support WebHID, but they can still be used w
 - Polling rate, tick rate, debounce, Windows/macOS mode, filtering, Tachyon, and shortcut locks
 - All 24 original main-key lighting presets, all 5 light-strip effects, and their effect-specific controls
 - Main-key lighting, the small light-strip zone, and saved colors for all 36 physical keys
-- Live RGB framebuffer preview for all 36 keys, including onboard animated effects
+- Live RGB framebuffer preview for all 36 keys, plus a live multi-segment light-strip preview synchronized from its onboard effect settings
 - Onboard profile switching on multi-profile models
 - Live profile and layer tracking: onboard profile-key presses automatically refresh every workspace page
 - DKS, Mod-Tap, Toggle, Rappy Snappy, SOCD, combination keys, and macros
@@ -93,7 +93,7 @@ Firmware update and bootloader flashing are intentionally not included.
 - The available resolution steps are `0.01 mm`, `0.005 mm`, and `0.001 mm` for types `102`, `103`, and `105`; type `101` omits `0.001 mm`.
 - Config byte 7 bit 0 is read under the internal name `tachyonMode`, while its unused setter is named `setBerserkMode`. The captured production interface does not call that setter, so HE30 Control preserves the bit without offering a toggle.
 - Live travel uses the original software's Dynamic Display mechanism: config byte 7 bit 3 enables `0xA0` diagnostic reports. Starting the monitor enables that bit in the active profile's 64-byte config bank when necessary; stopping it restores the same profile bank. The stream is unavailable in JSON and demo workspaces.
-- The same temporary Dynamic Display flag exposes command `0xDE`, a 384-byte RGB framebuffer. Its first 108 bytes are the live RGB triplets for the HE30's 36 physical keys; the remaining slots are zero. The light strip is configured separately and is not present in this live frame.
+- The same temporary Dynamic Display flag exposes command `0xDE`, a 384-byte RGB framebuffer. Its first 108 bytes are the live RGB triplets for the HE30's 36 physical keys. Captured HE30 firmware leaves the remaining slots zero, but the app watches the first 12 spare RGB slots for firmware variants that expose strip pixels there. Otherwise it refreshes the strip's real onboard effect settings from the profile config and renders a synchronized effect preview without writing to the device.
 - The captured firmware layout exposes one saved per-key RGB bank per profile through commands `0x0A`/`0x0B`, while each profile has four separate key-mapping layers. `0xDE` has only been observed as a framebuffer read. Without a volatile RGB-frame write command or an onboard layer-to-lighting link, switching four static RGB banks on Fn press is not safe to implement; rewriting the saved bank on every press/release would be slow and could wear flash.
 - The original factory-reset flow sends subcommand `0xEE` with the active profile index (`0`–`2`), or `0xFF` for every onboard profile; the all-profile operation also clears macros. HE30 Control includes typed protocol helpers for these two scopes, but its reset controls remain disabled until a matching default-profile JSON file is bundled and its schema is validated.
 

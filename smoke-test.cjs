@@ -281,6 +281,7 @@ for (const fragment of ["subscribeCalibration", "startCalibration", "endCalibrat
 }
 if (!protocolSource.includes("if (this.calibrationActive) throw new Error")) throw new Error("Calibration and live diagnostics must remain mutually exclusive.");
 if (!protocolSource.includes("readLiveColors") || !protocolSource.includes("this.readBlock(0xde, 0, 384)")) throw new Error("Live RGB framebuffer command 0xDE is missing.");
+if (!protocolSource.includes("readLiveStripSettings") || !protocolSource.includes("return decodeLighting(config).logoLight")) throw new Error("Live light-strip configuration reads are missing.");
 for (const fragment of ["subscribeProfileChange", "handleHardwareProfileChange", "syncDeviceProfile", "preserveView: true"]) {
   if (!protocolSource.includes(fragment) && !appSource.includes(fragment)) throw new Error(`Live profile synchronization support is missing: ${fragment}`);
 }
@@ -349,14 +350,14 @@ equal([...stripEffectSource.matchAll(/\{ value: (\d+)/g)].map((match) => Number(
 for (const fragment of ["data-light-effect", "data-effect-value", "effectPicker", "lighting-effect-fields", "Hundred Flowers", "Always On Ripples", "Lights Off", "Preset", "Close", "Always on"]) {
   if (!appSource.includes(fragment)) throw new Error(`Original-driver lighting preset support is missing: ${fragment}`);
 }
-for (const fragment of ["startLiveLighting", "pollLiveLighting", "stopLiveLighting", "Live from keyboard", "readLiveColors"]) {
+for (const fragment of ["startLiveLighting", "pollLiveLighting", "stopLiveLighting", "Live from keyboard", "readLiveColors", "readLiveStripSettings", "liveStripLight", "liveStripStatus"]) {
   if (!appSource.includes(fragment)) throw new Error(`Live lighting behavior is missing: ${fragment}`);
 }
-for (const fragment of ["LIVE_LIGHTING_SMOOTHING_MS", "liveLightingDisplayColors", "requestAnimationFrame(animateLiveLighting)", "blendLightingColor"]) {
+for (const fragment of ["LIVE_LIGHTING_SMOOTHING_MS", "liveLightingDisplayColors", "requestAnimationFrame(animateLiveLighting)", "blendLightingColor", "LIVE_STRIP_CONFIG_POLL_MS", "LIVE_STRIP_FRAME_START", "LIVE_STRIP_SEGMENT_COUNT", "liveStripFramebufferDetected", "stripFrameColors", "updateLiveStripUI", "spectrumLightingColor", "data-strip-segment"]) {
   if (!appSource.includes(fragment)) throw new Error(`Smooth live-lighting rendering is missing: ${fragment}`);
 }
 if (!appSource.includes('const delay = [0, 3, 255].includes(state.profile?.light?.effect) ? 500 : 50')) throw new Error("Live-lighting smoothing must not increase HID polling traffic.");
-if (!styleSource.includes(".lighting-board-key") || !styleSource.includes(".light-strip") || !styleSource.includes('[data-keyboard-mode="color"]')) throw new Error("The 36-key and light-strip lighting previews are incomplete.");
+if (!styleSource.includes(".lighting-board-key") || !styleSource.includes(".light-strip") || !styleSource.includes(".light-strip i:first-child") || !styleSource.includes('[data-keyboard-mode="color"]')) throw new Error("The 36-key and live light-strip lighting previews are incomplete.");
 
 const forbiddenFirmwareTokens = ["flashFirmware", "writeFirmware", "bootloaderCommand", "firmwareFileInput"];
 for (const token of forbiddenFirmwareTokens) {
