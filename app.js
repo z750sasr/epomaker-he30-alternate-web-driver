@@ -28,6 +28,39 @@
   const physicalName = (index) => PHYSICAL_KEYS.find((key) => key.index === Number(index))?.label || `Key ${Number(index) + 1}`;
   const PHYSICAL_HID_CODES = Object.freeze({ 0: 41, 30: 58, 31: 59, 32: 60, 33: 61, 34: 62, 35: 63, 29: 53, 1: 30, 2: 31, 3: 32, 4: 33, 5: 34, 6: 35, 7: 43, 8: 20, 9: 26, 10: 8, 11: 21, 12: 23, 13: 57, 14: 4, 15: 22, 16: 7, 17: 9, 18: 10, 19: 225, 20: 29, 21: 27, 22: 6, 23: 25, 24: 5, 25: 224, 26: 255, 27: 226, 28: 44 });
   const MODIFIER_CHOICES = Object.freeze([[1, "Left Ctrl"], [2, "Left Shift"], [4, "Left Alt"], [8, "Left GUI"], [16, "Right Ctrl"], [32, "Right Shift"], [64, "Right Alt"], [128, "Right GUI"]]);
+  const SWITCH_TYPES = Object.freeze([
+    { value: 0, name: "Aurora Purple Switches", short: "AP", color: "#b985ff", maxTravel: 3.4, factory: true },
+    { value: 1, name: "Gateron Jade Pro HE", short: "JP", color: "#7de7ff", maxTravel: 3.5 },
+    { value: 2, name: "Gateron Magnetic Jade Gaming HE", short: "MJ", color: "#66f7c2", maxTravel: 3.5 },
+    { value: 3, name: "Mount Tai GT HE", short: "MT", color: "#ffbe5c", maxTravel: 3.5 },
+  ]);
+  const SWITCH_COMPARISON_ROWS = Object.freeze([
+    ["Total travel", "3.4 ± 0.3 mm", "3.5 ± 0.2 mm", "3.5 ± 0.1 mm", "3.5 mm or 3.4 ± 0.2 mm?"],
+    ["Initial force", "37 ± 5 gf", "36 ± 5 gf", "36 ± 5 gf", "35 ± 8 gf"],
+    ["Bottom-out force", "45 ± 5 gf", "50 ± 10 gf", "50 ± 10 gf", "47 gf"],
+    ["Stem material", "POM", "POM", "POM", "UPE Mix"],
+    ["Upper housing material", "PC", "PC", "PC", "PC"],
+    ["Bottom housing material", "PA", "Nylon/PA?", "PA66", "PC, fused with upper housing"],
+    ["Initial magnetic flux", "80 ± 10 Gs", "120 ± 8 Gs", "120 ± 8 Gs", "100 Gs"],
+    ["Bottom magnetic flux", "500 ± 10 Gs", "700 ± 30 Gs", "700 ± 30 Gs", "640 Gs"],
+    ["Factory lubricated", "?", "Yes", "Yes", "Yes"],
+    ["Spring length", "20 mm", "20 mm", "20 mm", "22 mm"],
+    ["Lifespan", "?", "100 million", "100 million", "100 million"],
+    ["Trigger travel?", "2.5 ± 0.5 mm", "—", "—", "—"],
+    ["Light diffuser material", "PMMA", "—", "—", "—"],
+    ["Magnetic-flux test basis", "—", "1.2 mm PCB", "1.2 mm PCB", "—"],
+  ]);
+  // Edit the href values in this block to change the clickable comparison sources.
+  const SWITCH_SOURCE_LINKS = Object.freeze([
+    [{ label: "AliExpress", href: "https://aliexpress.com/item/1005009897745009.html" }],
+    [{ label: "Official Gateron website", href: "https://www.gateron.com/products/gateron-magnetic-jade-pro-switch-set" }],
+    [{ label: "Official Gateron website", href: "https://www.gateron.com/products/gateron-magnetic-jade-gaming-switch-set" }],
+    [
+      { label: "MCHOSE Ace 68 Turbo", href: "https://www.mchose.store/products/mchose-ace-68-turbo-full-aluminum-esports-hall-effect-keyboard" },
+      { label: "MCHOSE Ace 68 Air", href: "https://www.mchose.store/products/mchose-ace-68-air-hall-effect-magnetic-switch-gaming-keyboard" },
+      { label: "AliExpress", href: "https://aliexpress.com/i/1005008778917624.html" },
+    ],
+  ]);
   const TELEMETRY_INDEX = new Map(Object.entries(PHYSICAL_HID_CODES).map(([index, code]) => [code, Number(index)]));
   const LIVE_LIGHTING_SMOOTHING_MS = 72;
 
@@ -77,7 +110,57 @@
     advanced: ["Multi-action behavior", "Advanced functions", "Configure DKS, Mod-Tap, Toggle, pairs, combinations, and macros."],
     profiles: ["Onboard memory", "Onboard profiles", "Read, switch, back up, and configure profiles stored on the keyboard."],
     diagnostics: ["Transparency", "Diagnostics", "Inspect identity, connection state, and the local command log."],
+    about: ["Personal", "About me", "fps lover, pc master race, cs2, apex legends, overwatch, AAA games"],
   });
+
+  // ABOUT ME CUSTOM HTML — edit freely between the START and END comments.
+  // This markup is intentionally rendered as HTML rather than escaped text.
+  const ABOUT_ME_HTML = `
+    <!-- ABOUT ME: START CUSTOM HTML -->
+    <article class="about-me-starter">
+      <span class="chip">ABOUT THE CREATOR</span>
+      <h2>I'm some kind of a loser in life</h2>
+      <p>Hey, I mainly started this project for my own use. If you wandered aroung the Internet, found this and used this, I hope you find it useful!</p>
+      <p>And please come to my Steam profile, comment something there so I know that someone actually uses this! It made me feel less alone.</p>
+      <p>Additionally, please come to my friend's Steam profile and bash/force/badmouthing him to make a web driver for his FUN60 keyboard.</p>
+      <div class="about-me-links">
+        <a
+          href="https://steamcommunity.com/profiles/76561198317725930/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="steam-link"
+          aria-label="View Steam profile"
+        >
+          <img
+            src="https://cdn.simpleicons.org/steam"
+            alt=""
+            width="24"
+            height="24"
+          />
+          <span>Steam Profile</span>
+        </a>
+
+        <div class="about-me-links">
+        <a
+          href="https://steamcommunity.com/profiles/76561198746955854"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="steam-link"
+          aria-label="View Steam profile"
+        >
+          <img
+            src="https://cdn.simpleicons.org/steam"
+            alt=""
+            width="24"
+            height="24"
+          />
+          <span>Friend's Steam Profile</span>
+        </a>
+        <a href="https://github.com/z750sasr" target="_blank" rel="noopener noreferrer">The type of Hub website that I rarely use</a>
+      </div>
+    </article>
+    <!-- ABOUT ME: END CUSTOM HTML -->
+  `;
 
   const state = {
     source: "none",
@@ -92,6 +175,7 @@
     hallSelection: new Set(),
     hallEditSelection: new Set(),
     hallEditPending: false,
+    hallWorkspaceView: "tuning",
     hallDrag: null,
     liveMonitorActive: false,
     liveMonitorBusy: false,
@@ -329,7 +413,7 @@
     $("#pageEyebrow").textContent = eyebrow;
     $("#pageTitle").textContent = title;
     $("#pageDescription").textContent = description;
-    const renderers = { overview: renderOverview, mapping: renderMapping, hall: renderHall, settings: renderSettings, lighting: renderLighting, advanced: renderAdvanced, profiles: renderProfiles, diagnostics: renderDiagnostics };
+    const renderers = { overview: renderOverview, mapping: renderMapping, hall: renderHall, settings: renderSettings, lighting: renderLighting, advanced: renderAdvanced, profiles: renderProfiles, diagnostics: renderDiagnostics, about: renderAboutMe };
     $("#pageContent").innerHTML = renderers[state.page]();
     bindPageControls();
     updateChrome();
@@ -344,10 +428,11 @@
       const advanced = [112, 144, 145, 146, 147, 148].includes(mapping.type);
       const color = mode === "color" ? state.profile.colorKeys[index] : "";
       const mapped = mode === "hall" ? `${(state.profile.travelKeys[index].key_actuation / 100).toFixed(2)} mm` : mode === "color" ? color : mappingLabel(mapping);
-      const livePercent = mode === "hall" ? clamp((state.liveTravel[index] / Math.max(0.01, state.profile.travelKeys[index].key_max_length || 4)) * 100, 0, 100) : 0;
+      const livePercent = mode === "hall" ? clamp((state.liveTravel[index] / switchTravelMaximum(state.profile.travelKeys[index])) * 100, 0, 100) : 0;
       const calibrationStatus = mode === "hall" && state.calibrationActive ? state.calibrationStatus[index] : null;
       const calibrationPercent = mode === "hall" && state.calibrationActive ? clamp((state.calibrationTravelRaw[index] / 340) * 100, 0, 100) : 0;
       const calibrationClass = calibrationStatus === 255 ? " calibration-complete" : calibrationStatus === 0 ? " calibration-waiting" : calibrationStatus != null ? " calibration-progress" : "";
+      const switchType = mode === "hall" ? switchTypeMeta(state.profile.travelKeys[index].switch_type) : null;
       const styles = [`--key-width:${hallKeyboard ? keyWidth(keyItem, 74, 9) : keyWidth(keyItem)}px`, `--key-u:${keyUnit(keyItem)}`];
       if (mode === "color") styles.push(`--key-led:${esc(color)}`);
       if (mode === "hall") styles.push(`--travel-pct:${livePercent.toFixed(2)}%`);
@@ -364,7 +449,8 @@
       const pressed = mode === "hall" || mode === "color" ? ` aria-pressed="${selected.has(index)}"` : "";
       const travelFill = mode === "hall" ? `<i class="travel-fill" aria-hidden="true"></i>` : "";
       const calibrationFill = mode === "hall" && state.calibrationActive ? `<i class="calibration-fill" aria-hidden="true"></i>` : "";
-      return `<button class="keycap${selected.has(index) ? " selected" : ""}${advanced ? " advanced" : ""}${livePercent > .5 ? " live-pressed" : ""}${calibrationClass}" type="button" data-key-index="${index}"${style}${title}${pressed}${state.calibrationActive && mode === "hall" ? " aria-disabled=\"true\"" : ""}>${travelFill}${calibrationFill}${content}${state.dirty.size ? "<i class=\"key-dot\"></i>" : ""}</button>`;
+      const switchIndicator = switchType ? `<i class="switch-type-indicator" style="--switch-color:${switchType.color}" role="img" aria-label="${esc(switchType.name)}" title="${esc(switchType.name)}">${esc(switchType.short)}</i>` : "";
+      return `<button class="keycap${selected.has(index) ? " selected" : ""}${advanced ? " advanced" : ""}${livePercent > .5 ? " live-pressed" : ""}${calibrationClass}" type="button" data-key-index="${index}"${style}${title}${pressed}${state.calibrationActive && mode === "hall" ? " aria-disabled=\"true\"" : ""}>${travelFill}${calibrationFill}${content}${state.dirty.size ? "<i class=\"key-dot\"></i>" : ""}${switchIndicator}</button>`;
     }).join("")}</div>`).join("")}</div>`;
   }
 
@@ -415,6 +501,36 @@
     return Number(mode) === 2 ? "Full Travel RT" : Number(mode) === 1 ? "Rapid Trigger" : "Standard";
   }
 
+  function switchTypeMeta(value) {
+    const numeric = clamp(value, 0, 15);
+    return SWITCH_TYPES.find((type) => type.value === numeric) || { value: numeric, name: `Reserved switch type ${numeric}`, short: "?", color: "#7f91a2" };
+  }
+
+  function switchTravelMaximum(travel) {
+    const configured = SWITCH_TYPES.find((type) => type.value === Number(travel?.switch_type))?.maxTravel;
+    if (Number.isFinite(configured) && configured > 0) return configured;
+    return Math.max(0.01, Number(travel?.key_max_length) || 3.5);
+  }
+
+  function switchTypeOptions(current) {
+    const options = SWITCH_TYPES.map((type) => [type.value, `${type.name}${type.factory ? " · Factory" : ""}`]);
+    const numeric = clamp(current, 0, 15);
+    if (!SWITCH_TYPES.some((type) => type.value === numeric)) options.push([numeric, `Reserved switch type ${numeric} · Current`]);
+    return options;
+  }
+
+  function switchTypeLegendHtml() {
+    return `<div class="hall-switch-legend" aria-label="Switch type indicator legend">${SWITCH_TYPES.map((type) => `<span><i style="--switch-color:${type.color}">${type.short}</i>${esc(type.name)}${type.factory ? " · Factory" : ""}</span>`).join("")}</div>`;
+  }
+
+  function switchComparisonHtml() {
+    const imageSlots = SWITCH_TYPES.map((type) => `<article class="switch-image-card"><h4><i style="--switch-color:${type.color}">${esc(type.short)}</i>${esc(type.name)}</h4><div class="switch-image-slots"><div class="switch-image-placeholder" role="img" aria-label="First image placeholder for ${esc(type.name)}" data-switch-image-slot="${type.value}-1"><span>IMAGE 01</span><small>Switch view</small></div><div class="switch-image-placeholder" role="img" aria-label="Second image placeholder for ${esc(type.name)}" data-switch-image-slot="${type.value}-2"><span>IMAGE 02</span><small>Installed view</small></div></div></article>`).join("");
+    const headers = SWITCH_TYPES.map((type) => `<th scope="col"><i style="--switch-color:${type.color}">${esc(type.short)}</i><span>${esc(type.name)}${type.factory ? "<small>Factory</small>" : ""}</span></th>`).join("");
+    const rows = SWITCH_COMPARISON_ROWS.map(([label, ...values]) => `<tr><th scope="row">${esc(label)}</th>${values.map((value) => `<td>${esc(value)}</td>`).join("")}</tr>`).join("");
+    const sources = SWITCH_SOURCE_LINKS.map((links) => `<td><span class="switch-source-links">${links.map((source) => `<a href="${esc(source.href)}" target="_blank" rel="noopener noreferrer">${esc(source.label)}<span aria-hidden="true">↗</span></a>`).join("")}</span></td>`).join("");
+    return `<details class="switch-comparison"><summary><span><strong>Compare all four switches</strong><small>Specifications and eight image placeholders</small></span><i aria-hidden="true">+</i></summary><div class="switch-comparison-content"><div class="switch-image-grid" aria-label="Switch image placeholders">${imageSlots}</div><div class="switch-comparison-table-wrap"><table><caption>Magnetic switch comparison from Switch Comparision.xlsx</caption><thead><tr><th scope="col">Specification</th>${headers}</tr></thead><tbody>${rows}<tr><th scope="row">Sources</th>${sources}</tr></tbody></table></div><p class="switch-comparison-note"><b>Workbook notes:</b> Question marks and the disputed Mount Tai travel value are preserved as supplied. Blank specifications are shown as —.</p></div></details>`;
+  }
+
   function calibrationPanelHtml() {
     const connected = state.source === "device" && Boolean(state.driver);
     const completed = PHYSICAL_KEYS.filter(({ index }) => state.calibrationStatus[index] === 255).length;
@@ -435,6 +551,8 @@
   function renderHall() {
     const selected = [...state.hallSelection];
     const first = state.profile.travelKeys[selected[0] ?? 0] || defaultTravel();
+    const switchType = switchTypeMeta(first.switch_type);
+    const mixedSwitchTypes = selected.length > 1 && new Set(selected.map((index) => Number(state.profile.travelKeys[index].switch_type))).size > 1;
     const precision = precisionOptions();
     const rapidTrigger = Number(first.key_mode) > 0;
     const fullTravel = Number(first.key_mode) === 2;
@@ -444,31 +562,50 @@
     const precisionCard = precision
       ? `<section class="panel form-card experimental-setting-card"><span class="chip caution-chip">HIDDEN SETTING · USE WITH CAUTION</span><h3>RT sensitivity accuracy</h3><p>Sets the stored measurement step for Rapid Trigger Press and Release. The original HE30 interface hides this selector, so back up the profile before using it.</p><div class="field-grid">${selectField("Press accuracy", "hallPressPrecision", withCurrentPrecision(first.pressPrecision), first.pressPrecision, !rapidTrigger)}${selectField("Release accuracy", "hallReleasePrecision", withCurrentPrecision(first.releasePrecision), first.releasePrecision, !rapidTrigger || !independentRt)}</div><div class="rt-preset-row"><span>Common sensitivity values</span><button class="button secondary" type="button" data-rt-sensitivity-preset="0.05"${!rapidTrigger ? " disabled" : ""}>0.05 mm</button><button class="button secondary" type="button" data-rt-sensitivity-preset="0.10"${!rapidTrigger ? " disabled" : ""}>0.10 mm</button></div><div class="callout caution-callout"><b>Experimental:</b> the firmware record has only two precision bits. The two buttons set valid 0.05/0.10 mm RT sensitivity values; they are not additional precision codes. Hardware precision remains 0.01, 0.005, or 0.001 mm.</div></section>`
       : `<section class="panel form-card"><h3>RT sensitivity accuracy</h3><p>This HE30 model uses fixed 0.01 mm Rapid Trigger units in the original interface.</p><div class="callout">The precision bits remain intact when settings are saved. Like the original driver, this app hides the selector for device type 104.</div></section>`;
+    const switchPaneActive = state.hallWorkspaceView === "switches";
+    const workspaceTitle = switchPaneActive ? "Switch selector" : "Selected-key tuning";
+    const workspaceStatus = state.calibrationActive
+      ? "Finish calibration before editing Hall settings."
+      : state.hallEditPending
+        ? `Pending edits are locked to ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}. Commit them or discard this edit batch.`
+        : switchPaneActive
+          ? "Assign the installed switch model to the currently selected keys, or open the comparison."
+          : "Change a setting to prepare it for the currently selected keys.";
     return `${calibrationPanelHtml()}<div class="hall-primary-grid">
-      <section class="panel keyboard-panel hall-selection-panel"><div class="hall-keyboard-heading"><div><h2>${state.calibrationActive ? "Calibration status" : "Switch selection"}</h2><p id="hallSelectionHint">${state.calibrationActive ? "Use the physical keyboard. Red is awaiting, yellow is measuring, and blue is complete." : `<b id="hallSelectionCount">${selected.length}</b> key<span id="hallSelectionPlural">${selected.length === 1 ? "" : "s"}</span> selected · <span id="hallSelectionInstruction">${state.hallEditPending ? "Commit or discard these edits before choosing different keys" : "Hold and drag a box around keys, or Ctrl/Cmd-click to toggle"}</span>`}</p></div><button class="button secondary" id="selectAllKeys" type="button"${state.calibrationActive || state.hallEditPending ? " disabled" : ""}>Select all 36</button></div>${keyboardHtml("hall", state.hallSelection)}</section>
+      <div class="hall-config-column">
+        <section class="panel keyboard-panel hall-selection-panel"><div class="hall-keyboard-heading"><div><h2>${state.calibrationActive ? "Calibration status" : "Switch selection"}</h2><p id="hallSelectionHint">${state.calibrationActive ? "Use the physical keyboard. Red is awaiting, yellow is measuring, and blue is complete." : `<b id="hallSelectionCount">${selected.length}</b> key<span id="hallSelectionPlural">${selected.length === 1 ? "" : "s"}</span> selected · <span id="hallSelectionInstruction">${state.hallEditPending ? "Commit or discard these edits before choosing different keys" : "Hold and drag a box around keys, or Ctrl/Cmd-click to toggle"}</span>`}</p></div><button class="button secondary" id="selectAllKeys" type="button"${state.calibrationActive || state.hallEditPending ? " disabled" : ""}>Select all 36</button></div>${keyboardHtml("hall", state.hallSelection)}${switchTypeLegendHtml()}</section>
+      </div>
       ${liveMonitorHtml()}
     </div>
-      ${selected.length ? `<div class="section-heading hall-tuning-heading"><div><h2>Selected-key tuning</h2><p id="hallEditStatus">${state.calibrationActive ? "Finish calibration before editing actuation settings." : state.hallEditPending ? `Pending edits are locked to ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}. Commit them or discard this edit batch.` : "Change a setting to prepare it for the currently selected keys."}</p></div><div class="hall-edit-actions"><button class="button secondary" id="discardHallButton" type="button"${state.calibrationActive || !state.hallEditPending ? " disabled" : ""}>Discard changes</button><button class="button primary hall-stage-button${state.hallEditPending ? " pending" : ""}" id="stageHallButton" type="button"${state.calibrationActive || !state.hallEditPending ? " disabled" : ""}>${state.hallEditPending ? `Commit changes on ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}` : "No changes to stage"}</button></div></div>
-      <div class="form-grid hall-tuning-grid${state.calibrationActive ? " calibration-locked" : ""}" id="hallTuningGrid">
-        <section class="panel form-card"><h3>Actuation and Rapid Trigger</h3><p>Set the fixed actuation point, then choose standard, regular RT, or the firmware's full-travel RT mode.</p><div class="switch-list hall-switch-list">
+    <div class="hall-workspace-toggle" role="group" aria-label="Hall editing section"><button type="button" id="hallWorkspaceTuning" data-hall-workspace="tuning" aria-controls="hallActuationPane" aria-pressed="${String(!switchPaneActive)}" class="${switchPaneActive ? "" : "active"}">Actuation tuning</button><button type="button" id="hallWorkspaceSwitches" data-hall-workspace="switches" aria-controls="hallSwitchPane" aria-pressed="${String(switchPaneActive)}" class="${switchPaneActive ? "active" : ""}">Switch selector</button></div>
+        ${selected.length ? `<div class="section-heading hall-tuning-heading"><div><h2 id="hallWorkspaceTitle">${workspaceTitle}</h2><p id="hallEditStatus">${workspaceStatus}</p></div><div class="hall-edit-actions"><button class="button secondary" id="discardHallButton" type="button"${state.calibrationActive || !state.hallEditPending ? " disabled" : ""}>Discard changes</button><button class="button primary hall-stage-button${state.hallEditPending ? " pending" : ""}" id="stageHallButton" type="button"${state.calibrationActive || !state.hallEditPending ? " disabled" : ""}>${state.hallEditPending ? `Commit changes on ${state.hallEditSelection.size} selected key${state.hallEditSelection.size === 1 ? "" : "s"}` : "No changes to stage"}</button></div></div>
+        <div class="hall-workspace-content${state.calibrationActive ? " calibration-locked" : ""}" id="hallTuningGrid">
+          <div class="form-grid hall-tuning-grid hall-workspace-pane" id="hallActuationPane" data-hall-workspace-pane="tuning"${switchPaneActive ? " hidden" : ""}>
+            <section class="panel form-card"><h3>Actuation and Rapid Trigger</h3><p>Set the fixed actuation point, then choose standard, regular RT, or the firmware's full-travel RT mode.</p><div class="switch-list hall-switch-list">
           ${hallSwitchRow("Rapid Trigger", "Rapid Trigger dynamically actuates and resets your key based on your intention to press or release the key. Rapid Trigger starts and ends after the actuation point.", "hallRapidTrigger", rapidTrigger)}
           ${hallSwitchRow("Continuous Rapid Trigger", "Hidden in the original HE30 interface. This experimental firmware mode uses key_mode 2; back up your profile and use it with caution.", "hallFullTravel", fullTravel, !rapidTrigger)}
           ${hallSwitchRow("Set Press and Release independently", "Off keeps both RT sensitivity values the same", "hallIndependentRt", independentRt, !rapidTrigger)}
-        </div><div class="field-grid hall-distance-fields">
+            </div><div class="field-grid hall-distance-fields">
           ${rangeField("Actuation", "hallActuation", first.key_actuation, 1, 400, 1, "mm", false, true)}
           ${rtRangeField("RT Press", "hallPress", first.rt_press, first.pressPrecision, !rapidTrigger)}
           ${rtRangeField("RT Release", "hallRelease", first.rt_release, first.releasePrecision, !rapidTrigger || !independentRt)}
-        </div><div class="callout">When enabled, Rapid Trigger ends when the entire key is released. When disabled, Rapid Trigger ends at the actuation point.</div></section>
-        <section class="panel form-card"><h3>Deadzone Settings</h3><p>Limits the usable travel at both ends of the switch to reduce accidental, disconnected, or missed triggers.</p><div class="switch-list hall-switch-list">
+            </div><div class="callout">When enabled, Rapid Trigger ends when the entire key is released. When disabled, Rapid Trigger ends at the actuation point.</div></section>
+            <section class="panel form-card"><h3>Deadzone Settings</h3><p>Limits the usable travel at both ends of the switch to reduce accidental, disconnected, or missed triggers.</p><div class="switch-list hall-switch-list">
           ${hallSwitchRow("Switch Deadzones", "Enable the top and bottom deadzones", "hallInsurance", insurance)}
           ${hallSwitchRow("Switch Bottom Out", "Adds the firmware's forced 0.1 mm bottom zone", "hallTriggerBottom", Boolean(state.profile.deviceSettings.stabilityMode))}
-        </div><div class="field-grid hall-distance-fields">
+            </div><div class="field-grid hall-distance-fields">
           ${rangeField("Top Deadzone", "hallPressDeadzone", first.press_deadzone, 0, 127, 1, "mm", !insurance, true)}
           ${rangeField("Bottom Deadzone", "hallReleaseDeadzone", first.release_deadzone, 0, 127, 1, "mm", !insurance, true)}
-        </div><div class="callout">Trigger Bottom is profile-wide, not stored inside each key. It writes the original driver's stability-mode bit.</div></section>
-        ${precisionCard}
-        <section class="panel form-card hall-data-card"><h3>Stored fields</h3><p>The per-key values are encoded directly into the keyboard's 8-byte Hall record.</p><dl class="hall-field-reference"><div><dt>key_mode</dt><dd>0 standard, 1 RT, 2 full-travel RT</dd></div><div><dt>pressPrecision</dt><dd>RT Press unit selector</dd></div><div><dt>releasePrecision</dt><dd>RT Release unit selector</dd></div><div><dt>deadzone_status</dt><dd>Derived: both insurance zones are above zero</dd></div></dl></section>
-      </div>` : `<section class="panel hall-selection-required"><span class="chip">SELECT KEYS FIRST</span><h2>Choose one or more switches to tune</h2><p>Click a key, Ctrl/Cmd-click multiple keys, or hold and drag a selection box. Trigger and actuation controls appear only after a selection is made.</p></section>`}`;
+            </div><div class="callout">Trigger Bottom is profile-wide, not stored inside each key. It writes the original driver's stability-mode bit.</div></section>
+            ${precisionCard}
+            <section class="panel form-card hall-data-card"><h3>Stored fields</h3><p>The per-key values are encoded directly into the keyboard's 8-byte Hall record.</p><dl class="hall-field-reference"><div><dt>switch_type</dt><dd>${SWITCH_TYPES.map((type) => `${type.value} ${esc(type.name)}`).join(", ")}</dd></div><div><dt>key_mode</dt><dd>0 standard, 1 RT, 2 full-travel RT</dd></div><div><dt>pressPrecision</dt><dd>RT Press unit selector</dd></div><div><dt>releasePrecision</dt><dd>RT Release unit selector</dd></div><div><dt>deadzone_status</dt><dd>Derived: both insurance zones are above zero</dd></div></dl></section>
+          </div>
+          <div class="form-grid hall-tuning-grid hall-workspace-pane hall-switch-selector-grid" id="hallSwitchPane" data-hall-workspace-pane="switches"${switchPaneActive ? "" : " hidden"}>
+            <section class="panel form-card switch-type-card"><h3>Change Switch Type</h3><p>Choose the magnetic switch installed beneath the selected keys. This writes the firmware's per-key <code>switch_type</code> field.</p><div class="field-grid">${selectField("Switch model", "hallSwitchType", switchTypeOptions(first.switch_type), first.switch_type)}</div><div class="switch-type-current"><i style="--switch-color:${switchType.color}">${esc(switchType.short)}</i><span><strong>${mixedSwitchTypes ? "Mixed switch types selected" : esc(switchType.name)}</strong><small>${mixedSwitchTypes ? "Choose a model above to apply one type to every selected key." : switchType.factory ? "Factory-installed option" : "Saved for the selected key"}</small></span></div>${switchComparisonHtml()}</section>
+          </div>
+        </div>` : `<section class="panel hall-selection-required"><span class="chip">SELECT KEYS FIRST</span><h2>Choose one or more switches to tune</h2><p>Click a key, Ctrl/Cmd-click multiple keys, or hold and drag a selection box. The selected editing section will appear here.</p></section>`}
+`
+    ;
   }
 
   function liveMonitorHtml() {
@@ -476,7 +613,7 @@
     const index = state.liveLastIndex ?? 0;
     const travel = state.profile.travelKeys[index] || defaultTravel();
     const distance = state.liveTravel[index] || 0;
-    const maxDistance = Math.max(0.01, Number(travel.key_max_length) || 4);
+    const maxDistance = switchTravelMaximum(travel);
     const travelPercent = clamp((distance / maxDistance) * 100, 0, 100);
     const actuation = clamp((Number(travel.key_actuation) || 1) / 100, 0, maxDistance);
     const actuationPercent = clamp((actuation / maxDistance) * 100, 0, 100);
@@ -504,7 +641,7 @@
           </div>
           <div class="travel-scale">
             <div class="scale-track"><i class="scale-fill"></i><span class="current-marker" id="liveCurrentMarker"></span><span class="actuation-marker" id="liveActuationMarker"><b>Actuation</b></span></div>
-            <span class="scale-top">0.00 mm</span><span class="scale-bottom">${maxDistance.toFixed(2)} mm</span>
+            <span class="scale-top">0.00 mm</span><span class="scale-bottom" id="liveScaleMaximum">${maxDistance.toFixed(2)} mm</span>
           </div>
           <div class="live-metrics">
             <span><small>Travel</small><strong id="liveTravelPercent">${travelPercent.toFixed(0)}%</strong></span>
@@ -730,6 +867,10 @@
       <section class="panel panel-pad log-list">${state.logs.length ? state.logs.map((entry) => `<div class="log-row"><time>${new Date(entry.time).toLocaleTimeString()}</time><span class="log-level ${esc(entry.level)}">${esc(entry.level)}</span><span>${esc(entry.message)}</span></div>`).join("") : `<div class="empty-state"><strong>No device traffic yet</strong><p>Connect a keyboard or edit a setting to begin the session log.</p></div>`}</section>`;
   }
 
+  function renderAboutMe() {
+    return `<section class="panel about-me-page"><header class="about-me-guidance"><div><h2>ye ye whatever bro??? du ma cho Tung beo</h2></div></header><div class="about-me-custom">${ABOUT_ME_HTML}</div></section>`;
+  }
+
   function bindPageControls() {
     $$('[data-go-page]').forEach((button) => button.addEventListener("click", async () => {
       if (button.dataset.goPage === "export-profile") return exportProfile();
@@ -916,7 +1057,26 @@
     updateHallSelectionUI();
   }
 
+  function setHallWorkspaceView(view) {
+    if (!["tuning", "switches"].includes(view)) return;
+    state.hallWorkspaceView = view;
+    const switchPaneActive = view === "switches";
+    $$('[data-hall-workspace]').forEach((button) => {
+      const active = button.dataset.hallWorkspace === view;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    $$('[data-hall-workspace-pane]').forEach((pane) => { pane.hidden = pane.dataset.hallWorkspacePane !== view; });
+    const title = $("#hallWorkspaceTitle");
+    if (title) title.textContent = switchPaneActive ? "Switch selector" : "Selected-key tuning";
+    const status = $("#hallEditStatus");
+    if (status && !state.hallEditPending && !state.calibrationActive) status.textContent = switchPaneActive
+      ? "Assign the installed switch model to the currently selected keys, or open the comparison."
+      : "Change a setting to prepare it for the currently selected keys.";
+  }
+
   function bindHallControls() {
+    $$('[data-hall-workspace]').forEach((button) => button.addEventListener("click", () => setHallWorkspaceView(button.dataset.hallWorkspace)));
     const tuning = $("#hallTuningGrid");
     tuning?.addEventListener("input", beginHallEdit);
     tuning?.addEventListener("change", beginHallEdit);
@@ -1086,7 +1246,7 @@
   function syncHallFormToSelection() {
     if (state.hallEditPending || !state.hallSelection.size) return;
     const travel = state.profile.travelKeys[[...state.hallSelection][0]];
-    const values = { hallActuation: travel.key_actuation, hallPress: travel.rt_press, hallRelease: travel.rt_release, hallPressPrecision: travel.pressPrecision, hallReleasePrecision: travel.releasePrecision, hallPressDeadzone: travel.press_deadzone, hallReleaseDeadzone: travel.release_deadzone };
+    const values = { hallSwitchType: travel.switch_type, hallActuation: travel.key_actuation, hallPress: travel.rt_press, hallRelease: travel.rt_release, hallPressPrecision: travel.pressPrecision, hallReleasePrecision: travel.releasePrecision, hallPressDeadzone: travel.press_deadzone, hallReleaseDeadzone: travel.release_deadzone };
     Object.entries(values).forEach(([id, value]) => {
       const input = $(`#${id}`);
       if (!input) return;
@@ -1111,7 +1271,7 @@
   function handleLiveTelemetry(event) {
     const index = TELEMETRY_INDEX.get(event.keyCode);
     if (index == null) return;
-    const maxDistance = Math.max(0.01, Number(state.profile.travelKeys[index]?.key_max_length) || 4);
+    const maxDistance = switchTravelMaximum(state.profile.travelKeys[index]);
     const distance = clamp(event.rawTravel / telemetryDivisor(index), 0, maxDistance);
     state.liveTravelRaw[index] = event.rawTravel;
     state.liveTravel[index] = distance;
@@ -1133,7 +1293,7 @@
     const index = state.liveLastIndex ?? 0;
     const travel = state.profile.travelKeys[index] || defaultTravel();
     const distance = state.liveTravel[index] || 0;
-    const maxDistance = Math.max(0.01, Number(travel.key_max_length) || 4);
+    const maxDistance = switchTravelMaximum(travel);
     const travelPercent = clamp((distance / maxDistance) * 100, 0, 100);
     const actuation = clamp((Number(travel.key_actuation) || 1) / 100, 0, maxDistance);
     const actuationPercent = clamp((actuation / maxDistance) * 100, 0, 100);
@@ -1157,10 +1317,11 @@
     text("#liveTravelPercent", `${travelPercent.toFixed(0)}%`);
     text("#liveActuationValue", `${actuation.toFixed(2)} mm`);
     text("#liveMode", rapidTriggerModeName(travel.key_mode));
+    text("#liveScaleMaximum", `${maxDistance.toFixed(2)} mm`);
     $$('[data-keyboard-mode="hall"] .keycap').forEach((button) => {
       const keyIndex = Number(button.dataset.keyIndex);
       const keyTravel = state.profile.travelKeys[keyIndex] || defaultTravel();
-      const percent = clamp((state.liveTravel[keyIndex] / Math.max(0.01, keyTravel.key_max_length || 4)) * 100, 0, 100);
+      const percent = clamp((state.liveTravel[keyIndex] / switchTravelMaximum(keyTravel)) * 100, 0, 100);
       button.style.setProperty("--travel-pct", `${percent.toFixed(2)}%`);
       button.classList.toggle("live-pressed", percent > .5);
     });
@@ -1505,6 +1666,7 @@
     const independentRt = rapidTrigger && Boolean($("#hallIndependentRt").checked);
     const insurance = Boolean($("#hallInsurance").checked);
     const values = {
+      switch_type: Number($("#hallSwitchType").value),
       key_mode: rapidTrigger ? (fullTravel ? 2 : 1) : 0,
       key_actuation: Number($("#hallActuation").value),
       rt_press: Number($("#hallPress").value),
@@ -1524,7 +1686,7 @@
     if (triggerBottomChanged) markDirty("settings");
     state.hallEditPending = false;
     state.hallEditSelection.clear();
-    log("change", `${rapidTriggerModeName(values.key_mode)} settings staged on ${targetSelection.size} keys`);
+    log("change", `${switchTypeMeta(values.switch_type).name} and ${rapidTriggerModeName(values.key_mode)} settings staged on ${targetSelection.size} keys`);
     showToast(`Hall settings staged on ${targetSelection.size} key${targetSelection.size === 1 ? "" : "s"}.`);
     renderPage();
   }
@@ -1926,6 +2088,7 @@
     }
 
     const driver = state.driver;
+    const profileChanged = state.profile?.profileIndex !== target;
     const recoveredStagedChanges = state.profile?.profileIndex !== target && preserveStagedProfileForSwitch(target);
     const resumeLiveMonitor = state.liveMonitorActive;
     state.profileSyncBusy = true;
@@ -1939,7 +2102,11 @@
       if (activate) await driver.setActiveProfile(target);
       const profile = await driver.readProfile(target, (percent, message) => updateProgress(10 + Math.round(percent * .9), message));
       if (driver !== state.driver || state.source !== "device") return;
-      const activeLayer = state.profileSyncTarget === target ? state.profileSyncLayer : targetLayer;
+      // A profile-key press is usually made from an Fn layer, so the keyboard's
+      // transition report contains 1/5/9. Once the new profile is fully loaded,
+      // show its base layer instead: local 0, displayed globally as 0/4/8.
+      // Layer-only changes within the already loaded profile remain live.
+      const activeLayer = profileChanged ? 0 : (activate ? targetLayer : (state.profileSyncTarget === target ? state.profileSyncLayer : targetLayer));
       try { localStorage.setItem(`he30-backup-${state.identity.vidPid}-p${target}`, JSON.stringify({ savedAt: new Date().toISOString(), profile })); } catch (error) { log("warning", "Browser backup storage unavailable", error.message); }
       setWorkspace(profile, "device", { identity: state.identity, info: state.info, preserveView: true, layer: activeLayer });
       log("info", `${origin === "keyboard" ? "Keyboard selected" : "Selected"} profile ${target + 1}; workspace refreshed on layer ${activeLayer}`);

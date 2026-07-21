@@ -43,6 +43,9 @@ const travel = Array.from({ length: 128 }, (_, index) => ({
 }));
 const travelBytes = API.encodeTravel(travel);
 if (travelBytes.length !== 1024) throw new Error("Hall bank must be 1024 bytes.");
+for (let switchType = 0; switchType < 4; switchType += 1) {
+  if (API.encodeTravel([{ switch_type: switchType }])[0] !== (0xa0 | switchType)) throw new Error(`Switch type ${switchType} was not encoded in the Hall record's low nibble.`);
+}
 const travelRoundTrip = API.decodeTravel(travelBytes);
 for (const field of ["switch_type", "key_mode", "priority", "key_actuation", "rt_press", "rt_release", "pressPrecision", "releasePrecision", "press_deadzone", "release_deadzone"]) {
   equal(travelRoundTrip.map((item) => item[field]), travel.map((item) => item[field]), `Hall field ${field} did not round-trip.`);
@@ -185,6 +188,15 @@ for (const removedId of ['id="openFileButton"', 'id="welcomeFileButton"', 'id="d
 }
 if (!jsonEditorHtml.includes('data-app-mode="json"') || !jsonEditorHtml.includes('id="openFileButton"') || !jsonEditorHtml.includes('id="fileInput"')) throw new Error("The dedicated JSON editor route is incomplete.");
 if (!jsonEditorHtml.includes('<script src="../protocol.js"></script>') || !jsonEditorHtml.includes('<script src="../app.js"></script>') || !jsonEditorHtml.includes('<link rel="stylesheet" href="../styles.css"')) throw new Error("JSON editor assets are not linked correctly.");
+for (const [source, label] of [[htmlSource, "live driver"], [jsonEditorHtml, "JSON editor"]]) {
+  const diagnosticsPosition = source.indexOf('data-page="diagnostics"');
+  const aboutPosition = source.indexOf('data-page="about"');
+  if (aboutPosition < 0 || aboutPosition < diagnosticsPosition) throw new Error(`About me must appear below Diagnostics in the ${label} navigation.`);
+}
+for (const fragment of ["ABOUT_ME_HTML", "ABOUT ME: START CUSTOM HTML", "ABOUT ME: END CUSTOM HTML", "renderAboutMe", "about: renderAboutMe", '${ABOUT_ME_HTML}']) {
+  if (!appSource.includes(fragment)) throw new Error(`Customizable About me page is missing: ${fragment}`);
+}
+if (!styleSource.includes(".about-me-page") || !styleSource.includes(".about-me-custom") || !styleSource.includes(".about-me-links")) throw new Error("About me page styling is missing.");
 if (appSource.includes("Reconnect")) throw new Error("Reconnect UI must remain removed.");
 for (const fragment of ["resetToLanding", "Returned to the connection screen", 'document.addEventListener("keydown"', "event.preventDefault()", "event.stopImmediatePropagation()"] ) {
   if (!appSource.includes(fragment)) throw new Error(`Connection or keyboard-capture behavior is missing: ${fragment}`);
@@ -272,9 +284,29 @@ if (!protocolSource.includes("readLiveColors") || !protocolSource.includes("this
 for (const fragment of ["subscribeProfileChange", "handleHardwareProfileChange", "syncDeviceProfile", "preserveView: true"]) {
   if (!protocolSource.includes(fragment) && !appSource.includes(fragment)) throw new Error(`Live profile synchronization support is missing: ${fragment}`);
 }
+if (!appSource.includes("const activeLayer = profileChanged ? 0")) throw new Error("Completed profile switches must return the editor to the new profile's base layer.");
+for (const fragment of ["Aurora Purple Switches", "Gateron Jade Pro HE", "Gateron Magnetic Jade Gaming HE", "Mount Tai GT HE", "hallSwitchType", "switch-type-indicator", "hall-switch-legend", "switch_type: Number($(\"#hallSwitchType\").value)"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Hall switch-type control or indicator is missing: ${fragment}`);
+}
+for (const fragment of ["SWITCH_COMPARISON_ROWS", "Compare all four switches", "Switch Comparision.xlsx", "data-switch-image-slot", "Magnetic-flux test basis", "3.5 mm or 3.4 ± 0.2 mm?"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Switch comparison content is missing: ${fragment}`);
+}
+if ((appSource.match(/data-switch-image-slot=/g) || []).length !== 2 || !appSource.includes('${type.value}-1') || !appSource.includes('${type.value}-2')) throw new Error("Each switch must render two image placeholders.");
+for (const fragment of ["SWITCH_SOURCE_LINKS", "gateron-magnetic-jade-pro-switch-set", "gateron-magnetic-jade-gaming-switch-set", "mchose-ace-68-turbo", "mchose-ace-68-air", 'target="_blank" rel="noopener noreferrer"']) {
+  if (!appSource.includes(fragment)) throw new Error(`Clickable switch source is missing: ${fragment}`);
+}
+for (const fragment of ["hallWorkspaceView", "setHallWorkspaceView", "Actuation tuning", "Switch selector", 'data-hall-workspace="tuning"', 'data-hall-workspace="switches"', 'data-hall-workspace-pane="tuning"', 'data-hall-workspace-pane="switches"']) {
+  if (!appSource.includes(fragment)) throw new Error(`Hall workspace toggle is missing: ${fragment}`);
+}
+if (!styleSource.includes(".keycap .key-dot") || !styleSource.includes("left: 7px") || !styleSource.includes(".keycap .switch-type-indicator") || !styleSource.includes("right: 6px")) throw new Error("Hall keycaps must keep the staged marker at top-left and show switch type at top-right.");
+for (const fragment of [".switch-comparison", ".switch-image-grid", ".switch-image-placeholder", ".switch-comparison-table-wrap", ".switch-source-links a", ".hall-workspace-toggle", ".hall-workspace-pane[hidden]"]) {
+  if (!styleSource.includes(fragment)) throw new Error(`Switch comparison styling is missing: ${fragment}`);
+}
 for (const fragment of ["liveMonitorHtml", "handleLiveTelemetry", "Live press distance", "Dynamic Display diagnostic flag", "resumeLiveMonitor"]) {
   if (!appSource.includes(fragment)) throw new Error(`Live distance infographic support is missing: ${fragment}`);
 }
+if (!appSource.includes('value: 0, name: "Aurora Purple Switches"') || !appSource.includes("maxTravel: 3.4") || (appSource.match(/maxTravel: 3\.5/g) || []).length !== 3) throw new Error("Switch-specific 3.4/3.5 mm travel maxima are missing.");
+if ((appSource.match(/switchTravelMaximum\(/g) || []).length < 6 || !appSource.includes('id="liveScaleMaximum"') || !appSource.includes('text("#liveScaleMaximum"')) throw new Error("Live travel scaling must use the installed switch model everywhere and update the axis endpoint.");
 if (!styleSource.includes(".switch-infographic") || !styleSource.includes(".travel-fill")) throw new Error("Live distance animation styles are missing.");
 for (const fragment of ["calibrationPanelHtml", "toggleCalibration", "handleCalibrationTelemetry", "calibrationStatus", "Stop calibration", "Press every physical key one at a time until it turns blue."]) {
   if (!appSource.includes(fragment)) throw new Error(`Calibration UI or behavior is missing: ${fragment}`);
