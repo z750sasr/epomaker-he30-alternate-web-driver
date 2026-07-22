@@ -16,12 +16,58 @@ const jsonEditorHtml = fs.readFileSync(`${root}/json_editor/index.html`, "utf8")
 const styleSource = styleFiles.map(readSource).join("\n");
 const factoryProfile = JSON.parse(fs.readFileSync(`${root}/src/factory_config.json`, "utf8"));
 
+/**
+ * Execute every production script as a separate classic browser script, then
+ * click Connect against a fake WebHID chooser. This catches cross-file global
+ * declaration collisions that isolated syntax checks cannot see.
+ */
+async function verifyBrowserBootstrap() {
+  const elements = new Map();
+  const element = (selector) => {
+    if (elements.has(selector)) return elements.get(selector);
+    const listeners = new Map();
+    const node = {
+      listeners, innerHTML: "", textContent: "", value: "", checked: false, disabled: false, title: "", dataset: {}, files: [],
+      classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+      style: { setProperty() {} },
+      addEventListener(type, handler) { listeners.set(type, handler); },
+      querySelector() { return null; }, querySelectorAll() { return []; }, closest() { return null; },
+      click() {}, showModal() {}, close() {},
+    };
+    elements.set(selector, node);
+    return node;
+  };
+  let requestCount = 0;
+  const browser = {
+    console, URL, Blob, Response, CompressionStream, DecompressionStream, TextEncoder, TextDecoder,
+    Uint8Array, ArrayBuffer, DataView, Promise, Math, Number, String, Boolean, Object, Array, Set, Map, JSON, Error, Date, RegExp, btoa, atob,
+    setTimeout: () => 1, clearTimeout() {}, requestAnimationFrame: () => 1, cancelAnimationFrame() {}, performance: { now: () => 0 },
+    confirm: () => true, localStorage: { setItem() {} },
+    navigator: { hid: { async requestDevice() { requestCount += 1; return []; }, addEventListener() {} } },
+    document: { body: { dataset: { appMode: "live" } }, currentScript: null, querySelector: element, querySelectorAll: () => [], addEventListener() {} },
+    HTMLTextAreaElement: class {}, HTMLSelectElement: class {}, HTMLInputElement: class {},
+  };
+  browser.window = browser;
+  browser.location = { href: "https://example.test/repo/index.html" };
+  browser.addEventListener = () => {};
+  vm.createContext(browser);
+  for (const file of [...protocolFiles, ...appFiles]) {
+    browser.document.currentScript = { src: `https://example.test/repo/${file}` };
+    vm.runInContext(readSource(file), browser, { filename: file });
+  }
+  const connect = elements.get("#welcomeConnectButton")?.listeners.get("click");
+  if (!connect) throw new Error("Segmented startup did not bind the Connect button.");
+  await connect({ preventDefault() {} });
+  if (requestCount !== 1) throw new Error(`Connect invoked the WebHID chooser ${requestCount} times instead of once.`);
+}
+
 async function main() {
 for (const file of [...protocolFiles, ...appFiles]) new Function(readSource(file));
 for (const file of [...protocolFiles, ...appFiles, ...styleFiles]) {
   const lineCount = readSource(file).split(/\r?\n/).length;
   if (lineCount > 1000) throw new Error(`${file} grew beyond the 1,000-line source-file limit.`);
 }
+await verifyBrowserBootstrap();
 
 const context = { window: { navigator: {}, Blob, Response, CompressionStream, DecompressionStream, TextEncoder, TextDecoder, btoa, atob }, Uint8Array, ArrayBuffer, DataView, Promise, Math, Number, String, Boolean, Object, Array, Set, Map, JSON, Error };
 vm.createContext(context);

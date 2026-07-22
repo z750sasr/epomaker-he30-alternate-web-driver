@@ -38,8 +38,8 @@ function setDistanceFromNumber(number, normalize = false) {
   const divisor = Number(range.dataset.distanceDivisor) || 100;
   const minimum = Number(number.min) || 0.01;
   const maximum = Number(number.max) || 4;
-  const millimeters = clamp(Number(number.value), minimum, maximum);
-  range.value = clamp(Math.round(millimeters * divisor), Number(range.min), Number(range.max));
+  const millimeters = uiClamp(Number(number.value), minimum, maximum);
+  range.value = uiClamp(Math.round(millimeters * divisor), Number(range.min), Number(range.max));
   if (normalize) updateRangeOutput(range);
 }
 
@@ -51,7 +51,7 @@ function nudgeDistanceControl(control, direction) {
   const current = Number(range.value) / divisor;
   const minimum = number ? Number(number.min) : Number(range.min) / divisor;
   const maximum = number ? Number(number.max) : Number(range.max) / divisor;
-  range.value = clamp(Math.round(clamp(current + direction * 0.01, minimum, maximum) * divisor), Number(range.min), Number(range.max));
+  range.value = uiClamp(Math.round(uiClamp(current + direction * 0.01, minimum, maximum) * divisor), Number(range.min), Number(range.max));
   updateRangeOutput(range);
   range.dispatchEvent(new Event("input", { bubbles: true }));
 }
@@ -90,7 +90,7 @@ function configureRtInput(input, precision, value = input?.value) {
   input.dataset.distanceDivisor = meta.divisor;
   input.dataset.distanceDecimals = meta.decimals;
   input.max = Math.min(511, Math.max(Math.round(4 * meta.divisor), Number(value) || 1));
-  input.value = clamp(value, 1, Number(input.max));
+  input.value = uiClamp(value, 1, Number(input.max));
   const number = input.parentElement?.querySelector(`[data-range-for="${input.id}"]`);
   if (number) {
     number.min = Math.max(0.01, 1 / meta.divisor).toFixed(2);
@@ -384,7 +384,7 @@ function handleLiveTelemetry(event) {
   const index = TELEMETRY_INDEX.get(event.keyCode);
   if (index == null) return;
   const maxDistance = switchTravelMaximum(state.profile.travelKeys[index]);
-  const distance = clamp(event.rawTravel / telemetryDivisor(index), 0, maxDistance);
+  const distance = uiClamp(event.rawTravel / telemetryDivisor(index), 0, maxDistance);
   state.liveTravelRaw[index] = event.rawTravel;
   state.liveTravel[index] = distance;
   state.liveTravelStatus[index] = event.status;
@@ -406,9 +406,9 @@ function updateLiveVisual() {
   const travel = state.profile.travelKeys[index] || defaultTravel();
   const distance = state.liveTravel[index] || 0;
   const maxDistance = switchTravelMaximum(travel);
-  const travelPercent = clamp((distance / maxDistance) * 100, 0, 100);
-  const actuation = clamp((Number(travel.key_actuation) || 1) / 100, 0, maxDistance);
-  const actuationPercent = clamp((actuation / maxDistance) * 100, 0, 100);
+  const travelPercent = uiClamp((distance / maxDistance) * 100, 0, 100);
+  const actuation = uiClamp((Number(travel.key_actuation) || 1) / 100, 0, maxDistance);
+  const actuationPercent = uiClamp((actuation / maxDistance) * 100, 0, 100);
   const mapped = API.compileAdvanced(state.profile).userKeys[state.layer][index];
   const status = distance < .01 ? "Released" : distance >= actuation ? "Actuated" : "Pre-travel";
   const monitor = $("#liveMonitor");
@@ -433,7 +433,7 @@ function updateLiveVisual() {
   $$('[data-keyboard-mode="hall"] .keycap').forEach((button) => {
     const keyIndex = Number(button.dataset.keyIndex);
     const keyTravel = state.profile.travelKeys[keyIndex] || defaultTravel();
-    const percent = clamp((state.liveTravel[keyIndex] / switchTravelMaximum(keyTravel)) * 100, 0, 100);
+    const percent = uiClamp((state.liveTravel[keyIndex] / switchTravelMaximum(keyTravel)) * 100, 0, 100);
     button.style.setProperty("--travel-pct", `${percent.toFixed(2)}%`);
     button.classList.toggle("live-pressed", percent > .5);
   });
@@ -519,7 +519,7 @@ function handleCalibrationTelemetry(event) {
     button.classList.remove("calibration-waiting", "calibration-progress", "calibration-complete");
     const statusClass = calibrationStatusClass(event.status);
     if (statusClass) button.classList.add(statusClass);
-    button.style.setProperty("--calibration-pct", `${clamp((event.rawTravel / 340) * 100, 0, 100).toFixed(2)}%`);
+    button.style.setProperty("--calibration-pct", `${uiClamp((event.rawTravel / 340) * 100, 0, 100).toFixed(2)}%`);
   }
   const completed = calibrationCompletedCount();
   const completedElement = $("#calibrationCompleted");

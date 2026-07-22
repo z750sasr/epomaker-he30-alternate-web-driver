@@ -240,7 +240,7 @@ function openAdvanced(type, editIndex = null) {
   const index1 = item.index1 ?? PHYSICAL_KEYS[0].index;
   let index2 = item.index2 ?? PHYSICAL_KEYS[1].index;
   if (index2 === index1) index2 = PHYSICAL_KEYS.find(({ index }) => index !== index1)?.index ?? index1;
-  state.advancedLayer = clamp(item.layer ?? 0, 0, API.LAYER_COUNT - 1);
+  state.advancedLayer = uiClamp(item.layer ?? 0, 0, API.LAYER_COUNT - 1);
   state.advancedHostSelection = paired ? [index1, index2] : [index1];
   state.advancedHostSlot = 0;
   const meta = ADVANCED_META[type];
@@ -282,7 +282,7 @@ function modifierPickerHtml(item) {
 }
 
 function dksStagePicker(id, label, value) {
-  const selected = clamp(value, 0, 4);
+  const selected = uiClamp(value, 0, 4);
   return `<div class="dks-stage-picker" data-dks-stage-picker><div><strong>${esc(label)}</strong><small>${selected ? `Stage ${selected}` : "Off"}</small></div><input id="${id}" type="hidden" value="${selected}" />${[[0, "Off"], [1, "1"], [2, "2"], [3, "3"], [4, "4"]].map(([stage, text]) => `<button type="button" data-dks-stage-choice="${stage}" class="${stage === selected ? "active" : ""}" aria-pressed="${stage === selected}">${text}</button>`).join("")}</div>`;
 }
 
@@ -294,7 +294,7 @@ function advancedFormHtml(type, item) {
   const host = advancedHostPickerHtml(type);
   const finish = (content) => content;
   if (type === "dks") {
-    const points = (item.dksPoint || [40, 160, 240, 80]).map((point) => clamp(point, 1, 255));
+    const points = (item.dksPoint || [40, 160, 240, 80]).map((point) => uiClamp(point, 1, 255));
     const dksKeys = item.dksKeys || [0, 1, 2, 3].map(() => ({ key: mappingFromPreset(BASIC_MAPPING_CHOICES[0]), downStart: 1, downEnd: 2, upStart: 2, upEnd: 1 }));
     return finish(`${host}<div class="form-section dks-editor"><div class="dks-section-heading"><div><h3>Four travel stages</h3><p>Like Wootility DKS, each output can press or release at independently chosen points while the switch travels down and back up.</p></div><span class="chip">0.01–2.55 mm</span></div><div class="dks-travel-editor">${points.map((point, index) => `<div><i>${index + 1}</i>${rangeField(`Stage ${index + 1}`, `dksPoint${index}`, point, 1, 255, 1, "mm")}</div>`).join("")}</div><div class="dks-direction-rail" aria-hidden="true"><span>Pressing switch ↓</span><i></i><span>Releasing switch ↑</span></div><div class="dks-actions">${dksKeys.map(dksActionEditor).join("")}</div><div class="callout"><b>Transition model:</b> “Key down” holds an output; “Key up” releases it. Set a transition to Off when that half of the travel should not change the output.</div></div>`);
   }
@@ -387,7 +387,7 @@ function syncAdvancedHostPicker() {
 }
 
 function setAdvancedLayer(layer) {
-  state.advancedLayer = clamp(layer, 0, API.LAYER_COUNT - 1);
+  state.advancedLayer = uiClamp(layer, 0, API.LAYER_COUNT - 1);
   if ($("#advLayer")) $("#advLayer").value = state.advancedLayer;
   $$('[data-advanced-layer]').forEach((button) => {
     const active = Number(button.dataset.advancedLayer) === state.advancedLayer;
@@ -421,7 +421,7 @@ function syncPairRtControls(copyPress = false) {
 }
 
 function syncDksStagePicker(picker, stage) {
-  const value = clamp(stage, 0, 4);
+  const value = uiClamp(stage, 0, 4);
   const input = $("input[type=hidden]", picker);
   if (input) input.value = value;
   $$('[data-dks-stage-choice]', picker).forEach((button) => {
@@ -514,13 +514,13 @@ function restorePairTravel(item) {
 function saveAdvanced(event) {
   event.preventDefault();
   const type = state.advancedType;
-  const layer = clamp($("#advLayer")?.value ?? state.advancedLayer, 0, API.LAYER_COUNT - 1);
+  const layer = uiClamp($("#advLayer")?.value ?? state.advancedLayer, 0, API.LAYER_COUNT - 1);
   const index1 = Number($("#advIndex1").value);
   const existing = state.advancedEditIndex == null ? null : state.profile.advancedKeys[state.advancedEditIndex];
   const base = { type, layer, index1, baseMapping: existing && (existing.layer || 0) === layer && existing.index1 === index1 ? existing.baseMapping || baseMappingForHost(layer, index1) : baseMappingForHost(layer, index1) };
   let item = base;
   if (type === "dks") item = { ...base, dksPoint: [0, 1, 2, 3].map((index) => Number($(`#dksPoint${index}`).value)), dksKeys: [0, 1, 2, 3].map((index) => ({ key: parseMappingSelect(`dksKey${index}`), downStart: Number($(`#dks${index}DownStart`).value), downEnd: Number($(`#dks${index}DownEnd`).value), upStart: Number($(`#dks${index}UpStart`).value), upEnd: Number($(`#dks${index}UpEnd`).value) })) };
-  if (type === "mt") item = { ...base, mtClickKey: parseMappingSelect("mtClickKey"), mtDownKey: parseMappingSelect("mtDownKey"), mtTime: clamp($("#mtTime").value, 10, 2550) };
+  if (type === "mt") item = { ...base, mtClickKey: parseMappingSelect("mtClickKey"), mtDownKey: parseMappingSelect("mtDownKey"), mtTime: uiClamp($("#mtTime").value, 10, 2550) };
   if (type === "tgl") item = { ...base, tglKey: parseMappingSelect("tglKey") };
   if (type === "rs" || type === "socd") {
     const index2 = Number($("#advIndex2").value);
@@ -539,10 +539,10 @@ function saveAdvanced(event) {
     const actions = $$('[data-macro-row]', $("#macroRows")).map((row) => {
       const keyControl = $("[data-open-mapping-picker][id^=macroKey]", row);
       const code = mappingFromControl(keyControl).code2;
-      return { action: $("select[id^=macroAction]", row).value, code, delay: clamp($("input[id^=macroDelay]", row).value, 0, 65535), kind: "key" };
+      return { action: $("select[id^=macroAction]", row).value, code, delay: uiClamp($("input[id^=macroDelay]", row).value, 0, 65535), kind: "key" };
     });
     if (!actions.length) return showAdvancedError("Add at least one macro event.");
-    item = { ...base, macroRepeatCount: clamp($("#macroRepeat").value, 1, 255), actions };
+    item = { ...base, macroRepeatCount: uiClamp($("#macroRepeat").value, 1, 255), actions };
   }
   const displaced = [];
   const candidate = state.profile.advancedKeys.filter((entry, index) => {

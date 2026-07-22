@@ -33,7 +33,10 @@ const WOOTING_PROFILE_API_URL = "https://api.wooting.io/public/wootility/profile
 // Optional: set this to your own same-origin endpoint that accepts ?code= and returns Wooting's { data: profile } JSON.
 const WOOTING_PROFILE_PROXY_URL = "";
 const clone = (value) => JSON.parse(JSON.stringify(value));
-const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
+// UI code owns a separately named clamp helper. Protocol scripts also contain a
+// private clamp(), and classic browser scripts share one global declaration
+// space; distinct names prevent either subsystem from shadowing the other.
+const uiClamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
 
 // ---------------------------------------------------------------------------
@@ -134,7 +137,7 @@ const functionKeys = Array.from({ length: 24 }, (_, index) => {
   return [`F${number}`, 16, 0, code, `F${number}`];
 });
 const key = (name, type, code1, code2, short = name) => ({ name, type, code1, code2, short });
-const globalLayerNumber = (profileIndex, layer) => clamp(profileIndex, 0, API.PROFILE_COUNT - 1) * API.LAYER_COUNT + clamp(layer, 0, API.LAYER_COUNT - 1);
+const globalLayerNumber = (profileIndex, layer) => uiClamp(profileIndex, 0, API.PROFILE_COUNT - 1) * API.LAYER_COUNT + uiClamp(layer, 0, API.LAYER_COUNT - 1);
 const globalLayerLabel = (profileIndex, layer) => {
   const number = globalLayerNumber(profileIndex, layer);
   return `Layer ${number}${Number(layer) === 0 ? " · Default" : ` · FN${number}`}`;
@@ -447,7 +450,7 @@ function showProgress(title, percent = 0, message = "Please keep the keyboard co
 }
 
 function updateProgress(percent, message) {
-  const value = clamp(percent, 0, 100);
+  const value = uiClamp(percent, 0, 100);
   $("#progressBar").style.width = `${value}%`;
   $("#progressPercent").textContent = `${value}%`;
   $("#progressMessage").textContent = message;
@@ -465,7 +468,7 @@ function setWorkspace(profile, source, metadata = {}) {
   state.identity = metadata.identity || state.identity;
   state.info = metadata.info || state.info;
   state.fileName = metadata.fileName || state.fileName;
-  state.layer = clamp(metadata.layer ?? (metadata.preserveView ? previousLayer : 0), 0, API.LAYER_COUNT - 1);
+  state.layer = uiClamp(metadata.layer ?? (metadata.preserveView ? previousLayer : 0), 0, API.LAYER_COUNT - 1);
   state.page = metadata.preserveView ? previousPage : "overview";
   state.dirty.clear();
   state.hallSelection = new Set();

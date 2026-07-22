@@ -35,13 +35,13 @@ function blendLightingColor(fromColor, toColor, amount) {
 
 function scaleLightingColor(color, amount) {
   const normalized = API.normalizeHexColor(color, "#000000").slice(1);
-  const scale = clamp(amount, 0, 1);
+  const scale = uiClamp(amount, 0, 1);
   return `#${[0, 2, 4].map((offset) => Math.round(Number.parseInt(normalized.slice(offset, offset + 2), 16) * scale).toString(16).padStart(2, "0")).join("")}`;
 }
 
 function spectrumLightingColor(hue, value) {
   const normalizedHue = ((Number(hue) % 360) + 360) % 360;
-  const chroma = clamp(value, 0, 1);
+  const chroma = uiClamp(value, 0, 1);
   const sector = normalizedHue / 60;
   const secondary = chroma * (1 - Math.abs((sector % 2) - 1));
   const [red, green, blue] = sector < 1 ? [chroma, secondary, 0]
@@ -65,10 +65,10 @@ function stripFrameColors(light, timestamp) {
   const framebuffer = liveStripFramebufferColors();
   if (framebuffer) return { colors: framebuffer, source: "framebuffer" };
   const effect = Number(light?.effect);
-  const brightness = clamp(light?.brightness, 0, 100) / 100;
+  const brightness = uiClamp(light?.brightness, 0, 100) / 100;
   const baseColor = API.normalizeHexColor(light?.color, "#000000");
   if (effect === 2 || brightness === 0) return { colors: new Array(LIVE_STRIP_SEGMENT_COUNT).fill("#000000"), source: "effect" };
-  const speed = clamp(light?.speed, 0, 4);
+  const speed = uiClamp(light?.speed, 0, 4);
   const time = Number(timestamp) || 0;
   if (effect === 0) {
     const rotation = (time / Math.max(3000, 9000 - speed * 1200)) * 360;

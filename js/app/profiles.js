@@ -68,8 +68,8 @@ function preserveStagedProfileForSwitch(nextProfileIndex) {
  */
 async function syncDeviceProfile(profileIndex, { activate = false, layer = 0, origin = "keyboard" } = {}) {
   if (!state.driver || state.source !== "device") return;
-  const target = clamp(profileIndex, 0, API.PROFILE_COUNT - 1);
-  const targetLayer = clamp(layer, 0, API.LAYER_COUNT - 1);
+  const target = uiClamp(profileIndex, 0, API.PROFILE_COUNT - 1);
+  const targetLayer = uiClamp(layer, 0, API.LAYER_COUNT - 1);
   if (state.profileSyncBusy) {
     if (state.profileSyncTarget === target) state.profileSyncLayer = targetLayer;
     else state.queuedProfileChange = { profileIndex: target, layer: targetLayer, origin };
@@ -121,8 +121,8 @@ async function syncDeviceProfile(profileIndex, { activate = false, layer = 0, or
 /** Coalesce rapid Fn/profile reports while a previous profile read is in flight. */
 function handleHardwareProfileChange(event) {
   if (!state.driver || state.source !== "device" || !state.profile) return;
-  const profileIndex = clamp(event.profileIndex, 0, API.PROFILE_COUNT - 1);
-  const layer = clamp(event.layer, 0, API.LAYER_COUNT - 1);
+  const profileIndex = uiClamp(event.profileIndex, 0, API.PROFILE_COUNT - 1);
+  const layer = uiClamp(event.layer, 0, API.LAYER_COUNT - 1);
   if (state.profileSyncBusy) {
     if (state.profileSyncTarget === profileIndex) state.profileSyncLayer = layer;
     else state.queuedProfileChange = { profileIndex, layer, origin: "keyboard" };
@@ -390,7 +390,7 @@ async function validateProfileShareCode() {
 /** Retarget self-referencing Fn layers when copying a share into another profile. */
 async function replaceProfileFromShare(targetProfileIndex) {
   if (state.shareBusy || !state.shareImportProfile || !state.driver || state.source !== "device" || !state.identity?.multiProfile) return;
-  const target = clamp(targetProfileIndex, 0, API.PROFILE_COUNT - 1);
+  const target = uiClamp(targetProfileIndex, 0, API.PROFILE_COUNT - 1);
   const source = state.shareImportProfile.profileIndex;
   const stagedWarning = target === state.profile.profileIndex && state.dirty.size ? " Any staged changes in the loaded profile will be discarded." : "";
   const confirmation = `Replace onboard Profile ${target + 1} with the validated shared Profile ${source + 1}?\n\nAll mappings, Hall settings, advanced actions/macros, device settings, lighting, and per-key colors will be written and verified. Fn targets inside the source profile's four-layer range will be translated to Profile ${target + 1}; deliberate cross-profile targets will remain unchanged.${stagedWarning}`;
@@ -462,7 +462,7 @@ async function loadFactoryProfileTemplate() {
 }
 
 function prepareFactoryProfile(template, targetProfileIndex, existingProfile) {
-  const target = clamp(targetProfileIndex, 0, API.PROFILE_COUNT - 1);
+  const target = uiClamp(targetProfileIndex, 0, API.PROFILE_COUNT - 1);
   const prepared = clone(template);
   prepared.profileIndex = target;
   prepared.name = `HE30 Factory Profile ${target + 1}`;

@@ -33,9 +33,9 @@ function keyboardHtml(mode, selected = new Set()) {
     const advanced = [112, 144, 145, 146, 147, 148].includes(mapping.type);
     const color = mode === "color" ? state.profile.colorKeys[index] : "";
     const mapped = mode === "hall" ? `${(state.profile.travelKeys[index].key_actuation / 100).toFixed(2)} mm` : mode === "color" ? color : mappingLabel(mapping);
-    const livePercent = mode === "hall" ? clamp((state.liveTravel[index] / switchTravelMaximum(state.profile.travelKeys[index])) * 100, 0, 100) : 0;
+    const livePercent = mode === "hall" ? uiClamp((state.liveTravel[index] / switchTravelMaximum(state.profile.travelKeys[index])) * 100, 0, 100) : 0;
     const calibrationStatus = mode === "hall" && state.calibrationActive ? state.calibrationStatus[index] : null;
-    const calibrationPercent = mode === "hall" && state.calibrationActive ? clamp((state.calibrationTravelRaw[index] / 340) * 100, 0, 100) : 0;
+    const calibrationPercent = mode === "hall" && state.calibrationActive ? uiClamp((state.calibrationTravelRaw[index] / 340) * 100, 0, 100) : 0;
     const calibrationClass = calibrationStatus === 255 ? " calibration-complete" : calibrationStatus === 0 ? " calibration-waiting" : calibrationStatus != null ? " calibration-progress" : "";
     const switchType = mode === "hall" ? switchTypeMeta(state.profile.travelKeys[index].switch_type) : null;
     const styles = [`--key-width:${hallKeyboard ? keyWidth(keyItem, 74, 9) : keyWidth(keyItem)}px`, `--key-u:${keyUnit(keyItem)}`];
@@ -110,7 +110,7 @@ function rapidTriggerModeName(mode) {
 }
 
 function switchTypeMeta(value) {
-  const numeric = clamp(value, 0, 15);
+  const numeric = uiClamp(value, 0, 15);
   return SWITCH_TYPES.find((type) => type.value === numeric) || { value: numeric, name: `Reserved switch type ${numeric}`, short: "?", color: "#7f91a2" };
 }
 
@@ -122,7 +122,7 @@ function switchTravelMaximum(travel) {
 
 function switchTypeOptions(current) {
   const options = SWITCH_TYPES.map((type) => [type.value, `${type.name}${type.factory ? " · Factory" : ""}`]);
-  const numeric = clamp(current, 0, 15);
+  const numeric = uiClamp(current, 0, 15);
   if (!SWITCH_TYPES.some((type) => type.value === numeric)) options.push([numeric, `Reserved switch type ${numeric} · Current`]);
   return options;
 }
@@ -228,9 +228,9 @@ function liveMonitorHtml() {
   const travel = state.profile.travelKeys[index] || defaultTravel();
   const distance = state.liveTravel[index] || 0;
   const maxDistance = switchTravelMaximum(travel);
-  const travelPercent = clamp((distance / maxDistance) * 100, 0, 100);
-  const actuation = clamp((Number(travel.key_actuation) || 1) / 100, 0, maxDistance);
-  const actuationPercent = clamp((actuation / maxDistance) * 100, 0, 100);
+  const travelPercent = uiClamp((distance / maxDistance) * 100, 0, 100);
+  const actuation = uiClamp((Number(travel.key_actuation) || 1) / 100, 0, maxDistance);
+  const actuationPercent = uiClamp((actuation / maxDistance) * 100, 0, 100);
   const mapped = API.compileAdvanced(state.profile).userKeys[state.layer][index];
   const status = distance < .01 ? "Released" : distance >= actuation ? "Actuated" : "Pre-travel";
   const monitorText = state.calibrationActive ? "Calibration owns the stream" : state.liveMonitorBusy ? "Working…" : state.liveMonitorActive ? "Stop live monitor" : "Start live monitor";
@@ -289,7 +289,7 @@ function rtRangeField(label, id, value, precision, disabled = false) {
 function hallSwitchRow(title, detail, id, checked, disabled = false) { return `<div class="switch-row"><div><strong>${esc(title)}</strong><small>${esc(detail)}</small></div><label class="switch"><input id="${id}" type="checkbox"${checked ? " checked" : ""}${disabled ? " disabled" : ""} /><i></i></label></div>`; }
 
 function factoryResetCardHtml() {
-  const profileNumber = clamp((state.profile?.profileIndex ?? 0) + 1, 1, API.PROFILE_COUNT);
+  const profileNumber = uiClamp((state.profile?.profileIndex ?? 0) + 1, 1, API.PROFILE_COUNT);
   const connected = state.source === "device" && Boolean(state.driver);
   const disabled = !connected || state.factoryResetBusy;
   const status = state.factoryResetBusy ? "RESETTING…" : connected ? "FACTORY PROFILE READY" : "CONNECT KEYBOARD";
@@ -376,7 +376,7 @@ function configuredLightingColor(index) {
 }
 
 function lightingKeyboardPreview() {
-  const brightness = clamp(state.profile.light.brightness, 0, 100);
+  const brightness = uiClamp(state.profile.light.brightness, 0, 100);
   return `<div class="keyboard-grid lighting-board" data-lighting-board aria-label="Configured 36-key lighting preview">${HE30_LAYOUT.map((row) => `<div class="key-row">${row.map((keyItem) => {
     const { index, label } = keyItem;
     const color = configuredLightingColor(index);
@@ -388,7 +388,7 @@ function lightingKeyboardPreview() {
 function lightStripPreview() {
   const light = state.liveLightingActive && state.liveStripLight ? state.liveStripLight : state.profile.logoLight;
   const color = light.effect === 2 || light.brightness === 0 ? "#000000" : API.normalizeHexColor(light.color, "#000000");
-  const opacity = light.effect === 2 || light.brightness === 0 ? 0.15 : 0.35 + clamp(light.brightness, 0, 100) * 0.0065;
+  const opacity = light.effect === 2 || light.brightness === 0 ? 0.15 : 0.35 + uiClamp(light.brightness, 0, 100) * 0.0065;
   const segments = Array.from({ length: LIVE_STRIP_SEGMENT_COUNT }, (_, index) => `<i data-strip-segment="${index}" style="--strip-color:${esc(color)}"></i>`).join("");
   return `<div class="strip-device" data-strip-lighting data-strip-effect="${Number(light.effect)}" style="--strip-color:${esc(color)};--strip-opacity:${opacity.toFixed(2)}">
     <div class="light-strip" role="img" aria-label="Light strip preview color ${esc(color.toUpperCase())}">${segments}</div>
@@ -435,7 +435,7 @@ function lightFields(group, light) {
   if (effect.color) fields.push(`<label class="field"><span>Color</span><input type="color" data-light="${group}" data-light-prop="color" value="${esc(light.color)}" /></label>`);
   if (effect.brightness) {
     const brightnessOptions = [[0, "Off"], [20, "20%"], [40, "40%"], [60, "60%"], [80, "80%"], [100, "100%"]];
-    const brightness = clamp(light.brightness, 0, 100);
+    const brightness = uiClamp(light.brightness, 0, 100);
     if (!brightnessOptions.some(([value]) => value === brightness)) brightnessOptions.push([brightness, `${brightness}% · Imported`]);
     brightnessOptions.sort((left, right) => left[0] - right[0]);
     fields.push(selectField("Brightness", `${group}-brightness`, brightnessOptions, brightness));
