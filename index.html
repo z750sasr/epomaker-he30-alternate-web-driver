@@ -19,13 +19,7 @@
     <meta name="twitter:image" content="https://z750sasr.github.io/epomaker-he30-alternate-web-driver/images/EPOMAKERHE30_black.webp" />
     <link rel="canonical" href="https://z750sasr.github.io/epomaker-he30-alternate-web-driver/" />
     <title>EPOMAKER HE30 Web Driver and Control Panel</title>
-    <!-- Styles are ordered from shared foundations to feature and responsive overrides. -->
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="styles/workspace.css" />
-    <link rel="stylesheet" href="styles/keyboard-hall.css" />
-    <link rel="stylesheet" href="styles/pages.css" />
-    <link rel="stylesheet" href="styles/components.css" />
-    <link rel="stylesheet" href="styles/responsive.css" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -155,17 +149,7 @@
     </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <!-- Protocol modules are pure helpers/codecs first, WebHID transport last. -->
-    <script src="js/protocol/core.js"></script>
-    <script src="js/protocol/codecs.js"></script>
     <script src="protocol.js"></script>
-    <!-- UI modules share state and must stay in this order; app.js boots last. -->
-    <script src="js/app/foundation.js"></script>
-    <script src="js/app/pages.js"></script>
-    <script src="js/app/hall.js"></script>
-    <script src="js/app/lighting.js"></script>
-    <script src="js/app/editors.js"></script>
-    <script src="js/app/profiles.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
