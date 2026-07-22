@@ -168,6 +168,10 @@ Developers can run the dependency-free smoke test using Node.js:
 node smoke-test.cjs
 ```
 
+New contributors should read [the architecture guide](docs/ARCHITECTURE.md). It
+explains the source-module load order, staged editing model, profile/layer data,
+protocol codecs, WebHID verification flow, and where each type of change belongs.
+
 The test checks:
 
 * JavaScript syntax
