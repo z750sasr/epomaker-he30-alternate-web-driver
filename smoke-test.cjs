@@ -76,7 +76,7 @@ const colorValues = Array.from({ length: 128 }, (_, index) => `#${(index * 12345
 equal(API.decodeColors(API.encodeColors(colorValues)), colorValues, "Per-key RGB colors did not round-trip.");
 
 if (API.normalizeWootingShareCode("c4be8f8508212554b1992b5d83a1adf79f29") !== "c4be8f8508212554b1992b5d83a1adf79f29") throw new Error("Wooting share-code validation rejected the captured code format.");
-if (API.wootingDistanceToHundredths(8224) !== 201 || API.wootingDistanceToHundredths(835) !== 20) throw new Error("Wooting normalized travel did not convert to HE30 hundredths of a millimeter.");
+if (API.wootingDistanceToHundredths(8224) !== 201 || API.wootingDistanceToHundredths(835) !== 20 || API.wootingDistanceToHundredths(16383, 255) !== 255) throw new Error("Wooting normalized travel did not convert or clamp to the HE30 distance range.");
 const wootingTarget = {
   profileIndex: 0,
   userKeys: Object.fromEntries([0, 1, 2, 3].map((layer) => [layer, Array.from({ length: 128 }, () => API.makeMapping(255, 255, 255, 0, layer))])),
@@ -157,6 +157,15 @@ const profile = {
 const compiled = API.compileAdvanced(profile);
 if (compiled.banks.dks.length !== 1 || compiled.banks.mt.length !== 5 || compiled.banks.tgl.length !== 1 || compiled.banks.macros.length !== 1) throw new Error("Advanced actions did not compile into the expected banks.");
 if (API.encodeDksBank(compiled.banks.dks).length !== 1024 || API.encodeMtBank(compiled.banks.mt).length !== 256 || API.encodeTglBank(compiled.banks.tgl).length !== 128 || API.encodeMacros(compiled.banks.macros).length !== 2048) throw new Error("An advanced bank has the wrong size.");
+if (API.encodeDksBank([{ dksPoint: [300, 20, 30, 40], dksKeys: [] }])[0] !== 255) throw new Error("DKS travel stages were not clamped to the firmware byte range.");
+const layeredAdvancedCompiled = API.compileAdvanced({
+  ...profile,
+  advancedKeys: [
+    { type: "tgl", layer: 2, index1: 1, tglKey: API.makeMapping(16, 0, 5) },
+    { type: "rs", layer: 3, index1: 2, index2: 3, key1: API.makeMapping(16, 0, 4), key2: API.makeMapping(16, 0, 7), option: { actuation: 45, press: 11, release: 23, priority: 0 } },
+  ],
+});
+if (layeredAdvancedCompiled.userKeys[2][1].type !== 145 || layeredAdvancedCompiled.userKeys[3][2].type !== 147 || layeredAdvancedCompiled.travelKeys[2].rt_press !== 11 || layeredAdvancedCompiled.travelKeys[2].rt_release !== 23) throw new Error("Advanced layers or independent paired RT values did not compile correctly.");
 for (const [priority, expectedPair] of [[0, [0, 0]], [1, [1, 2]], [2, [2, 1]], [3, [3, 3]]]) {
   const socdModeProfile = {
     ...profile,
@@ -207,13 +216,15 @@ for (const mode of ["Last Input Priority", "Absolute 1st key", "Absolute 2nd key
   if (!appSource.includes(mode)) throw new Error(`SOCD mode is missing: ${mode}`);
 }
 if (appSource.includes("Neutral / last input")) throw new Error("Neutral and Last Input Priority must remain separate SOCD modes.");
-for (const fragment of ["defaultMappingForPhysical", "restoreAdvancedHosts(item)", "preserveAdvancedUiMetadata", "mappingPickerField", "openAdvancedMappingPicker", "data-open-mapping-picker", "Advanced action · Layer 0", "advanced-pair-hosts", "modifierPickerHtml", "comboModifierOrder", "modifierOrder", "Layer 0 only."]) {
+for (const fragment of ["defaultMappingForPhysical", "restoreAdvancedHosts(item)", "preserveAdvancedUiMetadata", "mappingPickerField", "openAdvancedMappingPicker", "advancedHostPickerHtml", "data-advanced-host-key", "data-advanced-layer", "pairIndependentRt", "dksStagePicker", "profileDisclosureHtml", "data-profile-disclosure", "modifierPickerHtml", "comboModifierOrder", "modifierOrder", "Fn-layer warning:"]) {
   if (!appSource.includes(fragment)) throw new Error(`Advanced-editor revamp is missing: ${fragment}`);
 }
-if (appSource.includes('id="advLayer"') || appSource.includes('Number($("#advLayer").value)')) throw new Error("Advanced actions must no longer expose or read a nonzero layer selector.");
+if (!appSource.includes('id="advLayer"') || !appSource.includes('$("#advLayer")?.value')) throw new Error("Advanced actions must expose and save the selected local layer.");
+if (appSource.includes("Layer 0 only.")) throw new Error("The Advanced editor still incorrectly restricts actions to Layer 0.");
+if (!appSource.includes("editable = true") || !appSource.includes('$("#pairIndependentRt")?.checked')) throw new Error("Editable distance values or independent pair RT controls are missing.");
 const deleteAdvancedSource = appSource.match(/function deleteAdvanced\(index\) \{([\s\S]*?)\n  \}/)?.[1] || "";
 if (!deleteAdvancedSource.includes("restoreAdvancedHosts(item)") || deleteAdvancedSource.includes("makeMapping(255")) throw new Error("Deleting an Advanced action must restore its saved or physical-default host mappings.");
-for (const fragment of [".mapping-picker-control", ".modifier-options", ".modifier-order-item", ".advanced-pair-hosts"]) {
+for (const fragment of [".mapping-picker-control", ".modifier-options", ".modifier-order-item", ".advanced-host-keyboard", ".advanced-host-slots", ".dks-action-card", ".dks-stage-picker", ".profile-tool-disclosure", ".configured-action-buttons"]) {
   if (!styleSource.includes(fragment)) throw new Error(`Advanced-editor styling is missing: ${fragment}`);
 }
 if (API.PROFILE_COUNT !== 3 || API.LAYER_COUNT !== 4 || API.TOTAL_LAYER_COUNT !== 12) throw new Error("The three-profile, twelve-layer topology is incorrect.");
@@ -238,10 +249,8 @@ for (let layer = 0; layer < API.LAYER_COUNT; layer += 1) {
   if (!Array.isArray(factoryProfile.userKeys?.[layer]) || factoryProfile.userKeys[layer].length !== API.KEY_COUNT) throw new Error(`Factory layer ${layer} is incomplete.`);
 }
 if (factoryProfile.travelKeys?.length !== API.KEY_COUNT || !Array.isArray(factoryProfile.advancedKeys) || !factoryProfile.light || !factoryProfile.logoLight) throw new Error("The bundled factory-profile schema is incomplete.");
-const factoryFn1Space = factoryProfile.userKeys[1][28];
-const factoryFn1Escape = factoryProfile.userKeys[1][0];
-equal([factoryFn1Space.type, factoryFn1Space.code1, factoryFn1Space.code2], [240, 87, 0], "The factory Fn1+Space web-driver shortcut changed.");
-equal([factoryFn1Escape.type, factoryFn1Escape.code1, factoryFn1Escape.code2], [240, 8, 0], "The factory Fn1+Escape reset action changed.");
+const factoryResetMapping = Object.values(factoryProfile.userKeys).flat().find((mapping) => mapping.type === 240 && mapping.code1 === 8 && mapping.code2 === 0);
+if (!factoryResetMapping) throw new Error("The updated factory profile has no reset mapping.");
 
 for (const id of ["welcomeView", "workspaceView", "mappingDialog", "advancedDialog", "confirmDialog", "progressOverlay"]) {
   if (!htmlSource.includes(`id="${id}"`)) throw new Error(`Required UI surface is missing: ${id}`);

@@ -264,6 +264,10 @@
     wootingStatus: "",
     wootingError: false,
     wootingBusy: false,
+    profileDisclosureOpen: { wooting: false, sharing: false },
+    advancedLayer: 0,
+    advancedHostSelection: [],
+    advancedHostSlot: 0,
   };
 
   function mappingFromPreset(preset, layer = state.layer) {
@@ -702,12 +706,12 @@
   function selectField(label, id, options, selected, disabled = false) { return `<label class="field"><span>${esc(label)}</span><select id="${id}"${disabled ? " disabled" : ""}>${options.map(([value, name]) => `<option value="${value}"${String(value) === String(selected) ? " selected" : ""}>${esc(name)}</option>`).join("")}</select></label>`; }
   function distanceNumberEditor(id, value, divisor, min, max, disabled = false) {
     const millimeters = Number(value) / divisor;
-    const minimum = Math.max(0.01, Number(min) / divisor);
+    const minimum = Number(min) <= 0 ? 0 : Math.max(0.01, Number(min) / divisor);
     const maximum = Number(max) / divisor;
     const decimals = divisor > 100 ? 3 : 2;
     return `<span class="range-number-control"><input class="range-number" type="number" min="${minimum.toFixed(decimals)}" max="${maximum.toFixed(decimals)}" step="0.01" value="${millimeters.toFixed(decimals)}" inputmode="decimal" aria-label="${id} distance in millimeters" data-range-for="${id}"${disabled ? " disabled" : ""} /><span>mm</span></span>`;
   }
-  function rangeField(label, id, value, min, max, step, unit, disabled = false, editable = false) { return `<label class="field"><span>${esc(label)}</span><div class="range-line${editable ? " editable" : ""}"><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${value}" data-distance-divisor="100" data-distance-decimals="2"${disabled ? " disabled" : ""} />${editable ? distanceNumberEditor(id, value, 100, min, max, disabled) : `<output class="range-value" for="${id}">${(Number(value) / 100).toFixed(2)} ${unit}</output>`}</div></label>`; }
+  function rangeField(label, id, value, min, max, step, unit, disabled = false, editable = true) { return `<label class="field"><span>${esc(label)}</span><div class="range-line${editable ? " editable" : ""}"><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${value}" data-distance-divisor="100" data-distance-decimals="2"${disabled ? " disabled" : ""} />${editable ? distanceNumberEditor(id, value, 100, min, max, disabled) : `<output class="range-value" for="${id}">${(Number(value) / 100).toFixed(2)} ${unit}</output>`}</div></label>`; }
   function rtRangeField(label, id, value, precision, disabled = false) {
     const meta = rtPrecisionMeta(precision);
     const maximum = Math.min(511, Math.max(Math.round(4 * meta.divisor), Number(value) || 1));
@@ -843,8 +847,11 @@
   }
 
   function effectPicker(group, light) {
-    const label = group === "logoLight" ? "Light strip effect" : "Main key lighting effect";
-    return `<div class="effect-picker-block"><h4>Effect</h4><div class="effect-picker" role="radiogroup" aria-label="${label}">${lightingEffects(group).map((effect) => {
+    const isLightStrip = group === "logoLight";
+    const label = isLightStrip  ? "Light strip effect"  : "Main key lighting effect";
+    const pickerClass = isLightStrip  ? "effect-picker-light-strip"  : "effect-picker";
+
+    return `<div class="effect-picker-block"><h4>Effect</h4><div class="${pickerClass}" role="radiogroup" aria-label="${label}">${lightingEffects(group).map((effect) => {
       const active = effect.value === Number(light.effect);
       return `<button class="effect-option${active ? " active" : ""}" type="button" role="radio" aria-checked="${active}" data-light-effect="${group}" data-effect-value="${effect.value}" title="${esc(effect.name)}"><span class="effect-glyph" aria-hidden="true">${effect.glyph}</span><strong>${esc(effect.name)}</strong></button>`;
     }).join("")}</div></div>`;
@@ -871,7 +878,7 @@
     const count = (type) => state.profile.advancedKeys.filter((item) => item.type === type).length;
     const shared = count("mt") + 2 * (count("rs") + count("socd"));
     return `<div class="advanced-cards">${Object.entries(ADVANCED_META).map(([type, meta]) => `<article class="panel action-card"><span class="action-icon">${meta.icon}</span><h3>${meta.name}</h3><p>${meta.description}</p><button class="icon-action" type="button" data-add-advanced="${type}">+ Add ${meta.name}</button></article>`).join("")}</div>
-      <div class="callout advanced-scope-note"><b>Layer 0 only:</b> new and edited Advanced actions are assigned to the profile's base layer. Imported actions from another layer remain visible so they can be removed; editing one moves it to Layer 0.</div>
+      <div class="callout advanced-scope-note"><b>Four-layer support:</b> choose the action's layer inside the editor. Actions on Fn layers only run while that layer is active; paired Hall tuning remains physical and applies across every layer.</div>
       <div class="callout">Device banks: DKS ${count("dks")}/32 · Toggle ${count("tgl")}/32 · Shared Mod-Tap/pair bank ${shared}/32 · Macros ${count("macro")}/32. Pair actions use two shared slots.</div>
       <div class="section-heading"><div><h2>Configured actions</h2><p>Actions are compiled into device banks only when you apply.</p></div></div>
       <div class="configured-list">${state.profile.advancedKeys.length ? state.profile.advancedKeys.map((item, index) => configuredAction(item, index)).join("") : `<div class="panel empty-state"><strong>No advanced actions configured</strong><p>Add one above. The host mapping and underlying bank entry will be staged together.</p></div>`}</div>`;
@@ -880,11 +887,22 @@
   function configuredAction(item, index) {
     const meta = ADVANCED_META[item.type] || { name: item.type, icon: "?" };
     const paired = item.index2 != null ? ` + ${physicalName(item.index2)}` : "";
-    return `<article class="panel configured-row"><span class="action-icon">${meta.icon}</span><div><strong>${esc(meta.name)} · ${esc(physicalName(item.index1))}${esc(paired)}</strong><small>${esc(globalLayerLabel(state.profile.profileIndex, item.layer || 0))}${item.type === "macro" ? ` · ${(item.actions || []).length} events` : ""}</small></div><button class="icon-action" type="button" data-edit-advanced="${index}">Edit</button><button class="icon-action delete" type="button" data-delete-advanced="${index}">Delete</button></article>`;
+    const option = item.option || {};
+    const detail = item.type === "macro"
+      ? `${(item.actions || []).length} events`
+      : item.type === "rs" || item.type === "socd"
+        ? `${(Number(option.actuation || 0) / 100).toFixed(2)} mm · RT ${(Number(option.press || 0) / 100).toFixed(2)}/${(Number(option.release || option.press || 0) / 100).toFixed(2)} mm`
+        : item.type === "dks" ? `${(item.dksKeys || []).length} output paths` : "Onboard action";
+    return `<article class="panel configured-row"><span class="action-icon">${meta.icon}</span><div class="configured-action-copy"><strong>${esc(meta.name)}</strong><span>${esc(physicalName(item.index1))}${esc(paired)}</span><small>${esc(globalLayerLabel(state.profile.profileIndex, item.layer || 0))} · ${esc(detail)}</small></div><div class="configured-action-buttons"><button class="icon-action" type="button" data-edit-advanced="${index}">Edit</button><button class="icon-action delete" type="button" data-delete-advanced="${index}">Delete</button></div></article>`;
   }
 
   function normalizedWootingCode(value = state.wootingCode) {
     try { return API.normalizeWootingShareCode(value); } catch (_) { return ""; }
+  }
+
+  function profileDisclosureHtml(id, title, description, chip, content) {
+    const open = Boolean(state.profileDisclosureOpen?.[id]);
+    return `<details class="profile-tool-disclosure" data-profile-disclosure="${id}"${open ? " open" : ""}><summary><span><strong>${esc(title)}</strong><small>${esc(description)}</small></span><span class="profile-disclosure-actions"><i class="chip">${esc(chip)}</i><b aria-hidden="true">⌄</b></span></summary><div class="profile-disclosure-content">${content}</div></details>`;
   }
 
   function wootingImportHtml() {
@@ -899,8 +917,7 @@
         ? `${(summary.minimumSourceTravel / 100).toFixed(2)}${summary.minimumSourceTravel === summary.maximumSourceTravel ? "" : `–${(summary.maximumSourceTravel / 100).toFixed(2)}`} mm source travel`
         : "4.00 mm default source travel")
       : "";
-    return `<div class="section-heading wooting-import-heading"><div><h2>Import a Wooting profile</h2><p>Copy compatible mappings, Hall tuning, Rapid Trigger, advanced actions, and Static per-key lighting into this workspace.</p></div><span class="chip">WOOTING</span></div>
-      <div class="profile-share-grid wooting-import-grid">
+    const content = `<div class="profile-share-grid wooting-import-grid">
         <section class="panel panel-pad share-card"><div class="share-card-heading"><div><h3>Wooting share code</h3><p>Paste the short code from Wootility. Direct lookup uses Wooting's own public profile endpoint.</p></div><button class="button secondary compact" id="loadWootingCode" type="button"${state.wootingBusy ? " disabled" : ""}>${state.wootingBusy ? "Loading…" : "Load code"}</button></div>
           <input class="share-code wooting-code-input" id="wootingCodeInput" type="text" spellcheck="false" autocomplete="off" aria-label="Wooting profile share code" placeholder="c4be8f8508212554b1992b5d83a1adf79f29" value="${esc(state.wootingCode)}" />
           <div class="share-card-footer"><small>Wooting currently restricts browser reads to wootility.io. If lookup is blocked, open its first-party JSON and paste it in the next card.</small>${sourceUrl ? `<a class="button secondary compact" href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer">Open source JSON</a>` : ""}</div>
@@ -913,6 +930,7 @@
       </div>
       ${state.wootingStatus ? `<div class="share-validation wooting-validation${state.wootingError ? " error" : " valid"}">${esc(state.wootingStatus)}</div>` : ""}
       ${summary ? `<section class="panel panel-pad wooting-preview"><div class="share-card-heading"><div><h3>${esc(summary.name)}</h3><p>Version ${summary.version || "unknown"} · ${summary.layerCount} layer${summary.layerCount === 1 ? "" : "s"} · ${esc(matchLabel)} · ${esc(layoutLabel)} · ${esc(travelLabel)}</p></div><button class="button primary compact" id="stageWootingImport" type="button">Stage supported settings</button></div><div class="wooting-summary-grid"><span><strong>${summary.mappingsCopied}</strong> mappings</span><span><strong>${summary.hallKeysCopied}</strong> Hall keys</span><span><strong>${summary.advancedImported}</strong> advanced actions</span><span><strong>${summary.staticLightingImported ? summary.colorsCopied : 0}</strong> Preset colors</span><span><strong>${summary.staticLightingImported ? `${summary.brightness}%` : "—"}</strong> brightness</span><span><strong>${summary.advancedSkipped}</strong> skipped actions</span></div>${summary.warnings.length ? `<ul class="wooting-warnings">${summary.warnings.map((warning) => `<li>${esc(warning)}</li>`).join("")}</ul>` : ""}</section>` : ""}`;
+    return profileDisclosureHtml("wooting", "Import a Wooting profile", "Copy mappings, Hall tuning, advanced actions, and Static per-key lighting.", "WOOTING", content);
   }
 
   function profileShareHtml() {
@@ -921,8 +939,7 @@
     const pending = state.shareImportProfile;
     const sourceProfile = pending ? pending.profileIndex + 1 : 0;
     const exportMeta = state.shareExportCode ? `${state.shareExportCode.length.toLocaleString()} characters · gzip + Base64URL` : "Nothing leaves this browser unless you copy the code.";
-    return `${wootingImportHtml()}<div class="section-heading"><div><h2>Compressed profile sharing</h2><p>Share one complete profile as a versioned text code instead of attaching a JSON file.</p></div><span class="chip">HE30P1</span></div>
-      <div class="profile-share-grid">
+    const content = `<div class="profile-share-grid">
         <section class="panel panel-pad share-card"><div class="share-card-heading"><div><h3>Export current profile</h3><p>Includes all four layers, Hall data, advanced actions, device settings, lighting, and per-key colors.</p></div><button class="button secondary compact" id="generateShareCode" type="button"${state.shareBusy ? " disabled" : ""}>${state.shareBusy ? "Working…" : "Generate code"}</button></div>
           <textarea class="share-code" id="shareCodeOutput" readonly spellcheck="false" aria-label="Generated compressed profile code" placeholder="Generate a code for the current workspace…">${esc(state.shareExportCode)}</textarea>
           <div class="share-card-footer"><small>${esc(exportMeta)}</small><button class="button primary compact" id="copyShareCode" type="button"${!state.shareExportCode ? " disabled" : ""}>Copy code</button></div>
@@ -933,6 +950,7 @@
           ${pending ? `<div class="share-targets"><div><strong>Validated Profile ${sourceProfile}</strong><small>Choose the onboard destination. Fn targets inside layers ${(sourceProfile - 1) * API.LAYER_COUNT}–${sourceProfile * API.LAYER_COUNT - 1} will move with the profile; deliberate cross-profile Fn targets stay unchanged.</small></div><div class="share-target-grid">${Array.from({ length: API.PROFILE_COUNT }, (_, index) => `<button class="button ${index === state.profile.profileIndex ? "primary" : "secondary"}" type="button" data-share-target="${index}"${!multiProfile || state.shareBusy ? " disabled" : ""}>Replace Profile ${index + 1}${index === state.profile.profileIndex ? " · loaded" : ""}</button>`).join("")}</div>${!multiProfile ? `<div class="callout"><b>Connect the three-profile HE30</b> to write this validated code to onboard memory.</div>` : ""}</div>` : ""}
         </section>
       </div>`;
+    return `${wootingImportHtml()}${profileDisclosureHtml("sharing", "Compressed profile sharing", "Export or import one complete profile as a versioned text code.", "HE30P1", content)}`;
   }
 
   function renderProfiles() {
@@ -1017,6 +1035,9 @@
       $(".share-targets")?.remove();
     });
     $$('[data-share-target]').forEach((button) => button.addEventListener("click", () => replaceProfileFromShare(Number(button.dataset.shareTarget))));
+    $$('[data-profile-disclosure]').forEach((details) => details.addEventListener("toggle", () => {
+      state.profileDisclosureOpen[details.dataset.profileDisclosure] = details.open;
+    }));
     $("#loadWootingCode")?.addEventListener("click", loadWootingShareCode);
     $("#analyzeWootingJson")?.addEventListener("click", analyzeWootingJson);
     $("#chooseWootingFile")?.addEventListener("click", () => $("#wootingFileInput")?.click());
@@ -1072,8 +1093,10 @@
     range.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
-  function bindDistanceInputs() {
-    $$('[data-range-for]').forEach((number) => {
+  function bindDistanceInputs(root = document) {
+    $$('[data-range-for]', root).forEach((number) => {
+      if (number.dataset.distanceBound) return;
+      number.dataset.distanceBound = "true";
       number.addEventListener("input", () => setDistanceFromNumber(number));
       number.addEventListener("change", () => setDistanceFromNumber(number, true));
       number.addEventListener("blur", () => setDistanceFromNumber(number, true));
@@ -1083,11 +1106,15 @@
         nudgeDistanceControl(number, event.key === "ArrowRight" ? 1 : -1);
       });
     });
-    $$('.range-line.editable input[type="range"]').forEach((range) => range.addEventListener("keydown", (event) => {
+    $$('.range-line.editable input[type="range"]', root).forEach((range) => {
+      if (range.dataset.distanceKeyBound) return;
+      range.dataset.distanceKeyBound = "true";
+      range.addEventListener("keydown", (event) => {
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       event.preventDefault();
       nudgeDistanceControl(range, event.key === "ArrowRight" ? 1 : -1);
-    }));
+      });
+    });
   }
 
   function configureRtInput(input, precision, value = input?.value) {
@@ -2025,7 +2052,7 @@
     const current = mappingFromControl(control);
     $("#mappingTitle").textContent = `Choose ${control.dataset.mappingLabel || "output"}`;
     $("#mappingCurrent").textContent = `Currently: ${mappingLabel(current)}`;
-    $("#mappingAddress").textContent = "Advanced action · Layer 0";
+    $("#mappingAddress").textContent = `Advanced action · ${globalLayerLabel(state.profile.profileIndex, state.advancedLayer)}`;
     $("#clearMappingButton").textContent = "Use Unassigned";
     $("#mappingSearch").value = "";
     renderMappingGroups("");
@@ -2033,25 +2060,49 @@
     setTimeout(() => $("#mappingSearch").focus(), 30);
   }
 
-  function hostSelect(id, selected, label, exclude = null) {
-    return `<label class="field"><span>${esc(label)}</span><select id="${id}">${PHYSICAL_KEYS.filter((keyItem) => keyItem.index !== exclude).map((keyItem) => `<option value="${keyItem.index}"${keyItem.index === Number(selected) ? " selected" : ""}>${esc(keyItem.label)} · index ${keyItem.index}</option>`).join("")}</select></label>`;
+  function advancedLayerMessage(layer, paired = false) {
+    const label = globalLayerLabel(state.profile.profileIndex, layer);
+    const layerMessage = Number(layer) === 0
+      ? `<b>Default layer selected.</b> This action is available whenever ${esc(label)} is active.`
+      : `<b>Fn-layer warning:</b> this action only runs while ${esc(label)} is active. Make sure a reachable FN/FN1–FN11 mapping can enter that layer.`;
+    const pairMessage = paired ? " Rappy Snappy and SOCD actuation/RT values are physical-switch settings, so they affect these keys on every layer." : "";
+    return `${layerMessage}${pairMessage} Choosing a host already used by another Advanced action will replace that action when staged.`;
+  }
+
+  function advancedHostKeyboardHtml(layer, paired) {
+    const compiled = API.compileAdvanced(state.profile);
+    return `<div class="keyboard-grid advanced-host-keyboard" data-keyboard-mode="advanced-host">${HE30_LAYOUT.map((row) => `<div class="key-row">${row.map((keyItem) => {
+      const index = keyItem.index;
+      const position = state.advancedHostSelection.indexOf(index);
+      const mapped = mappingLabel(compiled.userKeys[layer][index]);
+      const advanced = [112, 144, 145, 146, 147, 148].includes(compiled.userKeys[layer][index]?.type);
+      return `<button class="keycap advanced-host-key${position >= 0 ? ` selected host-${position + 1}` : ""}${advanced ? " advanced" : ""}" type="button" data-advanced-host-key="${index}" aria-pressed="${position >= 0}" style="--key-width:${keyWidth(keyItem)}px;--key-u:${keyUnit(keyItem)}" title="Use physical ${esc(keyItem.label)} as ${paired ? "a paired" : "the"} host"><span class="mapped primary-label">${esc(mapped)}</span><span class="physical secondary-label">Physical: ${esc(keyItem.label)}</span><i class="advanced-host-order" aria-hidden="true">${position >= 0 ? position + 1 : ""}</i></button>`;
+    }).join("")}</div>`).join("")}</div>`;
+  }
+
+  function advancedHostPickerHtml(type) {
+    const paired = type === "rs" || type === "socd";
+    const layer = state.advancedLayer;
+    return `<div class="form-section advanced-host-section"><div class="advanced-host-heading"><div><h3>Host assignment</h3><p>Choose a layer, then select ${paired ? "two physical keys in order" : "one physical key"}.</p></div>${paired ? `<div class="advanced-host-slots" role="tablist" aria-label="Paired host slot"><button type="button" data-advanced-host-slot="0" class="active"><i>1</i><span>First host<strong>${esc(physicalName(state.advancedHostSelection[0]))}</strong></span></button><button type="button" data-advanced-host-slot="1"><i>2</i><span>Second host<strong>${esc(physicalName(state.advancedHostSelection[1]))}</strong></span></button></div>` : `<div class="advanced-single-host"><span>Selected host</span><strong>${esc(physicalName(state.advancedHostSelection[0]))}</strong></div>`}</div><input id="advLayer" type="hidden" value="${layer}" /><input id="advIndex1" type="hidden" value="${state.advancedHostSelection[0]}" />${paired ? `<input id="advIndex2" type="hidden" value="${state.advancedHostSelection[1]}" />` : ""}<div class="tabs advanced-layer-tabs" role="tablist" aria-label="Advanced action layer">${Array.from({ length: API.LAYER_COUNT }, (_, candidate) => `<button type="button" data-advanced-layer="${candidate}" class="${candidate === layer ? "active" : ""}" aria-selected="${candidate === layer}">${esc(globalLayerLabel(state.profile.profileIndex, candidate))}</button>`).join("")}</div><div class="advanced-host-board">${advancedHostKeyboardHtml(layer, paired)}</div><div class="keyboard-legend advanced-host-legend"><span><i></i>Selected host</span>${paired ? `<span><i class="host-two-dot"></i>Second host</span>` : ""}<span id="advancedHostInstruction">${paired ? "Choose which host slot to edit, then click a key" : "Click a key to change the host"}</span></div><div class="callout advanced-layer-note" id="advancedLayerNote">${advancedLayerMessage(layer, paired)}</div></div>`;
   }
 
   function openAdvanced(type, editIndex = null) {
     state.advancedType = type;
     state.advancedEditIndex = editIndex;
     const item = editIndex == null ? {} : state.profile.advancedKeys[editIndex];
+    const paired = type === "rs" || type === "socd";
+    const index1 = item.index1 ?? PHYSICAL_KEYS[0].index;
+    let index2 = item.index2 ?? PHYSICAL_KEYS[1].index;
+    if (index2 === index1) index2 = PHYSICAL_KEYS.find(({ index }) => index !== index1)?.index ?? index1;
+    state.advancedLayer = clamp(item.layer ?? 0, 0, API.LAYER_COUNT - 1);
+    state.advancedHostSelection = paired ? [index1, index2] : [index1];
+    state.advancedHostSlot = 0;
     const meta = ADVANCED_META[type];
     $("#advancedTitle").textContent = `${editIndex == null ? "Add" : "Edit"} ${meta.name}`;
     $("#advancedError").textContent = "";
     $("#advancedFields").innerHTML = advancedFormHtml(type, item);
     $("#advancedDialog").showModal();
     bindAdvancedForm();
-  }
-
-  function advancedLayerNote(originalLayer = 0) {
-    const migrated = Number(originalLayer) !== 0 ? " This imported action is on another layer; staging it will move it to Layer 0." : "";
-    return `<div class="callout advanced-layer-note"><b>Layer 0 only.</b> Advanced actions created or edited here are assigned to the profile's base layer.${migrated}</div>`;
   }
 
   function normalizeModifierOrder(order, modifiers = 0) {
@@ -2081,23 +2132,29 @@
     }).join("")}</div><div class="modifier-order-heading"><strong>Selected order</strong><small>Use the arrows to reorder the chosen modifiers.</small></div><div class="modifier-order-list" id="comboModifierSequence">${modifierSequenceHtml(order)}</div><p>The selection order is preserved in this workspace and exported backups. The keyboard firmware encodes the active modifiers as one HID mask and sends them together.</p></div>`;
   }
 
+  function dksStagePicker(id, label, value) {
+    const selected = clamp(value, 0, 4);
+    return `<div class="dks-stage-picker" data-dks-stage-picker><div><strong>${esc(label)}</strong><small>${selected ? `Stage ${selected}` : "Off"}</small></div><input id="${id}" type="hidden" value="${selected}" />${[[0, "Off"], [1, "1"], [2, "2"], [3, "3"], [4, "4"]].map(([stage, text]) => `<button type="button" data-dks-stage-choice="${stage}" class="${stage === selected ? "active" : ""}" aria-pressed="${stage === selected}">${text}</button>`).join("")}</div>`;
+  }
+
+  function dksActionEditor(entry, index) {
+    return `<article class="dks-action-card"><header><i>${index + 1}</i><div><strong>Output ${index + 1}</strong><small>Choose a key, then place its down/up transitions on the four travel stages.</small></div></header>${mappingPickerField(`dksKey${index}`, entry.key, `Output ${index + 1} key`)}<div class="dks-transition-groups"><section><h4>Pressing ↓</h4>${dksStagePicker(`dks${index}DownStart`, "Key down", entry.downStart)}${dksStagePicker(`dks${index}DownEnd`, "Key up", entry.downEnd)}</section><section><h4>Releasing ↑</h4>${dksStagePicker(`dks${index}UpStart`, "Key down", entry.upStart)}${dksStagePicker(`dks${index}UpEnd`, "Key up", entry.upEnd)}</section></div></article>`;
+  }
+
   function advancedFormHtml(type, item) {
-    const originalLayer = item.layer || 0;
-    const index1 = item.index1 ?? PHYSICAL_KEYS[0].index;
-    const host = `<div class="form-section"><h3>Host assignment</h3><div class="field-grid">${hostSelect("advIndex1", index1, "Host key")}</div></div>`;
-    const finish = (content) => `${content}${advancedLayerNote(originalLayer)}`;
+    const host = advancedHostPickerHtml(type);
+    const finish = (content) => content;
     if (type === "dks") {
-      const points = item.dksPoint || [40, 160, 300, 80];
+      const points = (item.dksPoint || [40, 160, 240, 80]).map((point) => clamp(point, 1, 255));
       const dksKeys = item.dksKeys || [0, 1, 2, 3].map(() => ({ key: mappingFromPreset(BASIC_MAPPING_CHOICES[0]), downStart: 1, downEnd: 2, upStart: 2, upEnd: 1 }));
-      const statusOptions = [[0, "Off"], [1, "Stage 1"], [2, "Stage 2"], [3, "Stage 3"], [4, "Full travel"]];
-      return finish(`${host}<div class="form-section"><h3>Travel points</h3><div class="field-grid">${points.map((point, index) => rangeField(`Point ${index + 1}`, `dksPoint${index}`, point, 1, 400, 1, "mm")).join("")}</div></div><div class="form-section"><h3>Four output actions</h3><div class="field-grid">${dksKeys.map((entry, index) => mappingPickerField(`dksKey${index}`, entry.key, `Action ${index + 1}`)).join("")}</div><div class="dks-grid" style="margin-top:14px"><span>Output</span><span>Press start</span><span>Press end</span><span>Release start</span><span>Release end</span>${dksKeys.map((entry, index) => `<strong>Action ${index + 1}</strong>${selectField("", `dks${index}DownStart`, statusOptions, entry.downStart)}${selectField("", `dks${index}DownEnd`, statusOptions, entry.downEnd)}${selectField("", `dks${index}UpStart`, statusOptions, entry.upStart)}${selectField("", `dks${index}UpEnd`, statusOptions, entry.upEnd)}`).join("")}</div><div class="callout">Stage paths define when each output presses and releases across the four travel points.</div></div>`);
+      return finish(`${host}<div class="form-section dks-editor"><div class="dks-section-heading"><div><h3>Four travel stages</h3><p>Like Wootility DKS, each output can press or release at independently chosen points while the switch travels down and back up.</p></div><span class="chip">0.01–2.55 mm</span></div><div class="dks-travel-editor">${points.map((point, index) => `<div><i>${index + 1}</i>${rangeField(`Stage ${index + 1}`, `dksPoint${index}`, point, 1, 255, 1, "mm")}</div>`).join("")}</div><div class="dks-direction-rail" aria-hidden="true"><span>Pressing switch ↓</span><i></i><span>Releasing switch ↑</span></div><div class="dks-actions">${dksKeys.map(dksActionEditor).join("")}</div><div class="callout"><b>Transition model:</b> “Key down” holds an output; “Key up” releases it. Set a transition to Off when that half of the travel should not change the output.</div></div>`);
     }
     if (type === "mt") return finish(`${host}<div class="form-section"><h3>Tap and hold outputs</h3><div class="field-grid">${mappingPickerField("mtClickKey", item.mtClickKey, "Tap output")}${mappingPickerField("mtDownKey", item.mtDownKey, "Hold output")}<label class="field"><span>Hold threshold</span><input id="mtTime" type="number" min="10" max="2550" step="10" value="${item.mtTime || 200}" /><small>10–2550 ms, stored in 10 ms steps</small></label></div></div>`);
     if (type === "tgl") return finish(`${host}<div class="form-section"><h3>Toggle output</h3><div class="field-grid">${mappingPickerField("tglKey", item.tglKey, "Output key")}</div></div>`);
     if (type === "rs" || type === "socd") {
       const option = item.option || {};
-      const index2 = item.index2 ?? PHYSICAL_KEYS[1].index;
-      return finish(`<div class="form-section"><h3>Host assignment</h3><div class="field-grid advanced-pair-hosts">${hostSelect("advIndex1", index1, "Host key", index2)}${hostSelect("advIndex2", index2, "Second host key", index1)}</div></div><div class="form-section"><h3>Paired outputs</h3><div class="field-grid">${mappingPickerField("pairKey1", item.key1, "First output")}${mappingPickerField("pairKey2", item.key2, "Second output")}${type === "socd" ? selectField("Priority", "pairPriority", [[0, "Last Input Priority"], [1, "Absolute 1st key"], [2, "Absolute 2nd key"], [3, "Neutral"]], option.priority ?? 0) : ""}</div></div><div class="form-section"><h3>Pair actuation</h3><div class="field-grid">${rangeField("Actuation", "pairActuation", option.actuation || 40, 1, 400, 1, "mm")}${rangeField("RT press", "pairPress", option.press || 10, 1, 400, 1, "mm")}${rangeField("RT release", "pairRelease", option.release || 10, 1, 400, 1, "mm")}</div></div>`);
+      const independent = Number(option.press || 10) !== Number(option.release ?? option.press ?? 10);
+      return finish(`${host}<div class="form-section"><h3>Paired outputs</h3><div class="field-grid">${mappingPickerField("pairKey1", item.key1, "First output")}${mappingPickerField("pairKey2", item.key2, "Second output")}${type === "socd" ? selectField("Priority", "pairPriority", [[0, "Last Input Priority"], [1, "Absolute 1st key"], [2, "Absolute 2nd key"], [3, "Neutral"]], option.priority ?? 0) : ""}</div></div><div class="form-section"><h3>Pair actuation and Rapid Trigger</h3>${hallSwitchRow("Set Press and Release independently", "When off, RT Release follows RT Press.", "pairIndependentRt", independent)}<div class="field-grid pair-travel-fields">${rangeField("Actuation", "pairActuation", option.actuation || 40, 1, 400, 1, "mm")}${rangeField("RT press", "pairPress", option.press || 10, 1, 400, 1, "mm")}${rangeField("RT release", "pairRelease", option.release ?? option.press ?? 10, 1, 400, 1, "mm", !independent)}</div></div>`);
     }
     if (type === "cb") {
       return finish(`${host}<div class="form-section"><h3>Combination</h3>${modifierPickerHtml(item)}<div class="field-grid combination-base-field">${mappingPickerField("comboBase", item.baseKey, "Base key", BASIC_MAPPING_CHOICES)}</div></div>`);
@@ -2154,8 +2211,105 @@
     };
   }
 
+  function syncAdvancedHostPicker() {
+    const paired = state.advancedType === "rs" || state.advancedType === "socd";
+    const first = state.advancedHostSelection[0];
+    const second = paired ? state.advancedHostSelection[1] : null;
+    if ($("#advIndex1")) $("#advIndex1").value = first;
+    if ($("#advIndex2")) $("#advIndex2").value = second;
+    $$('[data-advanced-host-slot]').forEach((button) => {
+      const slot = Number(button.dataset.advancedHostSlot);
+      button.classList.toggle("active", slot === state.advancedHostSlot);
+      button.setAttribute("aria-selected", String(slot === state.advancedHostSlot));
+      const label = $("strong", button);
+      if (label) label.textContent = physicalName(state.advancedHostSelection[slot]);
+    });
+    const single = $(".advanced-single-host strong");
+    if (single) single.textContent = physicalName(first);
+    $$('[data-advanced-host-key]').forEach((button) => {
+      const position = state.advancedHostSelection.indexOf(Number(button.dataset.advancedHostKey));
+      button.classList.toggle("selected", position >= 0);
+      button.classList.toggle("host-1", position === 0);
+      button.classList.toggle("host-2", position === 1);
+      button.setAttribute("aria-pressed", String(position >= 0));
+      const badge = $(".advanced-host-order", button);
+      if (badge) badge.textContent = position >= 0 ? position + 1 : "";
+    });
+  }
+
+  function setAdvancedLayer(layer) {
+    state.advancedLayer = clamp(layer, 0, API.LAYER_COUNT - 1);
+    if ($("#advLayer")) $("#advLayer").value = state.advancedLayer;
+    $$('[data-advanced-layer]').forEach((button) => {
+      const active = Number(button.dataset.advancedLayer) === state.advancedLayer;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    const compiled = API.compileAdvanced(state.profile);
+    $$('[data-advanced-host-key]').forEach((button) => {
+      const mapping = compiled.userKeys[state.advancedLayer][Number(button.dataset.advancedHostKey)];
+      const label = $(".mapped", button);
+      if (label) label.textContent = mappingLabel(mapping);
+      button.classList.toggle("advanced", [112, 144, 145, 146, 147, 148].includes(mapping?.type));
+    });
+    const paired = state.advancedType === "rs" || state.advancedType === "socd";
+    const note = $("#advancedLayerNote");
+    if (note) note.innerHTML = advancedLayerMessage(state.advancedLayer, paired);
+  }
+
+  function syncPairRtControls(copyPress = false) {
+    const independent = Boolean($("#pairIndependentRt")?.checked);
+    const press = $("#pairPress");
+    const release = $("#pairRelease");
+    const releaseNumber = $('[data-range-for="pairRelease"]');
+    if (copyPress && !independent && press && release) {
+      release.value = press.value;
+      updateRangeOutput(release);
+    }
+    if (release) release.disabled = !independent;
+    if (releaseNumber) releaseNumber.disabled = !independent;
+    release?.closest(".field")?.classList.toggle("disabled", !independent);
+  }
+
+  function syncDksStagePicker(picker, stage) {
+    const value = clamp(stage, 0, 4);
+    const input = $("input[type=hidden]", picker);
+    if (input) input.value = value;
+    $$('[data-dks-stage-choice]', picker).forEach((button) => {
+      const active = Number(button.dataset.dksStageChoice) === value;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    const status = $("small", picker);
+    if (status) status.textContent = value ? `Stage ${value}` : "Off";
+  }
+
   function bindAdvancedForm() {
-    $$('input[type="range"]', $("#advancedFields")).forEach((input) => { input.oninput = () => { const output = input.parentElement.querySelector("output"); if (output) output.textContent = `${(Number(input.value) / 100).toFixed(2)} mm`; }; });
+    $$('input[type="range"]', $("#advancedFields")).forEach((input) => {
+      if (input.dataset.advancedRangeBound) return;
+      input.dataset.advancedRangeBound = "true";
+      input.addEventListener("input", () => updateRangeOutput(input));
+    });
+    bindDistanceInputs($("#advancedFields"));
+    $$('[data-advanced-layer]').forEach((button) => { button.onclick = () => setAdvancedLayer(Number(button.dataset.advancedLayer)); });
+    $$('[data-advanced-host-slot]').forEach((button) => { button.onclick = () => { state.advancedHostSlot = Number(button.dataset.advancedHostSlot); syncAdvancedHostPicker(); }; });
+    $$('[data-advanced-host-key]').forEach((button) => { button.onclick = () => {
+      const index = Number(button.dataset.advancedHostKey);
+      const paired = state.advancedType === "rs" || state.advancedType === "socd";
+      const slot = paired ? state.advancedHostSlot : 0;
+      const otherSlot = slot === 0 ? 1 : 0;
+      if (paired && state.advancedHostSelection[otherSlot] === index) {
+        state.advancedHostSelection[otherSlot] = state.advancedHostSelection[slot];
+      }
+      state.advancedHostSelection[slot] = index;
+      if (paired && slot === 0) state.advancedHostSlot = 1;
+      syncAdvancedHostPicker();
+    }; });
+    $$('[data-dks-stage-choice]').forEach((button) => { button.onclick = () => syncDksStagePicker(button.closest("[data-dks-stage-picker]"), Number(button.dataset.dksStageChoice)); });
+    $("#pairIndependentRt")?.addEventListener("change", () => syncPairRtControls(true));
+    $("#pairPress")?.addEventListener("input", () => syncPairRtControls(true));
+    $('[data-range-for="pairPress"]')?.addEventListener("input", () => syncPairRtControls(true));
+    syncPairRtControls(false);
     $$('[data-open-mapping-picker]', $("#advancedFields")).forEach((button) => { button.onclick = () => openAdvancedMappingPicker(button); });
     const addMacro = $("#addMacroRow");
     if (addMacro) addMacro.onclick = () => {
@@ -2197,7 +2351,7 @@
   function saveAdvanced(event) {
     event.preventDefault();
     const type = state.advancedType;
-    const layer = 0;
+    const layer = clamp($("#advLayer")?.value ?? state.advancedLayer, 0, API.LAYER_COUNT - 1);
     const index1 = Number($("#advIndex1").value);
     const existing = state.advancedEditIndex == null ? null : state.profile.advancedKeys[state.advancedEditIndex];
     const base = { type, layer, index1, baseMapping: existing && (existing.layer || 0) === layer && existing.index1 === index1 ? existing.baseMapping || baseMappingForHost(layer, index1) : baseMappingForHost(layer, index1) };
@@ -2208,7 +2362,9 @@
     if (type === "rs" || type === "socd") {
       const index2 = Number($("#advIndex2").value);
       if (index1 === index2) return showAdvancedError("The paired keys must be different.");
-      item = { ...base, index2, baseMapping2: existing && (existing.layer || 0) === layer && existing.index2 === index2 ? existing.baseMapping2 || baseMappingForHost(layer, index2) : baseMappingForHost(layer, index2), baseTravel1: existing && (existing.layer || 0) === layer && existing.index1 === index1 ? existing.baseTravel1 || clone(state.profile.travelKeys[index1]) : clone(state.profile.travelKeys[index1]), baseTravel2: existing && (existing.layer || 0) === layer && existing.index2 === index2 ? existing.baseTravel2 || clone(state.profile.travelKeys[index2]) : clone(state.profile.travelKeys[index2]), key1: parseMappingSelect("pairKey1"), key2: parseMappingSelect("pairKey2"), option: { actuation: Number($("#pairActuation").value), press: Number($("#pairPress").value), release: Number($("#pairRelease").value), priority: type === "socd" ? Number($("#pairPriority").value) : 0 } };
+      const press = Number($("#pairPress").value);
+      const release = $("#pairIndependentRt")?.checked ? Number($("#pairRelease").value) : press;
+      item = { ...base, index2, baseMapping2: existing && (existing.layer || 0) === layer && existing.index2 === index2 ? existing.baseMapping2 || baseMappingForHost(layer, index2) : baseMappingForHost(layer, index2), baseTravel1: existing && (existing.layer || 0) === layer && existing.index1 === index1 ? existing.baseTravel1 || clone(state.profile.travelKeys[index1]) : clone(state.profile.travelKeys[index1]), baseTravel2: existing && (existing.layer || 0) === layer && existing.index2 === index2 ? existing.baseTravel2 || clone(state.profile.travelKeys[index2]) : clone(state.profile.travelKeys[index2]), key1: parseMappingSelect("pairKey1"), key2: parseMappingSelect("pairKey2"), option: { actuation: Number($("#pairActuation").value), press, release, priority: type === "socd" ? Number($("#pairPriority").value) : 0 } };
     }
     if (type === "cb") {
       const modifierOrder = currentModifierOrder();

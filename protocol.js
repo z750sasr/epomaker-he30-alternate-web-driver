@@ -393,8 +393,8 @@
   function convertWootingDks(item, layer, index, baseMapping, sourceActuation, profile, sourceTravel) {
     const dks = item?.dks;
     if (!dks || typeof dks !== "object") return null;
-    const secondary = wootingDistanceToHundredths(dks.secondaryActuation ?? Math.min(WOOTING_VALUE_MAX, sourceActuation * 2), WOOTING_TRAVEL_HUNDREDTHS, sourceTravel);
-    const primary = wootingDistanceToHundredths(sourceActuation, WOOTING_TRAVEL_HUNDREDTHS, sourceTravel);
+    const secondary = wootingDistanceToHundredths(dks.secondaryActuation ?? Math.min(WOOTING_VALUE_MAX, sourceActuation * 2), 255, sourceTravel);
+    const primary = wootingDistanceToHundredths(sourceActuation, 255, sourceTravel);
     const dksKeys = [];
     for (let action = 0; action < 4; action += 1) {
       const output = decodeWootingMapping(dks[`action${action}`], profile, layer);
