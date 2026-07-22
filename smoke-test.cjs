@@ -2,20 +2,32 @@ const fs = require("fs");
 const vm = require("vm");
 
 const root = __dirname;
-const protocolSource = fs.readFileSync(`${root}/protocol.js`, "utf8");
-const appSource = fs.readFileSync(`${root}/app.js`, "utf8");
+// The production site uses ordered classic scripts instead of a bundler. Tests
+// concatenate the same order so cross-file declarations behave exactly as they
+// do in the browser while each file can still be syntax-checked independently.
+const protocolFiles = ["js/protocol/core.js", "js/protocol/codecs.js", "protocol.js"];
+const appFiles = ["js/app/foundation.js", "js/app/pages.js", "js/app/hall.js", "js/app/lighting.js", "js/app/editors.js", "js/app/profiles.js", "app.js"];
+const styleFiles = ["styles.css", "styles/workspace.css", "styles/keyboard-hall.css", "styles/pages.css", "styles/components.css", "styles/responsive.css"];
+const readSource = (file) => fs.readFileSync(`${root}/${file}`, "utf8");
+const protocolSource = protocolFiles.map(readSource).join("\n");
+const appSource = appFiles.map(readSource).join("\n");
 const htmlSource = fs.readFileSync(`${root}/index.html`, "utf8");
 const jsonEditorHtml = fs.readFileSync(`${root}/json_editor/index.html`, "utf8");
-const styleSource = fs.readFileSync(`${root}/styles.css`, "utf8");
+const styleSource = styleFiles.map(readSource).join("\n");
 const factoryProfile = JSON.parse(fs.readFileSync(`${root}/src/factory_config.json`, "utf8"));
 
 async function main() {
-new Function(protocolSource);
-new Function(appSource);
+for (const file of [...protocolFiles, ...appFiles]) new Function(readSource(file));
+for (const file of [...protocolFiles, ...appFiles, ...styleFiles]) {
+  const lineCount = readSource(file).split(/\r?\n/).length;
+  if (lineCount > 1000) throw new Error(`${file} grew beyond the 1,000-line source-file limit.`);
+}
 
 const context = { window: { navigator: {}, Blob, Response, CompressionStream, DecompressionStream, TextEncoder, TextDecoder, btoa, atob }, Uint8Array, ArrayBuffer, DataView, Promise, Math, Number, String, Boolean, Object, Array, Set, Map, JSON, Error };
 vm.createContext(context);
-vm.runInContext(protocolSource, context);
+// Evaluate separate files in one context, matching how classic scripts share a
+// browser global lexical environment instead of testing an artificial bundle.
+for (const file of protocolFiles) vm.runInContext(readSource(file), context, { filename: file });
 const API = context.window.HE30Control;
 if (!API) throw new Error("Protocol API was not exposed.");
 
@@ -255,13 +267,37 @@ if (!factoryResetMapping) throw new Error("The updated factory profile has no re
 for (const id of ["welcomeView", "workspaceView", "mappingDialog", "advancedDialog", "confirmDialog", "progressOverlay"]) {
   if (!htmlSource.includes(`id="${id}"`)) throw new Error(`Required UI surface is missing: ${id}`);
 }
-if (!htmlSource.includes('<script src="protocol.js"></script>') || !htmlSource.includes('<script src="app.js"></script>') || !htmlSource.includes('<link rel="stylesheet" href="styles.css"')) throw new Error("Static assets are not linked correctly.");
+for (const file of [...protocolFiles, ...appFiles]) {
+  if (!htmlSource.includes(`<script src="${file}"></script>`)) throw new Error(`Live driver is missing script ${file}.`);
+}
+for (const file of styleFiles) {
+  if (!htmlSource.includes(`<link rel="stylesheet" href="${file}"`)) throw new Error(`Live driver is missing stylesheet ${file}.`);
+}
+const assertOrderedAssets = (source, files, tag, prefix = "") => {
+  let previous = -1;
+  for (const file of files) {
+    const marker = tag === "script" ? `<script src="${prefix}${file}"></script>` : `<link rel="stylesheet" href="${prefix}${file}"`;
+    const position = source.indexOf(marker);
+    if (position <= previous) throw new Error(`${file} is missing or out of order in an HTML load list.`);
+    previous = position;
+  }
+};
+assertOrderedAssets(htmlSource, styleFiles, "style");
+assertOrderedAssets(htmlSource, [...protocolFiles, ...appFiles], "script");
 if (!htmlSource.includes('data-app-mode="live"') || !htmlSource.includes('href="json_editor/"')) throw new Error("The live route does not link to the dedicated JSON editor.");
 for (const removedId of ['id="openFileButton"', 'id="welcomeFileButton"', 'id="demoButton"', 'id="fileInput"']) {
   if (htmlSource.includes(removedId)) throw new Error(`Offline control must not appear on the live landing page: ${removedId}`);
 }
 if (!jsonEditorHtml.includes('data-app-mode="json"') || !jsonEditorHtml.includes('id="openFileButton"') || !jsonEditorHtml.includes('id="fileInput"')) throw new Error("The dedicated JSON editor route is incomplete.");
-if (!jsonEditorHtml.includes('<script src="../protocol.js"></script>') || !jsonEditorHtml.includes('<script src="../app.js"></script>') || !jsonEditorHtml.includes('<link rel="stylesheet" href="../styles.css"')) throw new Error("JSON editor assets are not linked correctly.");
+for (const file of [...protocolFiles, ...appFiles]) {
+  if (!jsonEditorHtml.includes(`<script src="../${file}"></script>`)) throw new Error(`JSON editor is missing script ${file}.`);
+}
+for (const file of styleFiles) {
+  if (!jsonEditorHtml.includes(`<link rel="stylesheet" href="../${file}"`)) throw new Error(`JSON editor is missing stylesheet ${file}.`);
+}
+assertOrderedAssets(jsonEditorHtml, styleFiles, "style", "../");
+assertOrderedAssets(jsonEditorHtml, [...protocolFiles, ...appFiles], "script", "../");
+if (!appSource.includes('const APP_ROOT_URL = new URL("../../", APP_SCRIPT_URL)')) throw new Error("Nested app modules do not resolve assets from the site root.");
 for (const [source, label] of [[htmlSource, "live driver"], [jsonEditorHtml, "JSON editor"]]) {
   const diagnosticsPosition = source.indexOf('data-page="diagnostics"');
   const aboutPosition = source.indexOf('data-page="about"');
