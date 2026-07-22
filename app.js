@@ -10,6 +10,9 @@
   const FACTORY_PROFILE_URL = new URL("src/factory_config.json", APP_SCRIPT_URL).href;
   const FACTORY_RESET_SECTIONS = Object.freeze(["advanced", "keymap", "hall", "lighting"]);
   const PROFILE_SHARE_SECTIONS = Object.freeze(["advanced", "keymap", "hall", "settings", "lighting", "colors"]);
+  const WOOTING_PROFILE_API_URL = "https://api.wooting.io/public/wootility/profiles";
+  // Optional: set this to your own same-origin endpoint that accepts ?code= and returns Wooting's { data: profile } JSON.
+  const WOOTING_PROFILE_PROXY_URL = "";
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
   const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
@@ -107,7 +110,7 @@
   };
   const fnLayerMappings = Array.from({ length: API.TOTAL_LAYER_COUNT }, (_, index) => key(`${index === 0 ? "FN" : `FN${index}`} · Layer ${index}`, 240, 255, index, index === 0 ? "FN" : `FN${index}`));
   const MAPPING_GROUPS = Object.freeze([
-    { title: "Basic characters", items: [...letters, ...digits, ["Space", 16, 0, 44, "Space"], ["Enter", 16, 0, 40, "Enter"], ["Tab", 16, 0, 43, "Tab"], ["Backspace", 16, 0, 42, "Bksp"], ["Escape", 16, 0, 41, "Esc"]].map((item) => key(...item)) },
+    { title: "Basic characters", items: [...letters, ...digits, ["Space", 16, 0, 44, "Space"], ["Enter", 16, 0, 40, "Enter"], ["Tab", 16, 0, 43, "Tab"], ["Backspace", 16, 0, 42, "Bksp"], ["Escape", 16, 0, 41, "Esc"], ["Windows Key", 16, 8, 0, "Win"]].map((item) => key(...item)) },
     { title: "Symbols", items: [["Minus", 45, "-"], ["Equals", 46, "="], ["Left bracket", 47, "["], ["Right bracket", 48, "]"], ["Backslash", 49, "\\"], ["Semicolon", 51, ";"], ["Apostrophe", 52, "'"], ["Grave", 53, "`"], ["Comma", 54, ","], ["Period", 55, "."], ["Slash", 56, "/"]].map(([name, code, short]) => key(name, 16, 0, code, short)) },
     { title: "Function keys", items: functionKeys.map((item) => key(...item)) },
     { title: "Extended keys", items: [["Insert", 73], ["Home", 74], ["Page Up", 75], ["Delete", 76], ["End", 77], ["Page Down", 78], ["Right Arrow", 79], ["Left Arrow", 80], ["Down Arrow", 81], ["Up Arrow", 82], ["Caps Lock", 57], ["Print Screen", 70], ["Scroll Lock", 71], ["Pause", 72], ["Application", 101]].map(([name, code]) => key(name, 16, 0, code)) },
@@ -255,6 +258,12 @@
     shareStatus: "",
     shareError: false,
     shareBusy: false,
+    wootingCode: "",
+    wootingJson: "",
+    wootingImport: null,
+    wootingStatus: "",
+    wootingError: false,
+    wootingBusy: false,
   };
 
   function mappingFromPreset(preset, layer = state.layer) {
@@ -402,6 +411,12 @@
     state.shareImportProfile = null;
     state.shareStatus = "";
     state.shareError = false;
+    state.wootingCode = "";
+    state.wootingJson = "";
+    state.wootingImport = null;
+    state.wootingStatus = "";
+    state.wootingError = false;
+    state.wootingBusy = false;
     $("#welcomeView").classList.add("hidden");
     $("#workspaceView").classList.remove("hidden");
     updateChrome();
@@ -839,7 +854,13 @@
     const effect = lightingEffect(group, light.effect) || lightingEffects(group)[0];
     const fields = [];
     if (effect.color) fields.push(`<label class="field"><span>Color</span><input type="color" data-light="${group}" data-light-prop="color" value="${esc(light.color)}" /></label>`);
-    if (effect.brightness) fields.push(selectField("Brightness", `${group}-brightness`, [[0, "Off"], [20, "20%"], [40, "40%"], [60, "60%"], [80, "80%"], [100, "100%"]], light.brightness));
+    if (effect.brightness) {
+      const brightnessOptions = [[0, "Off"], [20, "20%"], [40, "40%"], [60, "60%"], [80, "80%"], [100, "100%"]];
+      const brightness = clamp(light.brightness, 0, 100);
+      if (!brightnessOptions.some(([value]) => value === brightness)) brightnessOptions.push([brightness, `${brightness}% · Imported`]);
+      brightnessOptions.sort((left, right) => left[0] - right[0]);
+      fields.push(selectField("Brightness", `${group}-brightness`, brightnessOptions, brightness));
+    }
     if (effect.speed) fields.push(selectField("Speed", `${group}-speed`, [[0, "Slowest"], [1, "Slow"], [2, "Medium"], [3, "Fast"], [4, "Fastest"]], light.speed));
     if (effect.direction) fields.push(selectField("Direction", `${group}-direction`, [[0, "Forward"], [1, "Reverse"]], light.direction));
     if (effect.palette) fields.push(`<div class="switch-row lighting-palette-switch"><div><strong>Single color</strong><small>Use the selected color instead of the effect palette</small></div><label class="switch"><input type="checkbox" data-light="${group}" data-light-prop="singleColor"${light.singleColor ? " checked" : ""} /><i></i></label></div>`);
@@ -862,13 +883,45 @@
     return `<article class="panel configured-row"><span class="action-icon">${meta.icon}</span><div><strong>${esc(meta.name)} · ${esc(physicalName(item.index1))}${esc(paired)}</strong><small>${esc(globalLayerLabel(state.profile.profileIndex, item.layer || 0))}${item.type === "macro" ? ` · ${(item.actions || []).length} events` : ""}</small></div><button class="icon-action" type="button" data-edit-advanced="${index}">Edit</button><button class="icon-action delete" type="button" data-delete-advanced="${index}">Delete</button></article>`;
   }
 
+  function normalizedWootingCode(value = state.wootingCode) {
+    try { return API.normalizeWootingShareCode(value); } catch (_) { return ""; }
+  }
+
+  function wootingImportHtml() {
+    const pending = state.wootingImport;
+    const summary = pending?.summary;
+    const code = normalizedWootingCode();
+    const sourceUrl = code ? `${WOOTING_PROFILE_API_URL}?code=${encodeURIComponent(code)}` : "";
+    const matchLabel = summary ? `${summary.matchedKeyCount}/36 HE30 keys matched` : "Fn uses Wooting's Windows-key position";
+    const layoutLabel = summary ? `${summary.layoutKind === "function-row" ? "Function-row" : "Compact"} matrix` : "";
+    const travelLabel = summary
+      ? (summary.switchTravelDetected
+        ? `${(summary.minimumSourceTravel / 100).toFixed(2)}${summary.minimumSourceTravel === summary.maximumSourceTravel ? "" : `–${(summary.maximumSourceTravel / 100).toFixed(2)}`} mm source travel`
+        : "4.00 mm default source travel")
+      : "";
+    return `<div class="section-heading wooting-import-heading"><div><h2>Import a Wooting profile</h2><p>Copy compatible mappings, Hall tuning, Rapid Trigger, advanced actions, and Static per-key lighting into this workspace.</p></div><span class="chip">WOOTING</span></div>
+      <div class="profile-share-grid wooting-import-grid">
+        <section class="panel panel-pad share-card"><div class="share-card-heading"><div><h3>Wooting share code</h3><p>Paste the short code from Wootility. Direct lookup uses Wooting's own public profile endpoint.</p></div><button class="button secondary compact" id="loadWootingCode" type="button"${state.wootingBusy ? " disabled" : ""}>${state.wootingBusy ? "Loading…" : "Load code"}</button></div>
+          <input class="share-code wooting-code-input" id="wootingCodeInput" type="text" spellcheck="false" autocomplete="off" aria-label="Wooting profile share code" placeholder="c4be8f8508212554b1992b5d83a1adf79f29" value="${esc(state.wootingCode)}" />
+          <div class="share-card-footer"><small>Wooting currently restricts browser reads to wootility.io. If lookup is blocked, open its first-party JSON and paste it in the next card.</small>${sourceUrl ? `<a class="button secondary compact" href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer">Open source JSON</a>` : ""}</div>
+        </section>
+        <section class="panel panel-pad share-card"><div class="share-card-heading"><div><h3>Wooting profile JSON</h3><p>Paste the complete response or choose a downloaded JSON file, then analyze it before staging.</p></div><button class="button secondary compact" id="analyzeWootingJson" type="button"${state.wootingBusy ? " disabled" : ""}>Analyze JSON</button></div>
+          <textarea class="share-code wooting-json-input" id="wootingJsonInput" spellcheck="false" autocomplete="off" aria-label="Wooting profile JSON" placeholder='Paste {"data":{"version":…}} or the profile object…'>${esc(state.wootingJson)}</textarea>
+          <input id="wootingFileInput" type="file" accept="application/json,.json" hidden />
+          <div class="share-card-footer"><small>No macros, key combinations, or controller bindings are copied. Fn maps from Wooting's Windows-key position.</small><button class="button secondary compact" id="chooseWootingFile" type="button">Choose JSON file</button></div>
+        </section>
+      </div>
+      ${state.wootingStatus ? `<div class="share-validation wooting-validation${state.wootingError ? " error" : " valid"}">${esc(state.wootingStatus)}</div>` : ""}
+      ${summary ? `<section class="panel panel-pad wooting-preview"><div class="share-card-heading"><div><h3>${esc(summary.name)}</h3><p>Version ${summary.version || "unknown"} · ${summary.layerCount} layer${summary.layerCount === 1 ? "" : "s"} · ${esc(matchLabel)} · ${esc(layoutLabel)} · ${esc(travelLabel)}</p></div><button class="button primary compact" id="stageWootingImport" type="button">Stage supported settings</button></div><div class="wooting-summary-grid"><span><strong>${summary.mappingsCopied}</strong> mappings</span><span><strong>${summary.hallKeysCopied}</strong> Hall keys</span><span><strong>${summary.advancedImported}</strong> advanced actions</span><span><strong>${summary.staticLightingImported ? summary.colorsCopied : 0}</strong> Preset colors</span><span><strong>${summary.staticLightingImported ? `${summary.brightness}%` : "—"}</strong> brightness</span><span><strong>${summary.advancedSkipped}</strong> skipped actions</span></div>${summary.warnings.length ? `<ul class="wooting-warnings">${summary.warnings.map((warning) => `<li>${esc(warning)}</li>`).join("")}</ul>` : ""}</section>` : ""}`;
+  }
+
   function profileShareHtml() {
     const connected = state.source === "device" && Boolean(state.driver);
     const multiProfile = connected && Boolean(state.identity?.multiProfile);
     const pending = state.shareImportProfile;
     const sourceProfile = pending ? pending.profileIndex + 1 : 0;
     const exportMeta = state.shareExportCode ? `${state.shareExportCode.length.toLocaleString()} characters · gzip + Base64URL` : "Nothing leaves this browser unless you copy the code.";
-    return `<div class="section-heading"><div><h2>Compressed profile sharing</h2><p>Share one complete profile as a versioned text code instead of attaching a JSON file.</p></div><span class="chip">HE30P1</span></div>
+    return `${wootingImportHtml()}<div class="section-heading"><div><h2>Compressed profile sharing</h2><p>Share one complete profile as a versioned text code instead of attaching a JSON file.</p></div><span class="chip">HE30P1</span></div>
       <div class="profile-share-grid">
         <section class="panel panel-pad share-card"><div class="share-card-heading"><div><h3>Export current profile</h3><p>Includes all four layers, Hall data, advanced actions, device settings, lighting, and per-key colors.</p></div><button class="button secondary compact" id="generateShareCode" type="button"${state.shareBusy ? " disabled" : ""}>${state.shareBusy ? "Working…" : "Generate code"}</button></div>
           <textarea class="share-code" id="shareCodeOutput" readonly spellcheck="false" aria-label="Generated compressed profile code" placeholder="Generate a code for the current workspace…">${esc(state.shareExportCode)}</textarea>
@@ -964,6 +1017,23 @@
       $(".share-targets")?.remove();
     });
     $$('[data-share-target]').forEach((button) => button.addEventListener("click", () => replaceProfileFromShare(Number(button.dataset.shareTarget))));
+    $("#loadWootingCode")?.addEventListener("click", loadWootingShareCode);
+    $("#analyzeWootingJson")?.addEventListener("click", analyzeWootingJson);
+    $("#chooseWootingFile")?.addEventListener("click", () => $("#wootingFileInput")?.click());
+    $("#wootingFileInput")?.addEventListener("change", (event) => loadWootingJsonFile(event.target.files?.[0]));
+    $("#stageWootingImport")?.addEventListener("click", stageWootingImport);
+    $("#wootingCodeInput")?.addEventListener("input", (event) => {
+      state.wootingCode = event.target.value;
+      state.wootingImport = null;
+      state.wootingStatus = "";
+      state.wootingError = false;
+    });
+    $("#wootingJsonInput")?.addEventListener("input", (event) => {
+      state.wootingJson = event.target.value;
+      state.wootingImport = null;
+      state.wootingStatus = "";
+      state.wootingError = false;
+    });
     $("#exportLogButton")?.addEventListener("click", exportLog);
   }
 
@@ -2376,6 +2446,107 @@
 
   function exportLog() { download(`he30-session-${new Date().toISOString().replace(/[:.]/g, "-")}.json`, JSON.stringify(state.logs, null, 2), "application/json"); }
   function download(fileName, content, type) { const anchor = document.createElement("a"); anchor.href = URL.createObjectURL(new Blob([content], { type })); anchor.download = fileName; anchor.click(); setTimeout(() => URL.revokeObjectURL(anchor.href), 1000); }
+
+  function wootingLookupUrl(code) {
+    const base = WOOTING_PROFILE_PROXY_URL || WOOTING_PROFILE_API_URL;
+    if (base.includes("{code}")) return base.replace("{code}", encodeURIComponent(code));
+    const url = new URL(base, window.location.href);
+    url.searchParams.set("code", code);
+    return url.href;
+  }
+
+  function prepareWootingImport(payload, sourceLabel) {
+    const converted = API.convertWootingProfile(payload, state.profile);
+    state.wootingImport = converted;
+    state.wootingError = false;
+    const lighting = converted.summary.staticLightingImported
+      ? `, plus ${converted.summary.colorsCopied} Static RGB colors at ${converted.summary.brightness}% brightness`
+      : "";
+    state.wootingStatus = `Analyzed ${sourceLabel}: ${converted.summary.layerCount} layer${converted.summary.layerCount === 1 ? "" : "s"}, ${converted.summary.mappingsCopied} mappings, and ${converted.summary.advancedImported} advanced actions${lighting} are ready to stage.`;
+    log("verify", `Analyzed Wooting profile ${converted.summary.name}`, converted.summary);
+  }
+
+  async function loadWootingShareCode() {
+    if (state.wootingBusy) return;
+    state.wootingCode = $("#wootingCodeInput")?.value || state.wootingCode;
+    state.wootingImport = null;
+    state.wootingError = false;
+    let code;
+    try { code = API.normalizeWootingShareCode(state.wootingCode); } catch (error) {
+      state.wootingStatus = error.message;
+      state.wootingError = true;
+      renderPage();
+      return;
+    }
+    state.wootingCode = code;
+    state.wootingBusy = true;
+    state.wootingStatus = "Reading the shared profile from Wooting…";
+    renderPage();
+    try {
+      const response = await fetch(wootingLookupUrl(code), { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error(`Wooting returned HTTP ${response.status}.`);
+      prepareWootingImport(await response.json(), `code ${code}`);
+    } catch (error) {
+      state.wootingImport = null;
+      state.wootingError = true;
+      state.wootingStatus = WOOTING_PROFILE_PROXY_URL
+        ? `The configured Wooting profile endpoint failed: ${error.message}`
+        : "Wooting blocks this GitHub Pages origin from reading the response. Click Open source JSON, copy the complete first-party response, and analyze it in the JSON box.";
+      log("warning", "Wooting share-code lookup was unavailable", error.message);
+    } finally {
+      state.wootingBusy = false;
+      renderPage();
+    }
+  }
+
+  function analyzeWootingJson() {
+    state.wootingJson = $("#wootingJsonInput")?.value || state.wootingJson;
+    state.wootingImport = null;
+    if (!state.wootingJson.trim()) {
+      state.wootingStatus = "Paste a Wooting profile JSON response or choose a JSON file first.";
+      state.wootingError = true;
+      renderPage();
+      return;
+    }
+    try {
+      prepareWootingImport(JSON.parse(state.wootingJson.replace(/^\uFEFF/, "")), "pasted JSON");
+    } catch (error) {
+      state.wootingImport = null;
+      state.wootingStatus = `Could not analyze the Wooting profile: ${error.message}`;
+      state.wootingError = true;
+      log("warning", "Rejected Wooting profile JSON", error.message);
+    }
+    renderPage();
+  }
+
+  async function loadWootingJsonFile(file) {
+    if (!file) return;
+    try {
+      state.wootingJson = (await file.text()).replace(/^\uFEFF/, "");
+      prepareWootingImport(JSON.parse(state.wootingJson), file.name);
+    } catch (error) {
+      state.wootingImport = null;
+      state.wootingStatus = `Could not analyze ${file.name}: ${error.message}`;
+      state.wootingError = true;
+      log("warning", "Rejected Wooting profile file", error.message);
+    }
+    renderPage();
+  }
+
+  function stageWootingImport() {
+    if (!state.wootingImport || !state.profile) return;
+    const { profile, summary } = state.wootingImport;
+    state.profile = normalizeProfile(profile);
+    state.layer = 0;
+    state.wootingImport = null;
+    const lighting = summary.staticLightingImported ? `, and Preset lighting with ${summary.colorsCopied} colors at ${summary.brightness}% brightness` : "";
+    state.wootingStatus = `Staged ${summary.name}: ${summary.mappingsCopied} mappings across ${summary.layerCount} layer${summary.layerCount === 1 ? "" : "s"}, Hall tuning on ${summary.hallKeysCopied} keys, ${summary.advancedImported} advanced actions${lighting}.`;
+    state.wootingError = false;
+    markDirty(...summary.sections);
+    log("change", `Staged supported Wooting settings from ${summary.name}`, summary);
+    renderPage();
+    showToast(`Wooting settings staged. Review Key mapping, Hall effect, Advanced functions${summary.staticLightingImported ? ", and Preset Config lighting" : ""} before applying.`);
+  }
 
   async function generateProfileShareCode() {
     if (!state.profile || state.shareBusy) return;

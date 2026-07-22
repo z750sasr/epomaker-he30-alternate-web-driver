@@ -458,6 +458,15 @@ button { color: inherit; }
 .share-targets small { margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .share-target-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .share-target-grid .button { min-width: 0; padding-inline: 9px; font-size: 11px; }
+.wooting-import-heading { margin-top: 28px; }
+.wooting-code-input { min-height: 46px; height: 46px; resize: none; }
+.wooting-json-input { min-height: 116px; }
+.wooting-validation { margin-top: 13px; }
+.wooting-preview { margin-top: 13px; display: grid; gap: 14px; }
+.wooting-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.wooting-summary-grid span { padding: 11px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); font-size: 10px; background: rgb(255 255 255 / 2%); }
+.wooting-summary-grid strong { display: block; margin-bottom: 4px; color: var(--text); font-size: 16px; }
+.wooting-warnings { margin: 0; padding-left: 19px; color: var(--muted); font-size: 11px; line-height: 1.55; }
 
 .factory-reset-heading { margin-top: 28px; }
 .factory-reset-status { color: var(--amber); border-color: rgb(255 193 92 / 35%); background: rgb(255 193 92 / 8%); }
@@ -617,6 +626,7 @@ button { color: inherit; }
   .share-card-heading, .share-card-footer { align-items: stretch; flex-direction: column; }
   .share-card-heading .button, .share-card-footer .button { width: 100%; }
   .share-target-grid { grid-template-columns: 1fr; }
+  .wooting-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mapping-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .modifier-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .field-grid { grid-template-columns: 1fr; }

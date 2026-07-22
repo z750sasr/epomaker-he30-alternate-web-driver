@@ -75,6 +75,71 @@ if (API.decodeTravel(API.encodeTravel(Array.from({ length: 128 }, () => oneSided
 const colorValues = Array.from({ length: 128 }, (_, index) => `#${(index * 123457 % 0x1000000).toString(16).padStart(6, "0")}`);
 equal(API.decodeColors(API.encodeColors(colorValues)), colorValues, "Per-key RGB colors did not round-trip.");
 
+if (API.normalizeWootingShareCode("c4be8f8508212554b1992b5d83a1adf79f29") !== "c4be8f8508212554b1992b5d83a1adf79f29") throw new Error("Wooting share-code validation rejected the captured code format.");
+if (API.wootingDistanceToHundredths(8224) !== 201 || API.wootingDistanceToHundredths(835) !== 20) throw new Error("Wooting normalized travel did not convert to HE30 hundredths of a millimeter.");
+const wootingTarget = {
+  profileIndex: 0,
+  userKeys: Object.fromEntries([0, 1, 2, 3].map((layer) => [layer, Array.from({ length: 128 }, () => API.makeMapping(255, 255, 255, 0, layer))])),
+  travelKeys: Array.from({ length: 128 }, () => ({ switch_type: 0, key_mode: 0, key_actuation: 40, rt_press: 10, rt_release: 10 })),
+  advancedKeys: [],
+  light: { effect: 3, brightness: 80, speed: 2, direction: 0, singleColor: true, color: "#66f7c2" },
+  colorKeys: Array(128).fill("#66f7c2"),
+};
+wootingTarget.userKeys[0][26] = API.makeMapping(240, 255, 1, 0, 0);
+wootingTarget.userKeys[2][1] = API.makeMapping(16, 0, 99, 0, 2);
+const wootingRgbGrid = Array.from({ length: 6 }, (_, row) => Array.from({ length: 21 }, (_, column) => ({ red: row * 30, green: column * 20, blue: 100 })));
+const wootingSource = {
+  version: 15,
+  name: "Synthetic Wooting profile",
+  analog: { actPoint: 8224, rapidTrigger: true, rapidTriggerSensitivity: 835, rapidTriggerStrictActuationRange: false, perKeyRapidTrigger: [
+    { index: { rowNr: 1, colNr: 0 }, value: false },
+    { index: { rowNr: 1, colNr: 1 }, value: { sensitivity: 410, secondarySensitivity: 820, strictActuationRange: false } },
+  ] },
+  customActuations: [{ index: { rowNr: 1, colNr: 1 }, value: 4096 }],
+  remap: [
+    [{ index: { rowNr: 1, colNr: 0 }, value: 38 }, { index: { rowNr: 1, colNr: 1 }, value: 1 }, { index: { rowNr: 2, colNr: 0 }, value: 40 }, { index: { rowNr: 5, colNr: 1 }, value: 102 }],
+    [{ index: { rowNr: 1, colNr: 1 }, value: 107 }],
+  ],
+  rgb: { brightness: 195, kbdArray: wootingRgbGrid, layers: [] },
+  akc: [{ keyIndex: { rowNr: 1, colNr: 0 }, layer: 0, modTap: { tapKey: { byte: 38 }, holdKey: { byte: 50 } } }],
+  dks: [],
+};
+const wootingConverted = API.convertWootingProfile(wootingSource, wootingTarget);
+if (wootingConverted.summary.layerCount !== 2 || wootingConverted.summary.mappingsCopied !== 5 || wootingConverted.summary.matchedKeyCount !== 4) throw new Error("Wooting layer/key matching summary is incorrect.");
+if (wootingConverted.profile.userKeys[0][1].code2 !== 4 || wootingConverted.profile.userKeys[1][1].code2 !== 104 || wootingConverted.profile.userKeys[2][1].code2 !== 99) throw new Error("Wooting mappings did not copy only the supplied layers.");
+if (wootingConverted.profile.userKeys[0][26].type !== 16 || wootingConverted.profile.userKeys[0][26].code1 !== 8) throw new Error("The Wooting Windows-key position was not imported onto the HE30 Fn key.");
+if (wootingConverted.profile.travelKeys[0].key_mode !== 0 || wootingConverted.profile.travelKeys[1].key_mode !== 2 || wootingConverted.profile.travelKeys[1].key_actuation !== 100 || wootingConverted.profile.travelKeys[1].rt_press !== 10 || wootingConverted.profile.travelKeys[1].rt_release !== 20) throw new Error("Wooting actuation or per-key Continuous Rapid Trigger conversion is incorrect.");
+if (wootingConverted.profile.advancedKeys.length !== 1 || wootingConverted.profile.advancedKeys[0].type !== "mt" || wootingConverted.profile.advancedKeys[0].mtDownKey.code2 !== 53) throw new Error("Compatible Wooting advanced actions were not converted.");
+if (!wootingConverted.summary.staticLightingImported || wootingConverted.summary.colorsCopied !== 6 || wootingConverted.profile.light.effect !== 0 || wootingConverted.profile.light.brightness !== 76 || wootingConverted.profile.light.singleColor !== false) throw new Error("Wooting Static lighting was not converted to HE30 Preset Config.");
+if (wootingConverted.profile.colorKeys[26] !== "#961464" || !wootingConverted.summary.sections.includes("lighting") || !wootingConverted.summary.sections.includes("colors")) throw new Error("Wooting per-key colors or lighting sections were not staged correctly.");
+if (wootingConverted.profile.colorKeys[30] !== "#1e1464") throw new Error("Compact Wooting Preset lighting did not mirror the number-row color onto the matching HE30 function key.");
+
+const explicitTravelConverted = API.convertWootingProfile({
+  ...wootingSource,
+  switchSelector: { switches: [{ index: { rowNr: 1, colNr: 1 }, totalTravelMm: 3.5 }] },
+}, wootingTarget);
+if (!explicitTravelConverted.summary.switchTravelDetected || explicitTravelConverted.profile.travelKeys[1].key_actuation !== 88) throw new Error("Explicit Wooting Switch Selector travel did not rescale Hall settings.");
+
+const dynamicRgbConverted = API.convertWootingProfile({
+  ...wootingSource,
+  rgb: { ...wootingSource.rgb, effects: { layers: [{}] } },
+}, wootingTarget);
+if (dynamicRgbConverted.summary.staticLightingImported || dynamicRgbConverted.profile.light.effect !== 3 || dynamicRgbConverted.summary.sections.includes("colors")) throw new Error("A dynamic Wooting effect was incorrectly imported as HE30 Preset lighting.");
+
+const functionRowCoordinates = [
+  [0, 0], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7],
+  ...Array.from({ length: 7 }, (_, column) => [1, column]),
+  ...Array.from({ length: 6 }, (_, column) => [2, column]),
+  ...Array.from({ length: 6 }, (_, column) => [3, column]),
+  [4, 0], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6],
+  [5, 0], [5, 1], [5, 2], [5, 6],
+];
+const functionRowConverted = API.convertWootingProfile({
+  ...wootingSource,
+  remap: [functionRowCoordinates.map(([rowNr, colNr]) => ({ index: { rowNr, colNr }, value: 1 }))],
+}, wootingTarget);
+if (!functionRowConverted.summary.hasFunctionRow || functionRowConverted.summary.matchedKeyCount !== 36 || functionRowConverted.summary.colorsCopied !== 36) throw new Error("Function-row Wooting layouts did not map all 36 HE30 keys.");
+
 const profile = {
   profileIndex: 0,
   userKeys: Object.fromEntries([0, 1, 2, 3].map((layer) => [layer, Array.from({ length: 128 }, () => API.makeMapping(255, 255, 255, 0, layer))])),
@@ -342,6 +407,12 @@ for (const fragment of ["PROFILE_SHARE_PREFIX", "encodeProfileShare", "decodePro
 }
 for (const fragment of ["position: sticky", ".work-header", ".profile-share-grid", ".share-code", ".share-target-grid"]) {
   if (!styleSource.includes(fragment)) throw new Error(`Sticky actions or profile-sharing styles are missing: ${fragment}`);
+}
+for (const fragment of ["convertWootingProfile", "normalizeWootingShareCode", "WOOTING_PROFILE_API_URL", "loadWootingShareCode", "analyzeWootingJson", "stageWootingImport", "Open source JSON", "Fn maps from Wooting's Windows-key position.", "Preset colors", "default source travel"]) {
+  if (!protocolSource.includes(fragment) && !appSource.includes(fragment)) throw new Error(`Wooting profile import support is missing: ${fragment}`);
+}
+for (const fragment of [".wooting-code-input", ".wooting-preview", ".wooting-summary-grid"]) {
+  if (!styleSource.includes(fragment)) throw new Error(`Wooting profile import styles are missing: ${fragment}`);
 }
 const mainEffectSource = appSource.match(/const MAIN_LIGHT_EFFECTS = Object\.freeze\(\[([\s\S]*?)\]\);\s*const LIGHT_STRIP_EFFECTS/)?.[1] || "";
 const stripEffectSource = appSource.match(/const LIGHT_STRIP_EFFECTS = Object\.freeze\(\[([\s\S]*?)\]\);\s*const lightingEffects/)?.[1] || "";

@@ -13,6 +13,27 @@
   const PROFILE_SHARE_FORMAT = "he30-profile";
   const PROFILE_SHARE_MAX_LENGTH = 262144;
   const TRAVEL_SHARE_FIELDS = Object.freeze(["switch_type", "key_mode", "priority", "key_max_length", "key_actuation", "rt_press", "rt_release", "pressPrecision", "releasePrecision", "press_deadzone", "release_deadzone", "deadzone_status"]);
+  const WOOTING_VALUE_MAX = 16383;
+  const WOOTING_TRAVEL_HUNDREDTHS = 400;
+  const WOOTING_SHARE_CODE_PATTERN = /^[0-9a-f]{36,40}$/i;
+  const WOOTING_BASE_COORDINATES = Object.freeze([
+    [0, 1, 0],
+    [1, 1, 1], [2, 1, 2], [3, 1, 3], [4, 1, 4], [5, 1, 5], [6, 1, 6],
+    [7, 2, 0], [8, 2, 1], [9, 2, 2], [10, 2, 3], [11, 2, 4], [12, 2, 5],
+    [13, 3, 0], [14, 3, 1], [15, 3, 2], [16, 3, 3], [17, 3, 4], [18, 3, 5],
+    [19, 4, 0], [20, 4, 2], [21, 4, 3], [22, 4, 4], [23, 4, 5], [24, 4, 6],
+    [25, 5, 0], [26, 5, 1], [27, 5, 2], [28, 5, 6],
+  ]);
+  const WOOTING_FUNCTION_ROW_COORDINATES = Object.freeze([
+    [0, 0, 0], [30, 0, 2], [31, 0, 3], [32, 0, 4], [33, 0, 5], [34, 0, 6], [35, 0, 7],
+    [29, 1, 0],
+  ]);
+  const HE30_PHYSICAL_HID_CODES = Object.freeze({
+    0: 41, 1: 30, 2: 31, 3: 32, 4: 33, 5: 34, 6: 35, 7: 43, 8: 20, 9: 26,
+    10: 8, 11: 21, 12: 23, 13: 57, 14: 4, 15: 22, 16: 7, 17: 9, 18: 10,
+    19: 225, 20: 29, 21: 27, 22: 6, 23: 25, 24: 5, 25: 224, 27: 226, 28: 44,
+    29: 53, 30: 58, 31: 59, 32: 60, 33: 61, 34: 62, 35: 63,
+  });
 
   const DEVICE_MODELS = Object.freeze({
     "19f5:fb27": { name: "EPOMAKER HE30", type: 102, multiProfile: false },
@@ -232,6 +253,378 @@
     const mapping = { type, code1, code2, code: -1, name: "", profile, layer };
     mapping.name = mappingName(mapping) === "Unassigned" ? "" : mappingName(mapping);
     return mapping;
+  }
+
+  function normalizeWootingShareCode(value) {
+    const source = String(value || "").trim();
+    const queryCode = (() => {
+      try { return global.URL ? new global.URL(source).searchParams.get("code") || "" : ""; } catch (_) { return ""; }
+    })();
+    const code = queryCode || source.match(/[0-9a-f]{36,40}/i)?.[0] || "";
+    if (!WOOTING_SHARE_CODE_PATTERN.test(code)) throw new Error("Enter a valid 36- or 40-character Wooting share code.");
+    return code.toLowerCase();
+  }
+
+  function wootingDistanceToHundredths(value, maximum = WOOTING_TRAVEL_HUNDREDTHS, sourceTravel = WOOTING_TRAVEL_HUNDREDTHS) {
+    const normalized = clamp(value, 0, WOOTING_VALUE_MAX);
+    const sourceMaximum = clamp(sourceTravel, 1, 1000);
+    return clamp(Math.round((normalized / WOOTING_VALUE_MAX) * sourceMaximum), 1, maximum);
+  }
+
+  function wootingKeyboardHid(byte) {
+    const value = Number(byte);
+    if (value >= 0x01 && value <= 0x2e) return value + 3;
+    if (value >= 0x30 && value <= 0x51) return value + 3;
+    if (value >= 0x63 && value <= 0x6a) return 0xe0 + (value - 0x63);
+    if (value >= 0x6b && value <= 0x76) return 0x68 + (value - 0x6b);
+    if (value === 0x77) return 0x65;
+    return ({
+      0x52: 0x63, 0x53: 0x55, 0x54: 0x38, 0x55: 0x57, 0x56: 0x58,
+      0x57: 0x59, 0x58: 0x5a, 0x59: 0x5b, 0x5a: 0x5c, 0x5b: 0x5d,
+      0x5c: 0x5e, 0x5d: 0x5f, 0x5e: 0x60, 0x5f: 0x61, 0x60: 0x62,
+      0x61: 0x64, 0xed: 0x8a, 0xee: 0x8b, 0xef: 0x92, 0xf0: 0x93,
+      0xf1: 0x94, 0xf2: 0x87, 0xf3: 0x88, 0xf4: 0x89, 0xf5: 0x8a,
+      0xf6: 0x8b, 0xf7: 0x8c,
+    })[value] ?? null;
+  }
+
+  function decodeWootingMapping(value, profile = 0, layer = 0) {
+    const byte = Number(typeof value === "object" && value !== null ? value.byte : value);
+    if (!Number.isInteger(byte) || byte < 0 || byte > 255) return null;
+    if (byte === 0) return makeMapping(255, 255, 255, profile, layer);
+    const hid = wootingKeyboardHid(byte);
+    if (hid !== null) {
+      return hid >= 0xe0 && hid <= 0xe7
+        ? makeMapping(16, 1 << (hid - 0xe0), 0, profile, layer)
+        : makeMapping(16, 0, hid, profile, layer);
+    }
+    const consumerUsage = ({
+      0xc0: 0x00b5, 0xc1: 0x00b6, 0xc2: 0x00cd, 0xc3: 0x00e2,
+      0xc4: 0x00e9, 0xc5: 0x00ea, 0xc6: 0x0183, 0xc7: 0x018a,
+      0xc8: 0x0192, 0xc9: 0x0194, 0xca: 0x0221, 0xcb: 0x0223,
+      0xcc: 0x0224, 0xcd: 0x0225, 0xce: 0x00b7, 0xcf: 0x0227,
+      0xd0: 0x022a, 0xd6: 0x0070, 0xd7: 0x006f,
+    })[byte];
+    if (consumerUsage !== undefined) return makeMapping(48, consumerUsage & 255, consumerUsage >> 8, profile, layer);
+    if (byte === 0xd1 || byte === 0xd2) return makeMapping(64, byte === 0xd1 ? 1 : 2, 0, profile, layer);
+    if (byte >= 0xd8 && byte <= 0xdc) return makeMapping(32, 1 << (byte - 0xd8), 0, profile, layer);
+    if (byte === 0xe5) return makeMapping(240, 253, 0, profile, layer);
+    if (byte === 0xe2) return makeMapping(240, 252, 0, profile, layer);
+    if (byte === 0xe3) return makeMapping(240, 251, 0, profile, layer);
+    return null;
+  }
+
+  function defaultHe30PhysicalMapping(index, profile, layer) {
+    const hid = HE30_PHYSICAL_HID_CODES[index];
+    if (hid === undefined) return makeMapping(255, 255, 255, profile, layer);
+    return hid >= 0xe0 && hid <= 0xe7
+      ? makeMapping(16, 1 << (hid - 0xe0), 0, profile, layer)
+      : makeMapping(16, 0, hid, profile, layer);
+  }
+
+  function wootingCoordinate(value) {
+    if (!value || typeof value !== "object") return "";
+    const row = Number(value.rowNr ?? value.row);
+    const column = Number(value.colNr ?? value.col ?? value.column);
+    return Number.isInteger(row) && Number.isInteger(column) ? `${row}:${column}` : "";
+  }
+
+  function wootingLayerMap(entries) {
+    const result = new Map();
+    (Array.isArray(entries) ? entries : []).forEach((entry) => {
+      const coordinate = wootingCoordinate(entry?.index ?? entry?.keyIndex);
+      if (coordinate) result.set(coordinate, entry?.value ?? entry?.key ?? entry?.keybind);
+    });
+    return result;
+  }
+
+  function wootingExplicitTravelHundredths(value) {
+    const millimeters = Number(value);
+    return Number.isFinite(millimeters) && millimeters >= 0.1 && millimeters <= 10
+      ? Math.round(millimeters * 100)
+      : null;
+  }
+
+  function wootingTravelValue(value) {
+    if (!value || typeof value !== "object") return null;
+    for (const field of ["totalTravelMm", "maxTravelMm", "travelMm", "actuationRangeMm", "totalTravel", "maxTravel", "travelDistance", "actuationRange"]) {
+      const travel = wootingExplicitTravelHundredths(value[field]);
+      if (travel !== null) return travel;
+    }
+    return null;
+  }
+
+  function wootingSwitchTravel(input, source) {
+    const roots = [source, source?.switchSelector, source?.switchSettings, source?.switchConfig];
+    if (input !== source) roots.push(input, input?.switchSelector, input?.switchSettings, input?.switchConfig);
+    const defaultTravel = roots.map(wootingTravelValue).find((value) => value !== null) ?? WOOTING_TRAVEL_HUNDREDTHS;
+    const perCoordinate = new Map();
+    roots.forEach((root) => {
+      if (!root || typeof root !== "object") return;
+      [root.switches, root.keys, root.assignments, root.perKey].forEach((entries) => {
+        (Array.isArray(entries) ? entries : []).forEach((entry) => {
+          const coordinate = wootingCoordinate(entry?.index ?? entry?.keyIndex ?? entry?.position);
+          const travel = wootingTravelValue(entry);
+          if (coordinate && travel !== null) perCoordinate.set(coordinate, travel);
+        });
+      });
+    });
+    return {
+      detected: defaultTravel !== WOOTING_TRAVEL_HUNDREDTHS || perCoordinate.size > 0,
+      defaultTravel,
+      perCoordinate,
+      forCoordinate(coordinate) { return perCoordinate.get(coordinate) ?? defaultTravel; },
+    };
+  }
+
+  function wootingRgbColor(value) {
+    if (!value || typeof value !== "object") return null;
+    const red = Number(value.red ?? value.r);
+    const green = Number(value.green ?? value.g);
+    const blue = Number(value.blue ?? value.b);
+    return [red, green, blue].every(Number.isFinite) ? rgbToHex(red, green, blue) : null;
+  }
+
+  function wootingDksStatus(entry, action) {
+    const state = Number(entry?.[`action${action}`]);
+    return Number.isInteger(state) ? state : 3;
+  }
+
+  function convertWootingDks(item, layer, index, baseMapping, sourceActuation, profile, sourceTravel) {
+    const dks = item?.dks;
+    if (!dks || typeof dks !== "object") return null;
+    const secondary = wootingDistanceToHundredths(dks.secondaryActuation ?? Math.min(WOOTING_VALUE_MAX, sourceActuation * 2), WOOTING_TRAVEL_HUNDREDTHS, sourceTravel);
+    const primary = wootingDistanceToHundredths(sourceActuation, WOOTING_TRAVEL_HUNDREDTHS, sourceTravel);
+    const dksKeys = [];
+    for (let action = 0; action < 4; action += 1) {
+      const output = decodeWootingMapping(dks[`action${action}`], profile, layer);
+      if (!output || output.type === 255) continue;
+      const points = [0, 1, 2, 3].map((point) => wootingDksStatus(dks[`point${point}`], action));
+      const firstState = (state, indexes) => indexes.find((point) => points[point] === state);
+      const pressDown = firstState(1, [0, 1]);
+      const pressUp = firstState(2, [0, 1]);
+      const releaseDown = firstState(1, [2, 3]);
+      const releaseUp = firstState(2, [2, 3]);
+      dksKeys.push({
+        key: output,
+        downStart: pressDown === undefined ? 0 : pressDown + 1,
+        downEnd: pressUp === undefined ? 0 : pressUp + 1,
+        upStart: releaseDown === undefined ? 0 : (releaseDown === 2 ? 2 : 1),
+        upEnd: releaseUp === undefined ? 0 : (releaseUp === 2 ? 2 : 1),
+      });
+    }
+    if (!dksKeys.length) return null;
+    return { type: "dks", layer, index1: index, baseMapping, dksPoint: [primary, secondary, secondary, primary], dksKeys };
+  }
+
+  function convertWootingProfile(input, targetProfile) {
+    const source = input?.data && typeof input.data === "object" ? input.data : input;
+    if (!source || typeof source !== "object" || Array.isArray(source)) throw new Error("The Wooting profile response is not a JSON object.");
+    if (!Array.isArray(source.remap) || !source.remap.length) throw new Error("This Wooting profile has no key-mapping layers.");
+    const result = JSON.parse(JSON.stringify(targetProfile || {}));
+    const targetProfileIndex = inferProfileIndex(result);
+    result.userKeys ||= {};
+    for (let layer = 0; layer < LAYER_COUNT; layer += 1) {
+      const mappings = result.userKeys[layer] || result.userKeys[String(layer)] || [];
+      result.userKeys[layer] = Array.from({ length: KEY_COUNT }, (_, index) => {
+        const mapping = mappings[index];
+        return mapping ? { ...mapping, profile: targetProfileIndex, layer } : makeMapping(255, 255, 255, targetProfileIndex, layer);
+      });
+    }
+    result.travelKeys = Array.from({ length: KEY_COUNT }, (_, index) => ({
+      switch_type: 0, key_mode: 0, priority: 0, key_max_length: 4, key_actuation: 40,
+      rt_press: 10, rt_release: 10, pressPrecision: 0, releasePrecision: 0,
+      press_deadzone: 0, release_deadzone: 0, deadzone_status: false,
+      ...(result.travelKeys?.[index] || {}),
+    }));
+    result.advancedKeys = Array.isArray(result.advancedKeys) ? result.advancedKeys.map((item) => ({ ...item })) : [];
+    result.light = {
+      effect: 1, brightness: 80, speed: 2, direction: 0, singleColor: true, color: "#66f7c2",
+      ...(result.light || {}),
+    };
+    result.colorKeys = Array.from({ length: KEY_COUNT }, (_, index) => normalizeHexColor(result.colorKeys?.[index], result.light.color));
+
+    const layerCount = Math.min(source.remap.length, LAYER_COUNT);
+    const layerMaps = Array.from({ length: layerCount }, (_, layer) => wootingLayerMap(source.remap[layer]));
+    const allCoordinates = new Set(layerMaps.flatMap((map) => [...map.keys()]));
+    const hasFunctionRow = ["0:0", "0:2", "0:3", "0:4", "0:5", "0:6", "0:7"].every((coordinate) => allCoordinates.has(coordinate));
+    const coordinateRows = hasFunctionRow
+      ? [...WOOTING_BASE_COORDINATES.filter(([index]) => index !== 0), ...WOOTING_FUNCTION_ROW_COORDINATES]
+      : [...WOOTING_BASE_COORDINATES];
+    const targetByCoordinate = new Map(coordinateRows.map(([index, row, column]) => [`${row}:${column}`, index]));
+    const switchTravel = wootingSwitchTravel(input, source);
+    const warnings = [];
+    let mappingsCopied = 0;
+    let unsupportedMappings = 0;
+    const touchedHosts = new Set();
+    const mappedPhysicalIndexes = new Set();
+
+    for (let layer = 0; layer < layerCount; layer += 1) {
+      coordinateRows.forEach(([index, row, column]) => {
+        const coordinate = `${row}:${column}`;
+        if (!layerMaps[layer].has(coordinate)) return;
+        touchedHosts.add(`${layer}:${index}`);
+        mappedPhysicalIndexes.add(index);
+        const mapping = decodeWootingMapping(layerMaps[layer].get(coordinate), targetProfileIndex, layer);
+        if (!mapping) { unsupportedMappings += 1; return; }
+        result.userKeys[layer][index] = mapping;
+        mappingsCopied += 1;
+      });
+    }
+
+    const removedActions = [];
+    result.advancedKeys = result.advancedKeys.filter((item) => {
+      const layer = clamp(item?.layer, 0, LAYER_COUNT - 1);
+      const collides = touchedHosts.has(`${layer}:${Number(item?.index1)}`) || (item?.index2 != null && touchedHosts.has(`${layer}:${Number(item.index2)}`));
+      if (collides) removedActions.push(item);
+      return !collides;
+    });
+    removedActions.forEach((item) => {
+      const layer = clamp(item?.layer, 0, LAYER_COUNT - 1);
+      [Number(item?.index1), Number(item?.index2)].filter(Number.isInteger).forEach((index, position) => {
+        if (touchedHosts.has(`${layer}:${index}`)) return;
+        result.userKeys[layer][index] = JSON.parse(JSON.stringify((position === 0 ? item.baseMapping : item.baseMapping2) || defaultHe30PhysicalMapping(index, targetProfileIndex, layer)));
+      });
+    });
+
+    const analog = source.analog && typeof source.analog === "object" ? source.analog : {};
+    const customActuations = new Map((Array.isArray(source.customActuations) ? source.customActuations : []).map((entry) => [wootingCoordinate(entry?.index ?? entry?.keyIndex), entry?.value]));
+    const perKeyRapidTrigger = new Map((Array.isArray(analog.perKeyRapidTrigger) ? analog.perKeyRapidTrigger : []).map((entry) => [wootingCoordinate(entry?.index ?? entry?.keyIndex), entry?.value]));
+    coordinateRows.forEach(([index, row, column]) => {
+      const coordinate = `${row}:${column}`;
+      if (!allCoordinates.has(coordinate)) return;
+      const travel = result.travelKeys[index];
+      const maximum = Number(travel.switch_type) === 0 ? 340 : 350;
+      const sourceTravel = switchTravel.forCoordinate(coordinate);
+      const actuation = customActuations.has(coordinate) ? customActuations.get(coordinate) : analog.actPoint;
+      if (Number.isFinite(Number(actuation))) travel.key_actuation = wootingDistanceToHundredths(actuation, maximum, sourceTravel);
+      const override = perKeyRapidTrigger.get(coordinate);
+      const overrideObject = override && typeof override === "object" ? override : null;
+      const enabled = override === undefined ? Boolean(analog.rapidTrigger) : overrideObject ? overrideObject.enabled !== false : Boolean(override);
+      const sensitivity = overrideObject?.sensitivity ?? analog.rapidTriggerSensitivity;
+      const secondarySensitivity = overrideObject?.secondarySensitivity ?? sensitivity;
+      const strict = overrideObject?.strictActuationRange ?? analog.rapidTriggerStrictActuationRange;
+      travel.key_mode = enabled ? (strict === false ? 2 : 1) : 0;
+      if (Number.isFinite(Number(sensitivity))) travel.rt_press = wootingDistanceToHundredths(sensitivity, maximum, sourceTravel);
+      if (Number.isFinite(Number(secondarySensitivity))) travel.rt_release = wootingDistanceToHundredths(secondarySensitivity, maximum, sourceTravel);
+      travel.priority = 0;
+    });
+
+    const claimedAdvancedHosts = new Set();
+    const importedAdvanced = [];
+    let advancedSkipped = 0;
+    const actionCandidates = [
+      ...(Array.isArray(source.akc) ? source.akc : []),
+      ...(Array.isArray(source.dks) ? source.dks.map((entry) => ({ keyIndex: entry?.keyIndex ?? entry?.index, layer: entry?.layer ?? 0, dks: entry?.dks ?? entry })) : []),
+    ];
+    actionCandidates.forEach((item) => {
+      const layer = Number(item?.layer ?? 0);
+      const coordinate = wootingCoordinate(item?.keyIndex ?? item?.index);
+      const index = targetByCoordinate.get(coordinate);
+      if (!Number.isInteger(layer) || layer < 0 || layer >= layerCount || index === undefined) { advancedSkipped += 1; return; }
+      const hostKey = `${layer}:${index}`;
+      const baseMapping = JSON.parse(JSON.stringify(result.userKeys[layer][index]));
+      let converted = null;
+      if (item.modTap) {
+        const tap = decodeWootingMapping(item.modTap.tapKey, targetProfileIndex, layer);
+        const hold = decodeWootingMapping(item.modTap.holdKey, targetProfileIndex, layer);
+        if (tap && hold) converted = { type: "mt", layer, index1: index, baseMapping, mtClickKey: tap, mtDownKey: hold, mtTime: clamp(item.modTap.holdDuration || 200, 10, 2550) };
+      } else if (item.toggleKey) {
+        const output = decodeWootingMapping(item.toggleKey.keybind ?? item.toggleKey.key, targetProfileIndex, layer);
+        if (output) converted = { type: "tgl", layer, index1: index, baseMapping, tglKey: output };
+      } else if (item.rappySnappy || item.socd) {
+        const pairConfig = item.rappySnappy || item.socd;
+        const pairCoordinate = wootingCoordinate(pairConfig.secondaryKey ?? pairConfig.keyIndex ?? pairConfig.index);
+        const index2 = targetByCoordinate.get(pairCoordinate);
+        const pairHostKey = `${layer}:${index2}`;
+        if (index2 !== undefined && !claimedAdvancedHosts.has(pairHostKey)) {
+          const key1 = JSON.parse(JSON.stringify(result.userKeys[layer][index]));
+          const key2 = JSON.parse(JSON.stringify(result.userKeys[layer][index2]));
+          const baseTravel1 = JSON.parse(JSON.stringify(result.travelKeys[index]));
+          const baseTravel2 = JSON.parse(JSON.stringify(result.travelKeys[index2]));
+          const priority = item.socd ? ({ 0: 3, 4: 0 })[Number(pairConfig.socd)] : 0;
+          if (!item.socd || priority !== undefined) {
+            converted = { type: item.socd ? "socd" : "rs", layer, index1: index, index2, baseMapping, baseMapping2: key2, baseTravel1, baseTravel2, key1, key2, option: { actuation: baseTravel1.key_actuation, press: baseTravel1.rt_press, release: baseTravel1.rt_release, priority: priority || 0 } };
+          }
+        }
+      } else if (item.dks) {
+        const sourceActuation = customActuations.get(coordinate) ?? analog.actPoint ?? 1638;
+        converted = convertWootingDks(item, layer, index, baseMapping, sourceActuation, targetProfileIndex, switchTravel.forCoordinate(coordinate));
+      }
+      if (!converted || claimedAdvancedHosts.has(hostKey)) { advancedSkipped += 1; return; }
+      const tentative = [...result.advancedKeys, ...importedAdvanced, converted];
+      try { compileAdvanced({ ...result, advancedKeys: tentative }); } catch (_) { advancedSkipped += 1; return; }
+      importedAdvanced.push(converted);
+      claimedAdvancedHosts.add(hostKey);
+      if (converted.index2 !== undefined) claimedAdvancedHosts.add(`${layer}:${converted.index2}`);
+    });
+    result.advancedKeys.push(...importedAdvanced);
+
+    const rgb = source.rgb && typeof source.rgb === "object" ? source.rgb : null;
+    const hasDynamicRgb = Array.isArray(rgb?.effects?.layers) && rgb.effects.layers.length > 0;
+    const staticRgb = Array.isArray(rgb?.kbdArray) && rgb.kbdArray.some(Array.isArray) && !hasDynamicRgb;
+    let colorsCopied = 0;
+    let firstImportedColor = null;
+    if (staticRgb) {
+      const copyColor = ([index, row, column]) => {
+        const coordinate = `${row}:${column}`;
+        if (!allCoordinates.has(coordinate)) return;
+        const color = wootingRgbColor(rgb.kbdArray?.[row]?.[column]);
+        if (!color) return;
+        result.colorKeys[index] = color;
+        firstImportedColor ||= color;
+        colorsCopied += 1;
+      };
+      coordinateRows.forEach(copyColor);
+      if (!hasFunctionRow) {
+        [
+          [29, 1, 0], [30, 1, 1], [31, 1, 2], [32, 1, 3],
+          [33, 1, 4], [34, 1, 5], [35, 1, 6],
+        ].forEach(copyColor);
+      }
+      if (colorsCopied) {
+        result.light.effect = 0;
+        result.light.brightness = clamp(Math.round((clamp(rgb.brightness ?? 255, 0, 255) / 255) * 100), 0, 100);
+        result.light.singleColor = false;
+        if (firstImportedColor) result.light.color = firstImportedColor;
+      }
+    }
+
+    const sourceTravelValues = coordinateRows
+      .map(([, row, column]) => `${row}:${column}`)
+      .filter((coordinate) => allCoordinates.has(coordinate))
+      .map((coordinate) => switchTravel.forCoordinate(coordinate));
+    const minimumSourceTravel = sourceTravelValues.length ? Math.min(...sourceTravelValues) : switchTravel.defaultTravel;
+    const maximumSourceTravel = sourceTravelValues.length ? Math.max(...sourceTravelValues) : switchTravel.defaultTravel;
+
+    if (!hasFunctionRow) warnings.push("This compact Wooting layout has no dedicated Grave or F1–F6 positions; those seven HE30 keys were preserved.");
+    if (!switchTravel.detected) warnings.push("Wooting share profiles do not include device Switch Selector assignments; Hall distances used Wooting's standard 4.00 mm source range.");
+    if (!hasFunctionRow && staticRgb && colorsCopied) warnings.push("On compact Wooting profiles, Preset colors for Grave and F1–F6 mirror Wooting's Esc and 1–6 positions because those physical keys do not exist.");
+    if (staticRgb && colorsCopied && colorsCopied < 36) warnings.push(`Static RGB was copied for ${colorsCopied} HE30 keys; remaining key colors were preserved.`);
+    if (rgb && !staticRgb) warnings.push("The Wooting main-layer lighting is not a Static color preset, so HE30 Preset Config lighting was preserved.");
+    if (unsupportedMappings) warnings.push(`${unsupportedMappings} Wooting mapping${unsupportedMappings === 1 ? " was" : "s were"} unsupported and preserved on HE30.`);
+    if (advancedSkipped) warnings.push(`${advancedSkipped} advanced action${advancedSkipped === 1 ? " was" : "s were"} outside the matched keys or not representable on HE30.`);
+    if (importedAdvanced.some((item) => item.type === "dks")) warnings.push("DKS transition points were translated to the closest HE30 stages; review them before applying.");
+    const sections = ["keymap", "hall"];
+    if (removedActions.length || importedAdvanced.length) sections.push("advanced");
+    if (colorsCopied) sections.push("lighting", "colors");
+    result._workspaceSections = [...new Set([...(result._workspaceSections || []), ...sections])];
+    return {
+      profile: result,
+      summary: {
+        name: String(source.name || "Wooting profile"), version: Number(source.version) || 0,
+        layerCount, matchedKeyCount: mappedPhysicalIndexes.size, mappingsCopied,
+        hallKeysCopied: mappedPhysicalIndexes.size, advancedImported: importedAdvanced.length,
+        advancedRemoved: removedActions.length, advancedSkipped, unsupportedMappings,
+        hasFunctionRow, layoutKind: hasFunctionRow ? "function-row" : "compact",
+        targetDevice: Number(source.target?.device), targetLayout: Number(source.target?.layout),
+        staticLightingImported: colorsCopied > 0, colorsCopied,
+        brightness: colorsCopied ? result.light.brightness : null,
+        switchTravelDetected: switchTravel.detected,
+        minimumSourceTravel, maximumSourceTravel,
+        sections, warnings,
+      },
+    };
   }
 
   function inferProfileIndex(profile) {
@@ -1250,6 +1643,10 @@
     LAYER_COUNT,
     TOTAL_LAYER_COUNT,
     KEY_COUNT,
+    normalizeWootingShareCode,
+    wootingDistanceToHundredths,
+    decodeWootingMapping,
+    convertWootingProfile,
     mappingName,
     makeMapping,
     inferProfileIndex,
