@@ -39,32 +39,6 @@ Firefox and Safari do not currently support WebHID, but they can still be used w
 - Maybe one day, the manufacturer will end the suppport for this keyboard and shut the website down, but this project is deployed on GitHub, so maybe this would stay forever (unless the world is coming to and end or some god-level hacker vaporizes GitHub.
 - Miscs, blah blah blah
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## Let's be real, who wants to read AI generated stuff? If you are, then read the part below.
 
 - Direct WebHID connection for normal configuration mode
