@@ -38,9 +38,13 @@ function setDistanceFromNumber(number, normalize = false) {
   const divisor = Number(range.dataset.distanceDivisor) || 100;
   const minimum = Number(number.min) || 0.01;
   const maximum = Number(number.max) || 4;
-  const millimeters = uiClamp(Number(number.value), minimum, maximum);
+  const requested = Number(number.value);
+  const millimeters = uiClamp(requested, minimum, maximum);
   range.value = uiClamp(Math.round(millimeters * divisor), Number(range.min), Number(range.max));
-  if (normalize) updateRangeOutput(range);
+  // Native number inputs allow temporarily typing beyond their max attribute.
+  // Reflect an over-limit clamp immediately so the field never appears to
+  // accept 4.00 mm when the selected switch bottoms out at 3.40/3.50 mm.
+  if (normalize || requested > maximum) updateRangeOutput(range);
 }
 
 function nudgeDistanceControl(control, direction) {
@@ -89,16 +93,16 @@ function configureRtInput(input, precision, value = input?.value, maximumTravel 
   const meta = rtPrecisionMeta(precision);
   input.dataset.distanceDivisor = meta.divisor;
   input.dataset.distanceDecimals = meta.decimals;
-  input.max = Math.min(511, Math.round(maximumTravel * meta.divisor));
+  input.max = rtStoredMaximum(precision, maximumTravel);
   input.value = uiClamp(value, 1, Number(input.max));
   const number = input.parentElement?.querySelector(`[data-range-for="${input.id}"]`);
   if (number) {
     number.min = Math.max(0.01, 1 / meta.divisor).toFixed(2);
-    number.max = (Number(input.max) / meta.divisor).toFixed(2);
+    number.max = (Number(input.max) / meta.divisor).toFixed(meta.decimals);
     number.step = "0.01";
   }
   const note = input.closest(".field")?.querySelector("small");
-  if (note) note.textContent = `${meta.step} per step`;
+  if (note) note.textContent = `${meta.step} per stored step · maximum ${(Number(input.max) / meta.divisor).toFixed(meta.decimals)} mm (raw ${input.max}) · arrows adjust 0.01 mm`;
   updateRangeOutput(input);
 }
 
@@ -234,6 +238,7 @@ function bindHallControls() {
     }
     press.dispatchEvent(new Event("input", { bubbles: true }));
   }));
+  configureHallTravelLimits($("#hallSwitchType")?.value);
   syncHallControlAvailability();
 }
 

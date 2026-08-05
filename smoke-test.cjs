@@ -83,6 +83,34 @@ async function verifyBrowserBootstrap() {
   if (JSON.stringify(telemetryDistances) !== JSON.stringify([3.23, 3.23, 3.5, 3.4, 3.99])) {
     throw new Error(`Live telemetry did not honor fixed 0.01 mm reports and per-switch travel maxima; decoded ${telemetryDistances.join(" / ")} mm.`);
   }
+  const numericClamp = vm.runInContext(`(() => {
+    const previousQuerySelector = document.querySelector;
+    const number = { value: "4", min: "0.01", max: "3.40", dataset: { rangeFor: "hallActuation" } };
+    const range = {
+      id: "hallActuation", value: "40", min: "1", max: "340",
+      dataset: { distanceDivisor: "100", distanceDecimals: "2" },
+      parentElement: { querySelector(selector) { return selector.includes("data-range-for") ? number : null; } },
+    };
+    document.querySelector = (selector) => selector === "#hallActuation" ? range : previousQuerySelector(selector);
+    setDistanceFromNumber(number);
+    const result = [range.value, number.value];
+    document.querySelector = previousQuerySelector;
+    return result;
+  })()`, browser);
+  if (JSON.stringify(numericClamp) !== JSON.stringify([340, "3.40"])) throw new Error(`An over-limit Hall number entry was not visibly clamped: ${numericClamp.join(" / ")}.`);
+  const rtThresholdUnits = vm.runInContext(`(() => {
+    const standard = rtPrecisionMeta(0);
+    const halfStep = rtPrecisionMeta(1);
+    const thousandth = rtPrecisionMeta(2);
+    return {
+      divisors: [standard.divisor, halfStep.divisor, thousandth.divisor],
+      maxima: [rtStoredMaximum(0, 3.4), rtStoredMaximum(1, 3.4), rtStoredMaximum(2, 3.4)],
+      physical: [rtStoredMaximum(0, 3.4) / standard.divisor, rtStoredMaximum(1, 3.4) / halfStep.divisor, rtStoredMaximum(2, 3.4) / thousandth.divisor],
+      thousandthMarkup: rtRangeField("RT Press", "hallPress", 511, 2, 3.4),
+    };
+  })()`, browser);
+  if (JSON.stringify(rtThresholdUnits.divisors) !== JSON.stringify([100, 200, 1000]) || JSON.stringify(rtThresholdUnits.maxima) !== JSON.stringify([340, 500, 500]) || JSON.stringify(rtThresholdUnits.physical) !== JSON.stringify([3.4, 2.5, 0.5])) throw new Error(`RT threshold units or original-driver maxima are wrong: ${JSON.stringify(rtThresholdUnits)}.`);
+  if (!rtThresholdUnits.thousandthMarkup.includes('max="500"') || !rtThresholdUnits.thousandthMarkup.includes('value="500"') || !rtThresholdUnits.thousandthMarkup.includes('maximum 0.500 mm (raw 500)')) throw new Error("The 0.001 mm RT editor did not clamp raw 511 to the original-driver raw maximum 500 / 0.500 mm.");
   const connect = elements.get("#welcomeConnectButton")?.listeners.get("click");
   if (!connect) throw new Error("Segmented startup did not bind the Connect button.");
   await connect({ preventDefault() {} });
