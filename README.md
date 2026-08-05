@@ -1,4 +1,4 @@
-![Banner](images/Z750.png)
+https://z750sasr.github.io/epomaker-he30-alternate-web-driver/
 
 <table>
   <tr>
@@ -38,6 +38,32 @@ Firefox and Safari do not currently support WebHID, but they can still be used w
 - Maybe better UX/UI interface? (subjective)
 - Maybe one day, the manufacturer will end the suppport for this keyboard and shut the website down, but this project is deployed on GitHub, so maybe this would stay forever (unless the world is coming to and end or some god-level hacker vaporizes GitHub.
 - Miscs, blah blah blah
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## Let's be real, who wants to read AI generated stuff? If you are, then read the part below.
 
@@ -141,6 +167,10 @@ Developers can run the dependency-free smoke test using Node.js:
 ```powershell
 node smoke-test.cjs
 ```
+
+New contributors should read [the architecture guide](docs/ARCHITECTURE.md). It
+explains the source-module load order, staged editing model, profile/layer data,
+protocol codecs, WebHID verification flow, and where each type of change belongs.
 
 The test checks:
 

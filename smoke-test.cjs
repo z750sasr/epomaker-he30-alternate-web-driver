@@ -2,20 +2,97 @@ const fs = require("fs");
 const vm = require("vm");
 
 const root = __dirname;
-const protocolSource = fs.readFileSync(`${root}/protocol.js`, "utf8");
-const appSource = fs.readFileSync(`${root}/app.js`, "utf8");
+// The production site uses ordered classic scripts instead of a bundler. Tests
+// concatenate the same order so cross-file declarations behave exactly as they
+// do in the browser while each file can still be syntax-checked independently.
+const protocolFiles = ["js/protocol/core.js", "js/protocol/codecs.js", "protocol.js"];
+const appFiles = ["js/app/foundation.js", "js/app/pages.js", "js/app/hall.js", "js/app/lighting.js", "js/app/editors.js", "js/app/profiles.js", "app.js"];
+const styleFiles = ["styles.css", "styles/workspace.css", "styles/keyboard-hall.css", "styles/pages.css", "styles/components.css", "styles/responsive.css"];
+const readSource = (file) => fs.readFileSync(`${root}/${file}`, "utf8");
+const protocolSource = protocolFiles.map(readSource).join("\n");
+const appSource = appFiles.map(readSource).join("\n");
 const htmlSource = fs.readFileSync(`${root}/index.html`, "utf8");
 const jsonEditorHtml = fs.readFileSync(`${root}/json_editor/index.html`, "utf8");
-const styleSource = fs.readFileSync(`${root}/styles.css`, "utf8");
+const styleSource = styleFiles.map(readSource).join("\n");
 const factoryProfile = JSON.parse(fs.readFileSync(`${root}/src/factory_config.json`, "utf8"));
 
+/**
+ * Execute every production script as a separate classic browser script, then
+ * click Connect against a fake WebHID chooser. This catches cross-file global
+ * declaration collisions that isolated syntax checks cannot see.
+ */
+async function verifyBrowserBootstrap() {
+  const elements = new Map();
+  const element = (selector) => {
+    if (elements.has(selector)) return elements.get(selector);
+    const listeners = new Map();
+    const node = {
+      listeners, innerHTML: "", textContent: "", value: "", checked: false, disabled: false, title: "", dataset: {}, files: [],
+      classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+      style: { setProperty() {} },
+      addEventListener(type, handler) { listeners.set(type, handler); },
+      querySelector() { return null; }, querySelectorAll() { return []; }, closest() { return null; },
+      click() {}, showModal() {}, close() {},
+    };
+    elements.set(selector, node);
+    return node;
+  };
+  let requestCount = 0;
+  const browser = {
+    console, URL, Blob, Response, CompressionStream, DecompressionStream, TextEncoder, TextDecoder,
+    Uint8Array, ArrayBuffer, DataView, Promise, Math, Number, String, Boolean, Object, Array, Set, Map, JSON, Error, Date, RegExp, btoa, atob,
+    setTimeout: () => 1, clearTimeout() {}, requestAnimationFrame: () => 1, cancelAnimationFrame() {}, performance: { now: () => 0 },
+    confirm: () => true, localStorage: { setItem() {} },
+    navigator: { hid: { async requestDevice() { requestCount += 1; return []; }, addEventListener() {} } },
+    document: { body: { dataset: { appMode: "live" } }, currentScript: null, querySelector: element, querySelectorAll: () => [], addEventListener() {} },
+    HTMLTextAreaElement: class {}, HTMLSelectElement: class {}, HTMLInputElement: class {},
+  };
+  browser.window = browser;
+  browser.location = { href: "https://example.test/repo/index.html" };
+  browser.addEventListener = () => {};
+  vm.createContext(browser);
+  for (const file of [...protocolFiles, ...appFiles]) {
+    browser.document.currentScript = { src: `https://example.test/repo/${file}` };
+    vm.runInContext(readSource(file), browser, { filename: file });
+  }
+  const telemetryDistances = vm.runInContext(`(() => {
+    const index = TELEMETRY_INDEX.get(4);
+    const previousProfile = state.profile;
+    state.profile = { travelKeys: Array.from({ length: 128 }, () => ({ switch_type: 0, pressPrecision: 0 })) };
+    handleLiveTelemetry({ keyCode: 4, rawTravel: 323, status: 1 });
+    const standardPrecision = state.liveTravel[index];
+    state.profile.travelKeys[index].pressPrecision = 2;
+    handleLiveTelemetry({ keyCode: 4, rawTravel: 323, status: 1 });
+    const thousandthPrecision = state.liveTravel[index];
+    state.profile = previousProfile;
+    state.liveTravel[index] = 0;
+    state.liveTravelRaw[index] = 0;
+    state.liveTravelStatus[index] = 0;
+    state.liveFrame = 0;
+    return [standardPrecision, thousandthPrecision];
+  })()`, browser);
+  if (telemetryDistances[0] !== 3.23 || telemetryDistances[1] !== 3.23) {
+    throw new Error(`Live travel telemetry must keep its fixed 0.01 mm scale across RT precision modes; decoded ${telemetryDistances.join(" / ")} mm.`);
+  }
+  const connect = elements.get("#welcomeConnectButton")?.listeners.get("click");
+  if (!connect) throw new Error("Segmented startup did not bind the Connect button.");
+  await connect({ preventDefault() {} });
+  if (requestCount !== 1) throw new Error(`Connect invoked the WebHID chooser ${requestCount} times instead of once.`);
+}
+
 async function main() {
-new Function(protocolSource);
-new Function(appSource);
+for (const file of [...protocolFiles, ...appFiles]) new Function(readSource(file));
+for (const file of [...protocolFiles, ...appFiles, ...styleFiles]) {
+  const lineCount = readSource(file).split(/\r?\n/).length;
+  if (lineCount > 1000) throw new Error(`${file} grew beyond the 1,000-line source-file limit.`);
+}
+await verifyBrowserBootstrap();
 
 const context = { window: { navigator: {}, Blob, Response, CompressionStream, DecompressionStream, TextEncoder, TextDecoder, btoa, atob }, Uint8Array, ArrayBuffer, DataView, Promise, Math, Number, String, Boolean, Object, Array, Set, Map, JSON, Error };
 vm.createContext(context);
-vm.runInContext(protocolSource, context);
+// Evaluate separate files in one context, matching how classic scripts share a
+// browser global lexical environment instead of testing an artificial bundle.
+for (const file of protocolFiles) vm.runInContext(readSource(file), context, { filename: file });
 const API = context.window.HE30Control;
 if (!API) throw new Error("Protocol API was not exposed.");
 
@@ -255,13 +332,37 @@ if (!factoryResetMapping) throw new Error("The updated factory profile has no re
 for (const id of ["welcomeView", "workspaceView", "mappingDialog", "advancedDialog", "confirmDialog", "progressOverlay"]) {
   if (!htmlSource.includes(`id="${id}"`)) throw new Error(`Required UI surface is missing: ${id}`);
 }
-if (!htmlSource.includes('<script src="protocol.js"></script>') || !htmlSource.includes('<script src="app.js"></script>') || !htmlSource.includes('<link rel="stylesheet" href="styles.css"')) throw new Error("Static assets are not linked correctly.");
+for (const file of [...protocolFiles, ...appFiles]) {
+  if (!htmlSource.includes(`<script src="${file}"></script>`)) throw new Error(`Live driver is missing script ${file}.`);
+}
+for (const file of styleFiles) {
+  if (!htmlSource.includes(`<link rel="stylesheet" href="${file}"`)) throw new Error(`Live driver is missing stylesheet ${file}.`);
+}
+const assertOrderedAssets = (source, files, tag, prefix = "") => {
+  let previous = -1;
+  for (const file of files) {
+    const marker = tag === "script" ? `<script src="${prefix}${file}"></script>` : `<link rel="stylesheet" href="${prefix}${file}"`;
+    const position = source.indexOf(marker);
+    if (position <= previous) throw new Error(`${file} is missing or out of order in an HTML load list.`);
+    previous = position;
+  }
+};
+assertOrderedAssets(htmlSource, styleFiles, "style");
+assertOrderedAssets(htmlSource, [...protocolFiles, ...appFiles], "script");
 if (!htmlSource.includes('data-app-mode="live"') || !htmlSource.includes('href="json_editor/"')) throw new Error("The live route does not link to the dedicated JSON editor.");
 for (const removedId of ['id="openFileButton"', 'id="welcomeFileButton"', 'id="demoButton"', 'id="fileInput"']) {
   if (htmlSource.includes(removedId)) throw new Error(`Offline control must not appear on the live landing page: ${removedId}`);
 }
 if (!jsonEditorHtml.includes('data-app-mode="json"') || !jsonEditorHtml.includes('id="openFileButton"') || !jsonEditorHtml.includes('id="fileInput"')) throw new Error("The dedicated JSON editor route is incomplete.");
-if (!jsonEditorHtml.includes('<script src="../protocol.js"></script>') || !jsonEditorHtml.includes('<script src="../app.js"></script>') || !jsonEditorHtml.includes('<link rel="stylesheet" href="../styles.css"')) throw new Error("JSON editor assets are not linked correctly.");
+for (const file of [...protocolFiles, ...appFiles]) {
+  if (!jsonEditorHtml.includes(`<script src="../${file}"></script>`)) throw new Error(`JSON editor is missing script ${file}.`);
+}
+for (const file of styleFiles) {
+  if (!jsonEditorHtml.includes(`<link rel="stylesheet" href="../${file}"`)) throw new Error(`JSON editor is missing stylesheet ${file}.`);
+}
+assertOrderedAssets(jsonEditorHtml, styleFiles, "style", "../");
+assertOrderedAssets(jsonEditorHtml, [...protocolFiles, ...appFiles], "script", "../");
+if (!appSource.includes('const APP_ROOT_URL = new URL("../../", APP_SCRIPT_URL)')) throw new Error("Nested app modules do not resolve assets from the site root.");
 for (const [source, label] of [[htmlSource, "live driver"], [jsonEditorHtml, "JSON editor"]]) {
   const diagnosticsPosition = source.indexOf('data-page="diagnostics"');
   const aboutPosition = source.indexOf('data-page="about"');
