@@ -84,12 +84,12 @@ function bindDistanceInputs(root = document) {
   });
 }
 
-function configureRtInput(input, precision, value = input?.value) {
+function configureRtInput(input, precision, value = input?.value, maximumTravel = switchTravelMaximum({ switch_type: $("#hallSwitchType")?.value })) {
   if (!input) return;
   const meta = rtPrecisionMeta(precision);
   input.dataset.distanceDivisor = meta.divisor;
   input.dataset.distanceDecimals = meta.decimals;
-  input.max = Math.min(511, Math.max(Math.round(4 * meta.divisor), Number(value) || 1));
+  input.max = Math.min(511, Math.round(maximumTravel * meta.divisor));
   input.value = uiClamp(value, 1, Number(input.max));
   const number = input.parentElement?.querySelector(`[data-range-for="${input.id}"]`);
   if (number) {
@@ -100,6 +100,24 @@ function configureRtInput(input, precision, value = input?.value) {
   const note = input.closest(".field")?.querySelector("small");
   if (note) note.textContent = `${meta.step} per step`;
   updateRangeOutput(input);
+}
+
+function configureDistanceMaximum(input, maximum) {
+  if (!input) return;
+  input.max = maximum;
+  input.value = uiClamp(input.value, Number(input.min), Number(input.max));
+  const divisor = Number(input.dataset.distanceDivisor) || 100;
+  const decimals = Number(input.dataset.distanceDecimals ?? 2);
+  const number = input.parentElement?.querySelector(`[data-range-for="${input.id}"]`);
+  if (number) number.max = (Number(maximum) / divisor).toFixed(decimals);
+  updateRangeOutput(input);
+}
+
+function configureHallTravelLimits(switchType = $("#hallSwitchType")?.value) {
+  const maximumTravel = switchTravelMaximum({ switch_type: switchType });
+  configureDistanceMaximum($("#hallActuation"), Math.round(maximumTravel * 100));
+  configureRtInput($("#hallPress"), $("#hallPressPrecision")?.value ?? 0, $("#hallPress")?.value, maximumTravel);
+  configureRtInput($("#hallRelease"), $("#hallReleasePrecision")?.value ?? 0, $("#hallRelease")?.value, maximumTravel);
 }
 
 function setHallFieldDisabled(input, disabled) {
@@ -146,7 +164,7 @@ function changeHallPrecision(kind) {
   const oldDivisor = Number(input.dataset.distanceDivisor) || 100;
   const millimeters = Number(input.value) / oldDivisor;
   const next = rtPrecisionMeta(precision.value);
-  configureRtInput(input, precision.value, Math.round(millimeters * next.divisor));
+  configureRtInput(input, precision.value, Math.round(millimeters * next.divisor), switchTravelMaximum({ switch_type: $("#hallSwitchType")?.value }));
   if (kind === "Press" && !$("#hallIndependentRt")?.checked) copyHallPressToRelease();
 }
 
@@ -200,6 +218,7 @@ function bindHallControls() {
   $("#hallPress")?.addEventListener("input", () => { if (!$("#hallIndependentRt")?.checked) copyHallPressToRelease(); });
   $("#hallPressPrecision")?.addEventListener("change", () => changeHallPrecision("Press"));
   $("#hallReleasePrecision")?.addEventListener("change", () => changeHallPrecision("Release"));
+  $("#hallSwitchType")?.addEventListener("change", (event) => configureHallTravelLimits(event.target.value));
   $$('[data-rt-sensitivity-preset]').forEach((button) => button.addEventListener("click", () => {
     const millimeters = Number(button.dataset.rtSensitivityPreset);
     const press = $("#hallPress");
@@ -354,14 +373,17 @@ function syncHallFormToSelection() {
   if (state.hallEditPending || !state.hallSelection.size) return;
   const travel = state.profile.travelKeys[[...state.hallSelection][0]];
   const values = { hallSwitchType: travel.switch_type, hallActuation: travel.key_actuation, hallPress: travel.rt_press, hallRelease: travel.rt_release, hallPressPrecision: travel.pressPrecision, hallReleasePrecision: travel.releasePrecision, hallPressDeadzone: travel.press_deadzone, hallReleaseDeadzone: travel.release_deadzone };
+  if ($("#hallSwitchType")) $("#hallSwitchType").value = travel.switch_type;
+  // Resize the existing controls before assigning this key's values so a
+  // 3.50 mm switch cannot be prematurely clamped by a prior 3.40 mm selection.
+  configureHallTravelLimits(travel.switch_type);
   Object.entries(values).forEach(([id, value]) => {
     const input = $(`#${id}`);
     if (!input) return;
     input.value = value;
     updateRangeOutput(input);
   });
-  configureRtInput($("#hallPress"), travel.pressPrecision, travel.rt_press);
-  configureRtInput($("#hallRelease"), travel.releasePrecision, travel.rt_release);
+  configureHallTravelLimits(travel.switch_type);
   if ($("#hallRapidTrigger")) $("#hallRapidTrigger").checked = Number(travel.key_mode) > 0;
   if ($("#hallFullTravel")) $("#hallFullTravel").checked = Number(travel.key_mode) === 2;
   if ($("#hallIndependentRt")) $("#hallIndependentRt").checked = Number(travel.rt_press) !== Number(travel.rt_release) || Number(travel.pressPrecision) !== Number(travel.releasePrecision);
@@ -522,7 +544,8 @@ function handleCalibrationTelemetry(event) {
     button.classList.remove("calibration-waiting", "calibration-progress", "calibration-complete");
     const statusClass = calibrationStatusClass(event.status);
     if (statusClass) button.classList.add(statusClass);
-    button.style.setProperty("--calibration-pct", `${uiClamp((event.rawTravel / 340) * 100, 0, 100).toFixed(2)}%`);
+    const maximumRawTravel = switchTravelMaximum(state.profile.travelKeys[index]) * 100;
+    button.style.setProperty("--calibration-pct", `${uiClamp((event.rawTravel / maximumRawTravel) * 100, 0, 100).toFixed(2)}%`);
   }
   const completed = calibrationCompletedCount();
   const completedElement = $("#calibrationCompleted");

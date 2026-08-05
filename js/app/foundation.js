@@ -63,28 +63,28 @@ const MODIFIER_CHOICES = Object.freeze([[1, "Left Ctrl"], [2, "Left Shift"], [4,
 // the two product-image slots shown for each switch.
 const SWITCH_TYPES = Object.freeze([
   {
-    value: 0, name: "Aurora Purple Switches", short: "AP", color: "#b985ff", maxTravel: 3.4, factory: true,
+    value: 0, name: "Aurora Purple Switches", short: "AP", color: "#b985ff", maxTravel: API.switchTravelMaximumMm(0), factory: true,
     images: [
       { src: "images/aurora_purple_1.png", alt: "Aurora Purple magnetic switch close-up", label: "Product close-up" },
       { src: "images/aurora_purple_2.png", alt: "Collection of Aurora Purple magnetic switches", label: "Switch collection" },
     ],
   },
   {
-    value: 1, name: "Gateron Jade Pro HE", short: "JP", color: "#7de7ff", maxTravel: 3.5,
+    value: 1, name: "Gateron Jade Pro HE", short: "JP", color: "#7de7ff", maxTravel: API.switchTravelMaximumMm(1),
     images: [
       { src: "images/gateron_jade_pro_1.webp", alt: "Gateron Jade Pro HE switch close-up", label: "Product close-up" },
       { src: "images/gateron_jade_pro_2.webp", alt: "Gateron Jade Pro HE switches shown from multiple angles", label: "Multi-angle view" },
     ],
   },
   {
-    value: 2, name: "Gateron Magnetic Jade Gaming HE", short: "MJ", color: "#66f7c2", maxTravel: 3.5,
+    value: 2, name: "Gateron Magnetic Jade Gaming HE", short: "MJ", color: "#66f7c2", maxTravel: API.switchTravelMaximumMm(2),
     images: [
       { src: "images/gateron_jade_gaming_1.webp", alt: "Gateron Magnetic Jade Gaming HE switch front and rear views", label: "Front and rear" },
       { src: "images/gateron_jade_gaming_2.png", alt: "Collection of Gateron Magnetic Jade Gaming HE switches", label: "Switch collection" },
     ],
   },
   {
-    value: 3, name: "Mount Tai GT HE", short: "MT", color: "#ffbe5c", maxTravel: 3.5,
+    value: 3, name: "Mount Tai GT HE", short: "MT", color: "#ffbe5c", maxTravel: API.switchTravelMaximumMm(3),
     images: [
       { src: "images/mount_tai_gt_he_1.webp", alt: "Mount Tai GT HE magnetic switches product lineup", label: "Product lineup" },
       { src: "images/mount_tai_gt_he_2.png", alt: "Collection of Mount Tai GT HE magnetic switches", label: "Switch collection" },
@@ -92,14 +92,14 @@ const SWITCH_TYPES = Object.freeze([
   },
 ]);
 const SWITCH_COMPARISON_ROWS = Object.freeze([
-  ["Total travel", "3.4 ± 0.3 mm", "3.5 ± 0.2 mm", "3.5 ± 0.1 mm", "3.5 mm or 3.4 ± 0.2 mm?"],
+  ["Total travel", "3.4 ± 0.3 mm", "3.5 ± 0.2 mm", "3.5 ± 0.1 mm", "3.4 ± 0.2 mm?"],
   ["Initial force", "37 ± 5 gf", "36 ± 5 gf", "36 ± 5 gf", "35 ± 8 gf"],
   ["Bottom-out force", "45 ± 5 gf", "50 ± 10 gf", "50 ± 10 gf", "47 gf"],
   ["Stem material", "POM", "POM", "POM", "UPE Mix"],
   ["Upper housing material", "PC", "PC", "PC", "PC"],
   ["Bottom housing material", "PA", "Nylon/PA?", "PA66", "PC, fused with upper housing"],
   ["Initial magnetic flux", "80 ± 10 Gs", "120 ± 8 Gs", "120 ± 8 Gs", "100 Gs"],
-  ["Bottom magnetic flux", "500 ± 10 Gs", "700 ± 30 Gs", "700 ± 30 Gs", "640 Gs"],
+  ["Bottom magnetic flux", "550 ± 50 Gs", "700 ± 30 Gs", "700 ± 30 Gs", "640 Gs"],
   ["Factory lubricated", "?", "Yes", "Yes", "Yes"],
   ["Spring length", "20 mm", "20 mm", "20 mm", "22 mm"],
   ["Lifespan", "?", "100 million", "100 million", "100 million"],
@@ -115,7 +115,6 @@ const SWITCH_SOURCE_LINKS = Object.freeze([
   [
     { label: "MCHOSE Ace 68 Turbo", href: "https://www.mchose.store/products/mchose-ace-68-turbo-full-aluminum-esports-hall-effect-keyboard" },
     { label: "MCHOSE Ace 68 Air", href: "https://www.mchose.store/products/mchose-ace-68-air-hall-effect-magnetic-switch-gaming-keyboard" },
-    { label: "AliExpress", href: "https://aliexpress.com/i/1005008778917624.html" },
   ],
 ]);
 const TELEMETRY_INDEX = new Map(Object.entries(PHYSICAL_HID_CODES).map(([index, code]) => [code, Number(index)]));

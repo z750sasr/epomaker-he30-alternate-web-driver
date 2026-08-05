@@ -64,15 +64,24 @@ async function verifyBrowserBootstrap() {
     state.profile.travelKeys[index].pressPrecision = 2;
     handleLiveTelemetry({ keyCode: 4, rawTravel: 323, status: 1 });
     const thousandthPrecision = state.liveTravel[index];
+    state.profile.travelKeys[index].switch_type = 1;
+    handleLiveTelemetry({ keyCode: 4, rawTravel: 350, status: 1 });
+    const jadeBottomOut = state.liveTravel[index];
+    state.profile.travelKeys[index].switch_type = 0;
+    handleLiveTelemetry({ keyCode: 4, rawTravel: 350, status: 1 });
+    const auroraClamped = state.liveTravel[index];
+    state.profile.travelKeys[index].switch_type = 15;
+    handleLiveTelemetry({ keyCode: 4, rawTravel: 399, status: 1 });
+    const unknownFallback = state.liveTravel[index];
     state.profile = previousProfile;
     state.liveTravel[index] = 0;
     state.liveTravelRaw[index] = 0;
     state.liveTravelStatus[index] = 0;
     state.liveFrame = 0;
-    return [standardPrecision, thousandthPrecision];
+    return [standardPrecision, thousandthPrecision, jadeBottomOut, auroraClamped, unknownFallback];
   })()`, browser);
-  if (telemetryDistances[0] !== 3.23 || telemetryDistances[1] !== 3.23) {
-    throw new Error(`Live travel telemetry must keep its fixed 0.01 mm scale across RT precision modes; decoded ${telemetryDistances.join(" / ")} mm.`);
+  if (JSON.stringify(telemetryDistances) !== JSON.stringify([3.23, 3.23, 3.5, 3.4, 3.99])) {
+    throw new Error(`Live telemetry did not honor fixed 0.01 mm reports and per-switch travel maxima; decoded ${telemetryDistances.join(" / ")} mm.`);
   }
   const connect = elements.get("#welcomeConnectButton")?.listeners.get("click");
   if (!connect) throw new Error("Segmented startup did not bind the Connect button.");
@@ -99,6 +108,8 @@ if (!API) throw new Error("Protocol API was not exposed.");
 const equal = (left, right, message) => {
   if (JSON.stringify(left) !== JSON.stringify(right)) throw new Error(message);
 };
+
+equal([0, 1, 2, 3, 15].map(API.switchTravelMaximumMm), [3.4, 3.5, 3.5, 3.4, 4], "Switch travel maxima or the 4.00 mm unsupported-switch fallback changed.");
 
 const mappings = Array.from({ length: 128 }, (_, index) => API.makeMapping(16, index % 4, (index + 4) & 255, 0, 0));
 const mappingBytes = API.encodeMappings(mappings);
@@ -464,7 +475,7 @@ if (!appSource.includes("const activeLayer = profileChanged ? 0")) throw new Err
 for (const fragment of ["Aurora Purple Switches", "Gateron Jade Pro HE", "Gateron Magnetic Jade Gaming HE", "Mount Tai GT HE", "hallSwitchType", "switch-type-indicator", "hall-switch-legend", "switch_type: Number($(\"#hallSwitchType\").value)"]) {
   if (!appSource.includes(fragment)) throw new Error(`Hall switch-type control or indicator is missing: ${fragment}`);
 }
-for (const fragment of ["SWITCH_COMPARISON_ROWS", "Compare all four switches", "Switch Comparision.xlsx", "data-switch-image-slot", "Magnetic-flux test basis", "3.5 mm or 3.4 ± 0.2 mm?"]) {
+for (const fragment of ["SWITCH_COMPARISON_ROWS", "Compare all four switches", "Switch Comparision.xlsx", "data-switch-image-slot", "Magnetic-flux test basis", "3.4 ± 0.2 mm?"]) {
   if (!appSource.includes(fragment)) throw new Error(`Switch comparison content is missing: ${fragment}`);
 }
 for (const fragment of ["aurora_purple_1.png", "aurora_purple_2.png", "gateron_jade_pro_1.webp", "gateron_jade_pro_2.webp", "gateron_jade_gaming_1.webp", "gateron_jade_gaming_2.png", "mount_tai_gt_he_1.webp", "mount_tai_gt_he_2.png", "type.images.map", 'loading="lazy"', "appAssetUrl(image.src)"]) {
@@ -484,8 +495,15 @@ for (const fragment of [".switch-comparison", ".switch-image-grid", ".switch-ima
 for (const fragment of ["liveMonitorHtml", "handleLiveTelemetry", "Live press distance", "Dynamic Display diagnostic flag", "resumeLiveMonitor"]) {
   if (!appSource.includes(fragment)) throw new Error(`Live distance infographic support is missing: ${fragment}`);
 }
-if (!appSource.includes('value: 0, name: "Aurora Purple Switches"') || !appSource.includes("maxTravel: 3.4") || (appSource.match(/maxTravel: 3\.5/g) || []).length !== 3) throw new Error("Switch-specific 3.4/3.5 mm travel maxima are missing.");
+for (const switchType of [0, 1, 2, 3]) {
+  if (!appSource.includes(`maxTravel: API.switchTravelMaximumMm(${switchType})`)) throw new Error(`Switch type ${switchType} does not use the shared travel maximum.`);
+}
+if (!protocolSource.includes("FALLBACK_SWITCH_MAX_TRAVEL_MM = 4")) throw new Error("Unsupported switch types must use a 4.00 mm maximum.");
 if ((appSource.match(/switchTravelMaximum\(/g) || []).length < 6 || !appSource.includes('id="liveScaleMaximum"') || !appSource.includes('text("#liveScaleMaximum"')) throw new Error("Live travel scaling must use the installed switch model everywhere and update the axis endpoint.");
+if (appSource.includes("calibrationTravelRaw[index] / 340") || appSource.includes("event.rawTravel / 340")) throw new Error("Calibration still contains a hard-coded 3.40 mm travel scale.");
+for (const fragment of ["maximumTravelHundredths", "configureHallTravelLimits", "maximumRawTravel", "Limits follow the selected switch model", "pairTravelMaximum", "Pair limits use the shorter host-key switch travel"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Switch-aware Hall limit support is missing: ${fragment}`);
+}
 if (!styleSource.includes(".switch-infographic") || !styleSource.includes(".travel-fill")) throw new Error("Live distance animation styles are missing.");
 for (const fragment of ["calibrationPanelHtml", "toggleCalibration", "handleCalibrationTelemetry", "calibrationStatus", "Stop calibration", "Press every physical key one at a time until it turns blue."]) {
   if (!appSource.includes(fragment)) throw new Error(`Calibration UI or behavior is missing: ${fragment}`);

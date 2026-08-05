@@ -33,6 +33,11 @@ const PROFILE_SHARE_MAX_LENGTH = 262144;
 const TRAVEL_SHARE_FIELDS = Object.freeze(["switch_type", "key_mode", "priority", "key_max_length", "key_actuation", "rt_press", "rt_release", "pressPrecision", "releasePrecision", "press_deadzone", "release_deadzone", "deadzone_status"]);
 const WOOTING_VALUE_MAX = 16383;
 const WOOTING_TRAVEL_HUNDREDTHS = 400;
+// The firmware stores a switch-type nibble per key. Keep its physical travel
+// range here so protocol conversions and every UI consumer share one source.
+// Reserved/unknown values deliberately get a safe 4.00 mm editing envelope.
+const SWITCH_MAX_TRAVEL_MM = Object.freeze({ 0: 3.4, 1: 3.5, 2: 3.5, 3: 3.4 });
+const FALLBACK_SWITCH_MAX_TRAVEL_MM = 4;
 const WOOTING_SHARE_CODE_PATTERN = /^[0-9a-f]{36,40}$/i;
 const WOOTING_BASE_COORDINATES = Object.freeze([
   [0, 1, 0],
@@ -42,6 +47,11 @@ const WOOTING_BASE_COORDINATES = Object.freeze([
   [19, 4, 0], [20, 4, 2], [21, 4, 3], [22, 4, 4], [23, 4, 5], [24, 4, 6],
   [25, 5, 0], [26, 5, 1], [27, 5, 2], [28, 5, 6],
 ]);
+
+function switchTravelMaximumMm(switchType) {
+  const configured = SWITCH_MAX_TRAVEL_MM[Number(switchType)];
+  return Number.isFinite(configured) && configured > 0 ? configured : FALLBACK_SWITCH_MAX_TRAVEL_MM;
+}
 const WOOTING_FUNCTION_ROW_COORDINATES = Object.freeze([
   [0, 0, 0], [30, 0, 2], [31, 0, 3], [32, 0, 4], [33, 0, 5], [34, 0, 6], [35, 0, 7],
   [29, 1, 0],
@@ -538,7 +548,7 @@ function convertWootingProfile(input, targetProfile) {
     const coordinate = `${row}:${column}`;
     if (!allCoordinates.has(coordinate)) return;
     const travel = result.travelKeys[index];
-    const maximum = Number(travel.switch_type) === 0 ? 340 : 350;
+    const maximum = switchTravelMaximumMm(travel?.switch_type) * 100;
     const sourceTravel = switchTravel.forCoordinate(coordinate);
     const actuation = customActuations.has(coordinate) ? customActuations.get(coordinate) : analog.actPoint;
     if (Number.isFinite(Number(actuation))) travel.key_actuation = wootingDistanceToHundredths(actuation, maximum, sourceTravel);

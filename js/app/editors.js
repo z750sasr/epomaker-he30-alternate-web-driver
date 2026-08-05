@@ -303,7 +303,9 @@ function advancedFormHtml(type, item) {
   if (type === "rs" || type === "socd") {
     const option = item.option || {};
     const independent = Number(option.press || 10) !== Number(option.release ?? option.press ?? 10);
-    return finish(`${host}<div class="form-section"><h3>Paired outputs</h3><div class="field-grid">${mappingPickerField("pairKey1", item.key1, "First output")}${mappingPickerField("pairKey2", item.key2, "Second output")}${type === "socd" ? selectField("Priority", "pairPriority", [[0, "Last Input Priority"], [1, "Absolute 1st key"], [2, "Absolute 2nd key"], [3, "Neutral"]], option.priority ?? 0) : ""}</div></div><div class="form-section"><h3>Pair actuation and Rapid Trigger</h3>${hallSwitchRow("Set Press and Release independently", "When off, RT Release follows RT Press.", "pairIndependentRt", independent)}<div class="field-grid pair-travel-fields">${rangeField("Actuation", "pairActuation", option.actuation || 40, 1, 400, 1, "mm")}${rangeField("RT press", "pairPress", option.press || 10, 1, 400, 1, "mm")}${rangeField("RT release", "pairRelease", option.release ?? option.press ?? 10, 1, 400, 1, "mm", !independent)}</div></div>`);
+    const maximumTravel = pairTravelMaximum();
+    const maximumTravelHundredths = Math.round(maximumTravel * 100);
+    return finish(`${host}<div class="form-section"><h3>Paired outputs</h3><div class="field-grid">${mappingPickerField("pairKey1", item.key1, "First output")}${mappingPickerField("pairKey2", item.key2, "Second output")}${type === "socd" ? selectField("Priority", "pairPriority", [[0, "Last Input Priority"], [1, "Absolute 1st key"], [2, "Absolute 2nd key"], [3, "Neutral"]], option.priority ?? 0) : ""}</div></div><div class="form-section"><h3>Pair actuation and Rapid Trigger</h3>${hallSwitchRow("Set Press and Release independently", "When off, RT Release follows RT Press.", "pairIndependentRt", independent)}<div class="field-grid pair-travel-fields">${rangeField("Actuation", "pairActuation", option.actuation || 40, 1, maximumTravelHundredths, 1, "mm")}${rangeField("RT press", "pairPress", option.press || 10, 1, maximumTravelHundredths, 1, "mm")}${rangeField("RT release", "pairRelease", option.release ?? option.press ?? 10, 1, maximumTravelHundredths, 1, "mm", !independent)}</div><div class="callout" id="pairTravelLimitNote">Pair limits use the shorter host-key switch travel: ${maximumTravel.toFixed(2)} mm.</div></div>`);
   }
   if (type === "cb") {
     return finish(`${host}<div class="form-section"><h3>Combination</h3>${modifierPickerHtml(item)}<div class="field-grid combination-base-field">${mappingPickerField("comboBase", item.baseKey, "Base key", BASIC_MAPPING_CHOICES)}</div></div>`);
@@ -384,6 +386,7 @@ function syncAdvancedHostPicker() {
     const badge = $(".advanced-host-order", button);
     if (badge) badge.textContent = position >= 0 ? position + 1 : "";
   });
+  syncPairTravelLimits();
 }
 
 function setAdvancedLayer(layer) {
@@ -418,6 +421,20 @@ function syncPairRtControls(copyPress = false) {
   if (release) release.disabled = !independent;
   if (releaseNumber) releaseNumber.disabled = !independent;
   release?.closest(".field")?.classList.toggle("disabled", !independent);
+}
+
+function pairTravelMaximum() {
+  const maxima = state.advancedHostSelection.slice(0, 2).map((index) => switchTravelMaximum(state.profile.travelKeys[index]));
+  return maxima.length ? Math.min(...maxima) : API.FALLBACK_SWITCH_MAX_TRAVEL_MM;
+}
+
+function syncPairTravelLimits() {
+  if (state.advancedType !== "rs" && state.advancedType !== "socd") return;
+  const maximumTravel = pairTravelMaximum();
+  const maximum = Math.round(maximumTravel * 100);
+  [$("#pairActuation"), $("#pairPress"), $("#pairRelease")].forEach((input) => configureDistanceMaximum(input, maximum));
+  const note = $("#pairTravelLimitNote");
+  if (note) note.textContent = `Pair limits use the shorter host-key switch travel: ${maximumTravel.toFixed(2)} mm.`;
 }
 
 function syncDksStagePicker(picker, stage) {

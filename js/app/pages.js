@@ -35,7 +35,8 @@ function keyboardHtml(mode, selected = new Set()) {
     const mapped = mode === "hall" ? `${(state.profile.travelKeys[index].key_actuation / 100).toFixed(2)} mm` : mode === "color" ? color : mappingLabel(mapping);
     const livePercent = mode === "hall" ? uiClamp((state.liveTravel[index] / switchTravelMaximum(state.profile.travelKeys[index])) * 100, 0, 100) : 0;
     const calibrationStatus = mode === "hall" && state.calibrationActive ? state.calibrationStatus[index] : null;
-    const calibrationPercent = mode === "hall" && state.calibrationActive ? uiClamp((state.calibrationTravelRaw[index] / 340) * 100, 0, 100) : 0;
+    const calibrationMaximum = mode === "hall" ? switchTravelMaximum(state.profile.travelKeys[index]) * 100 : 1;
+    const calibrationPercent = mode === "hall" && state.calibrationActive ? uiClamp((state.calibrationTravelRaw[index] / calibrationMaximum) * 100, 0, 100) : 0;
     const calibrationClass = calibrationStatus === 255 ? " calibration-complete" : calibrationStatus === 0 ? " calibration-waiting" : calibrationStatus != null ? " calibration-progress" : "";
     const switchType = mode === "hall" ? switchTypeMeta(state.profile.travelKeys[index].switch_type) : null;
     const styles = [`--key-width:${hallKeyboard ? keyWidth(keyItem, 74, 9) : keyWidth(keyItem)}px`, `--key-u:${keyUnit(keyItem)}`];
@@ -100,9 +101,9 @@ function precisionOptions() {
 }
 
 function rtPrecisionMeta(mode) {
-  if (Number(mode) === 2) return { divisor: 1000, max: 500, decimals: 3, step: "0.001 mm" };
-  if (Number(mode) === 1) return { divisor: 200, max: 500, decimals: 3, step: "0.005 mm" };
-  return { divisor: 100, max: 340, decimals: 2, step: "0.01 mm" };
+  if (Number(mode) === 2) return { divisor: 1000, decimals: 3, step: "0.001 mm" };
+  if (Number(mode) === 1) return { divisor: 200, decimals: 3, step: "0.005 mm" };
+  return { divisor: 100, decimals: 2, step: "0.01 mm" };
 }
 
 function rapidTriggerModeName(mode) {
@@ -116,8 +117,7 @@ function switchTypeMeta(value) {
 
 function switchTravelMaximum(travel) {
   const configured = SWITCH_TYPES.find((type) => type.value === Number(travel?.switch_type))?.maxTravel;
-  if (Number.isFinite(configured) && configured > 0) return configured;
-  return Math.max(0.01, Number(travel?.key_max_length) || 3.5);
+  return Number.isFinite(configured) && configured > 0 ? configured : API.FALLBACK_SWITCH_MAX_TRAVEL_MM;
 }
 
 function switchTypeOptions(current) {
@@ -171,6 +171,8 @@ function renderHall() {
   const fullTravel = Number(first.key_mode) === 2;
   const independentRt = Number(first.rt_press) !== Number(first.rt_release) || Number(first.pressPrecision) !== Number(first.releasePrecision);
   const insurance = Number(first.press_deadzone) > 0 && Number(first.release_deadzone) > 0;
+  const maximumTravel = switchTravelMaximum(first);
+  const maximumTravelHundredths = Math.round(maximumTravel * 100);
   const withCurrentPrecision = (current) => precision && precision.some(([value]) => Number(value) === Number(current)) ? precision : precision ? [...precision, [current, `Reserved value ${current} (current)`]] : null;
   const precisionCard = precision
     ? `<section class="panel form-card experimental-setting-card"><span class="chip caution-chip">HIDDEN SETTING · USE WITH CAUTION</span><h3>RT sensitivity accuracy</h3><p>Sets the stored measurement step for Rapid Trigger Press and Release. The original HE30 interface hides this selector, so back up the profile before using it.</p><div class="field-grid">${selectField("Press accuracy", "hallPressPrecision", withCurrentPrecision(first.pressPrecision), first.pressPrecision, !rapidTrigger)}${selectField("Release accuracy", "hallReleasePrecision", withCurrentPrecision(first.releasePrecision), first.releasePrecision, !rapidTrigger || !independentRt)}</div><div class="rt-preset-row"><span>Common sensitivity values</span><button class="button secondary" type="button" data-rt-sensitivity-preset="0.05"${!rapidTrigger ? " disabled" : ""}>0.05 mm</button><button class="button secondary" type="button" data-rt-sensitivity-preset="0.10"${!rapidTrigger ? " disabled" : ""}>0.10 mm</button></div><div class="callout caution-callout"><b>Experimental:</b> the firmware record has only two precision bits. The two buttons set valid 0.05/0.10 mm RT sensitivity values; they are not additional precision codes. Hardware precision remains 0.01, 0.005, or 0.001 mm.</div></section>`
@@ -199,10 +201,10 @@ function renderHall() {
         ${hallSwitchRow("Continuous Rapid Trigger", "Hidden in the original HE30 interface. This experimental firmware mode uses key_mode 2; back up your profile and use it with caution.", "hallFullTravel", fullTravel, !rapidTrigger)}
         ${hallSwitchRow("Set Press and Release independently", "Off keeps both RT sensitivity values the same", "hallIndependentRt", independentRt, !rapidTrigger)}
           </div><div class="field-grid hall-distance-fields">
-        ${rangeField("Actuation", "hallActuation", first.key_actuation, 1, 400, 1, "mm", false, true)}
-        ${rtRangeField("RT Press", "hallPress", first.rt_press, first.pressPrecision, !rapidTrigger)}
-        ${rtRangeField("RT Release", "hallRelease", first.rt_release, first.releasePrecision, !rapidTrigger || !independentRt)}
-          </div><div class="callout">When enabled, Rapid Trigger ends when the entire key is released. When disabled, Rapid Trigger ends at the actuation point.</div></section>
+        ${rangeField("Actuation", "hallActuation", first.key_actuation, 1, maximumTravelHundredths, 1, "mm", false, true)}
+        ${rtRangeField("RT Press", "hallPress", first.rt_press, first.pressPrecision, maximumTravel, !rapidTrigger)}
+        ${rtRangeField("RT Release", "hallRelease", first.rt_release, first.releasePrecision, maximumTravel, !rapidTrigger || !independentRt)}
+          </div><div class="callout">Limits follow the selected switch model (${maximumTravel.toFixed(2)} mm). When enabled, Rapid Trigger ends when the entire key is released. When disabled, Rapid Trigger ends at the actuation point.</div></section>
           <section class="panel form-card"><h3>Deadzone Settings</h3><p>Limits the usable travel at both ends of the switch to reduce accidental, disconnected, or missed triggers.</p><div class="switch-list hall-switch-list">
         ${hallSwitchRow("Switch Deadzones", "Enable the top and bottom deadzones", "hallInsurance", insurance)}
         ${hallSwitchRow("Switch Bottom Out", "Adds the firmware's forced 0.1 mm bottom zone", "hallTriggerBottom", Boolean(state.profile.deviceSettings.stabilityMode))}
@@ -279,11 +281,15 @@ function distanceNumberEditor(id, value, divisor, min, max, disabled = false) {
   const decimals = divisor > 100 ? 3 : 2;
   return `<span class="range-number-control"><input class="range-number" type="number" min="${minimum.toFixed(decimals)}" max="${maximum.toFixed(decimals)}" step="0.01" value="${millimeters.toFixed(decimals)}" inputmode="decimal" aria-label="${id} distance in millimeters" data-range-for="${id}"${disabled ? " disabled" : ""} /><span>mm</span></span>`;
 }
-function rangeField(label, id, value, min, max, step, unit, disabled = false, editable = true) { return `<label class="field"><span>${esc(label)}</span><div class="range-line${editable ? " editable" : ""}"><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${value}" data-distance-divisor="100" data-distance-decimals="2"${disabled ? " disabled" : ""} />${editable ? distanceNumberEditor(id, value, 100, min, max, disabled) : `<output class="range-value" for="${id}">${(Number(value) / 100).toFixed(2)} ${unit}</output>`}</div></label>`; }
-function rtRangeField(label, id, value, precision, disabled = false) {
+function rangeField(label, id, value, min, max, step, unit, disabled = false, editable = true) {
+  const normalizedValue = uiClamp(value, min, max);
+  return `<label class="field"><span>${esc(label)}</span><div class="range-line${editable ? " editable" : ""}"><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${normalizedValue}" data-distance-divisor="100" data-distance-decimals="2"${disabled ? " disabled" : ""} />${editable ? distanceNumberEditor(id, normalizedValue, 100, min, max, disabled) : `<output class="range-value" for="${id}">${(normalizedValue / 100).toFixed(2)} ${unit}</output>`}</div></label>`;
+}
+function rtRangeField(label, id, value, precision, maximumTravel, disabled = false) {
   const meta = rtPrecisionMeta(precision);
-  const maximum = Math.min(511, Math.max(Math.round(4 * meta.divisor), Number(value) || 1));
-  return `<label class="field"><span>${esc(label)}</span><div class="range-line editable"><input id="${id}" type="range" min="1" max="${maximum}" step="1" value="${value}" data-distance-divisor="${meta.divisor}" data-distance-decimals="${meta.decimals}"${disabled ? " disabled" : ""} />${distanceNumberEditor(id, value, meta.divisor, 1, maximum, disabled)}</div><small>${esc(meta.step)} per stored step; arrows adjust 0.01 mm</small></label>`;
+  const maximum = Math.min(511, Math.round(maximumTravel * meta.divisor));
+  const normalizedValue = uiClamp(value, 1, maximum);
+  return `<label class="field"><span>${esc(label)}</span><div class="range-line editable"><input id="${id}" type="range" min="1" max="${maximum}" step="1" value="${normalizedValue}" data-distance-divisor="${meta.divisor}" data-distance-decimals="${meta.decimals}"${disabled ? " disabled" : ""} />${distanceNumberEditor(id, normalizedValue, meta.divisor, 1, maximum, disabled)}</div><small>${esc(meta.step)} per stored step; arrows adjust 0.01 mm</small></label>`;
 }
 
 function hallSwitchRow(title, detail, id, checked, disabled = false) { return `<div class="switch-row"><div><strong>${esc(title)}</strong><small>${esc(detail)}</small></div><label class="switch"><input id="${id}" type="checkbox"${checked ? " checked" : ""}${disabled ? " disabled" : ""} /><i></i></label></div>`; }
