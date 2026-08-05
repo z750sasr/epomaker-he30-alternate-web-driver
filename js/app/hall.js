@@ -370,9 +370,12 @@ function syncHallFormToSelection() {
   syncHallControlAvailability();
 }
 
-function telemetryDivisor(index) {
-  const mode = Number(state.profile.travelKeys[index]?.pressPrecision) || 0;
-  return mode === 2 ? 1000 : mode === 1 ? 200 : 100;
+/**
+ * Dynamic Display reports always encode travel in hundredths of a millimeter.
+ * RT press/release precision changes threshold storage, not telemetry units.
+ */
+function rawTravelMillimeters(rawTravel) {
+  return Math.max(0, Number(rawTravel) || 0) / 100;
 }
 
 // ---------------------------------------------------------------------------
@@ -384,7 +387,7 @@ function handleLiveTelemetry(event) {
   const index = TELEMETRY_INDEX.get(event.keyCode);
   if (index == null) return;
   const maxDistance = switchTravelMaximum(state.profile.travelKeys[index]);
-  const distance = uiClamp(event.rawTravel / telemetryDivisor(index), 0, maxDistance);
+  const distance = uiClamp(rawTravelMillimeters(event.rawTravel), 0, maxDistance);
   state.liveTravelRaw[index] = event.rawTravel;
   state.liveTravel[index] = distance;
   state.liveTravelStatus[index] = event.status;

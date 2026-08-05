@@ -55,6 +55,25 @@ async function verifyBrowserBootstrap() {
     browser.document.currentScript = { src: `https://example.test/repo/${file}` };
     vm.runInContext(readSource(file), browser, { filename: file });
   }
+  const telemetryDistances = vm.runInContext(`(() => {
+    const index = TELEMETRY_INDEX.get(4);
+    const previousProfile = state.profile;
+    state.profile = { travelKeys: Array.from({ length: 128 }, () => ({ switch_type: 0, pressPrecision: 0 })) };
+    handleLiveTelemetry({ keyCode: 4, rawTravel: 323, status: 1 });
+    const standardPrecision = state.liveTravel[index];
+    state.profile.travelKeys[index].pressPrecision = 2;
+    handleLiveTelemetry({ keyCode: 4, rawTravel: 323, status: 1 });
+    const thousandthPrecision = state.liveTravel[index];
+    state.profile = previousProfile;
+    state.liveTravel[index] = 0;
+    state.liveTravelRaw[index] = 0;
+    state.liveTravelStatus[index] = 0;
+    state.liveFrame = 0;
+    return [standardPrecision, thousandthPrecision];
+  })()`, browser);
+  if (telemetryDistances[0] !== 3.23 || telemetryDistances[1] !== 3.23) {
+    throw new Error(`Live travel telemetry must keep its fixed 0.01 mm scale across RT precision modes; decoded ${telemetryDistances.join(" / ")} mm.`);
+  }
   const connect = elements.get("#welcomeConnectButton")?.listeners.get("click");
   if (!connect) throw new Error("Segmented startup did not bind the Connect button.");
   await connect({ preventDefault() {} });
