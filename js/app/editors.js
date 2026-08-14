@@ -112,7 +112,7 @@ function renderMappingGroups(query) {
     if (group.macOnly && !macMode) return "";
     const items = group.items.filter((item) => {
       if (state.mappingPickerScope === "basic" && (item.type !== 16 || item.code1 !== 0)) return false;
-      return !normalized || `${item.name} ${item.macName || ""} ${group.title}`.toLowerCase().includes(normalized);
+      return !normalized || `${item.name} ${item.macName || ""} ${item.searchTerms || ""} ${group.title}`.toLowerCase().includes(normalized);
     });
     if (!items.length) return "";
     return `<section class="mapping-group"><h3>${esc(group.title)}</h3><div class="mapping-options">${items.map((item) => `<button class="mapping-option${item.type === current.type && item.code1 === current.code1 && item.code2 === current.code2 ? " active" : ""}" type="button" data-map="${item.type},${item.code1},${item.code2}"><strong>${esc((macMode && item.macName) || item.name)}</strong><small>${item.type} · ${item.code1} · ${item.code2}</small></button>`).join("")}</div></section>`;

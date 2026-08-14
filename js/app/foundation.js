@@ -129,13 +129,27 @@ const LIVE_STRIP_SEGMENT_COUNT = 12;
 // A mapping is the firmware triplet { type, code1, code2 }. These friendly lists
 // are UI presets; API.mappingName() performs the reverse triplet-to-label lookup.
 const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((name, index) => [name, 16, 0, index + 4, name]);
-const digits = [["1", 30], ["2", 31], ["3", 32], ["4", 33], ["5", 34], ["6", 35], ["7", 36], ["8", 37], ["9", 38], ["0", 39]].map(([name, code]) => [name, 16, 0, code, name]);
+const digits = [["1 / !", 30], ["2 / @", 31], ["3 / #", 32], ["4 / $", 33], ["5 / %", 34], ["6 / ^", 35], ["7 / &", 36], ["8 / *", 37], ["9 / (", 38], ["0 / )", 39]].map(([name, code]) => [name, 16, 0, code, name]);
 const functionKeys = Array.from({ length: 24 }, (_, index) => {
   const number = index + 1;
   const code = number <= 12 ? number + 57 : number + 91;
   return [`F${number}`, 16, 0, code, `F${number}`];
 });
 const key = (name, type, code1, code2, short = name) => ({ name, type, code1, code2, short });
+const symbolKeys = [
+  ["- / _", 45, "Minus hyphen underscore"], ["= / +", 46, "Equals plus"],
+  ["[ / {", 47, "Left bracket brace"], ["] / }", 48, "Right bracket brace"], ["\\ / |", 49, "Backslash pipe"],
+  ["; / :", 51, "Semicolon colon"], ["' / \"", 52, "Apostrophe quote"], ["` / ~", 53, "Grave backtick tilde"],
+  [", / <", 54, "Comma less than"], [". / >", 55, "Period dot greater than"], ["/ / ?", 56, "Slash question mark"],
+].map(([name, code, searchTerms]) => ({ ...key(name, 16, 0, code), searchTerms }));
+const numpadKeys = [
+  ["Num Lock", 83, "Num Lock"], ["Numpad /", 84, "Num /"], ["Numpad *", 85, "Num *"],
+  ["Numpad -", 86, "Num -"], ["Numpad +", 87, "Num +"], ["Numpad Enter", 88, "Num Enter"],
+  ["Numpad 1 / End", 89, "Num 1"], ["Numpad 2 / Down", 90, "Num 2"], ["Numpad 3 / Page Down", 91, "Num 3"],
+  ["Numpad 4 / Left", 92, "Num 4"], ["Numpad 5", 93, "Num 5"], ["Numpad 6 / Right", 94, "Num 6"],
+  ["Numpad 7 / Home", 95, "Num 7"], ["Numpad 8 / Up", 96, "Num 8"], ["Numpad 9 / Page Up", 97, "Num 9"],
+  ["Numpad 0 / Insert", 98, "Num 0"], ["Numpad . / Delete", 99, "Num ."],
+].map(([name, code, short]) => key(name, 16, 0, code, short));
 const globalLayerNumber = (profileIndex, layer) => uiClamp(profileIndex, 0, API.PROFILE_COUNT - 1) * API.LAYER_COUNT + uiClamp(layer, 0, API.LAYER_COUNT - 1);
 const globalLayerLabel = (profileIndex, layer) => {
   const number = globalLayerNumber(profileIndex, layer);
@@ -144,8 +158,9 @@ const globalLayerLabel = (profileIndex, layer) => {
 const fnLayerMappings = Array.from({ length: API.TOTAL_LAYER_COUNT }, (_, index) => key(`${index === 0 ? "FN" : `FN${index}`} · Layer ${index}`, 240, 255, index, index === 0 ? "FN" : `FN${index}`));
 const MAPPING_GROUPS = Object.freeze([
   { title: "Basic characters", items: [...letters, ...digits, ["Space", 16, 0, 44, "Space"], ["Enter", 16, 0, 40, "Enter"], ["Tab", 16, 0, 43, "Tab"], ["Backspace", 16, 0, 42, "Bksp"], ["Escape", 16, 0, 41, "Esc"], ["Windows Key", 16, 8, 0, "Win"]].map((item) => key(...item)) },
-  { title: "Symbols", items: [["Minus", 45, "-"], ["Equals", 46, "="], ["Left bracket", 47, "["], ["Right bracket", 48, "]"], ["Backslash", 49, "\\"], ["Semicolon", 51, ";"], ["Apostrophe", 52, "'"], ["Grave", 53, "`"], ["Comma", 54, ","], ["Period", 55, "."], ["Slash", 56, "/"]].map(([name, code, short]) => key(name, 16, 0, code, short)) },
+  { title: "Symbols", items: symbolKeys },
   { title: "Function keys", items: functionKeys.map((item) => key(...item)) },
+  { title: "Numpad", items: numpadKeys },
   { title: "Extended keys", items: [["Insert", 73], ["Home", 74], ["Page Up", 75], ["Delete", 76], ["End", 77], ["Page Down", 78], ["Right Arrow", 79], ["Left Arrow", 80], ["Down Arrow", 81], ["Up Arrow", 82], ["Caps Lock", 57], ["Print Screen", 70], ["Scroll Lock", 71], ["Pause", 72], ["Application", 101]].map(([name, code]) => key(name, 16, 0, code)) },
   { title: "Modifiers", items: [key("Left Ctrl", 16, 1, 0, "LCtrl"), key("Left Shift", 16, 2, 0, "LShift"), { ...key("Left Alt", 16, 4, 0, "LAlt"), macName: "Left Option", macShort: "LOption" }, { ...key("Left GUI", 16, 8, 0, "LWin"), macName: "Left Command", macShort: "LCmd" }, key("Right Ctrl", 16, 16, 0, "RCtrl"), key("Right Shift", 16, 32, 0, "RShift"), { ...key("Right Alt", 16, 64, 0, "RAlt"), macName: "Right Option", macShort: "ROption" }, { ...key("Right GUI", 16, 128, 0, "RWin"), macName: "Right Command", macShort: "RCmd" }] },
   { title: "Layers and profiles", items: [...fnLayerMappings, ...[["Profile 1", 253, 0, "P1"], ["Profile 2", 252, 0, "P2"], ["Profile 3", 251, 0, "P3"]].map(([name, code1, code2, short]) => key(name, 240, code1, code2, short))] },

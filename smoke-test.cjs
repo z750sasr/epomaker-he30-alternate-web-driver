@@ -359,6 +359,22 @@ for (let layer = 0; layer < 12; layer += 1) {
 }
 if (API.mappingName(240, 8, 0) !== "Factory reset (hold 3s)") throw new Error("The factory Reset action still has a generic label.");
 if (API.mappingName(240, 87, 0) !== "Open EPOMAKER web driver") throw new Error("The factory web-driver shortcut still has a generic label.");
+const expectedSymbolNames = new Map([[45, "- / _"], [46, "= / +"], [47, "[ / {"], [48, "] / }"], [49, "\\ / |"], [51, "; / :"], [52, "' / \""], [53, "` / ~"], [54, ", / <"], [55, ". / >"], [56, "/ / ?"]]);
+for (const [code, name] of expectedSymbolNames) {
+  if (API.mappingName(16, 0, code) !== name) throw new Error(`Symbol HID ${code} must show its unshifted and Shift outputs.`);
+}
+const expectedNumberRowNames = new Map([[30, "1 / !"], [31, "2 / @"], [32, "3 / #"], [33, "4 / $"], [34, "5 / %"], [35, "6 / ^"], [36, "7 / &"], [37, "8 / *"], [38, "9 / ("], [39, "0 / )"]]);
+for (const [code, name] of expectedNumberRowNames) {
+  if (API.mappingName(16, 0, code) !== name) throw new Error(`Number-row HID ${code} must show its unshifted and Shift outputs.`);
+}
+const expectedNumpadNames = new Map([[83, "Num Lock"], [84, "Numpad /"], [85, "Numpad *"], [86, "Numpad -"], [87, "Numpad +"], [88, "Numpad Enter"], [89, "Numpad 1 / End"], [90, "Numpad 2 / Down"], [91, "Numpad 3 / Page Down"], [92, "Numpad 4 / Left"], [93, "Numpad 5"], [94, "Numpad 6 / Right"], [95, "Numpad 7 / Home"], [96, "Numpad 8 / Up"], [97, "Numpad 9 / Page Up"], [98, "Numpad 0 / Insert"], [99, "Numpad . / Delete"]]);
+for (const [code, name] of expectedNumpadNames) {
+  if (API.mappingName(16, 0, code) !== name) throw new Error(`Numpad HID ${code} is missing or mislabeled.`);
+}
+equal(API.encodeMappings([{ type: 16, code1: 0, code2: 99 }]).slice(0, 3), [16, 0, 99], "Numpad mappings must retain their HID usage when encoded for the keyboard.");
+for (const fragment of ['title: "Numpad"', '["Num Lock", 83', '["Numpad . / Delete", 99', '["` / ~", 53, "Grave backtick tilde"]', '["/ / ?", 56, "Slash question mark"]', 'item.searchTerms || ""']) {
+  if (!appSource.includes(fragment)) throw new Error(`Key-mapping picker support is missing: ${fragment}`);
+}
 equal([0, 1, 2].map((profileIndex) => API.translateFactoryFnLayer(1, profileIndex)), [1, 5, 9], "Factory FN1 targets were not translated per profile.");
 equal([0, 1, 2].map((profileIndex) => API.translateFactoryFnLayer(3, profileIndex)), [3, 7, 11], "Factory FN3 targets were not translated per profile.");
 for (let layer = 0; layer < API.LAYER_COUNT; layer += 1) {
