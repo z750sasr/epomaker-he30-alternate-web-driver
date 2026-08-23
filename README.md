@@ -37,33 +37,7 @@ Firefox and Safari do not currently support WebHID, but they can still be used w
 - Added new key map: MacOS's Siri and Launchpad keys, additional F13 to F24 keys for those nerds.
 - Maybe better UX/UI interface? (subjective)
 - Maybe one day, the manufacturer will end the suppport for this keyboard and shut the website down, but this project is deployed on GitHub, so maybe this would stay forever (unless the world is coming to and end or some god-level hacker vaporizes GitHub.
-- Miscs, blah blah blah
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- Miscs
 
 ## Let's be real, who wants to read AI generated stuff? If you are, then read the part below.
 
@@ -85,8 +59,6 @@ Firefox and Safari do not currently support WebHID, but they can still be used w
 - Automatic return to the connection screen when a connected keyboard is unplugged
 - Browser keyboard-action suppression while hardware is connected, so Space, arrows, and remapped keys do not scroll or activate the page during testing
 
-Firmware update and bootloader flashing are intentionally not included.
-
 ## Capture-derived compatibility notes
 
 - The original driver exposes travel resolution only for device types `101`, `102`, `103`, and `105`. Type `104` keeps its stored precision bits but does not expose an editor in either the original interface or this app.
@@ -106,8 +78,6 @@ Firmware update and bootloader flashing are intentionally not included.
 Based on AI Analysis, the original driver site https://epomaker.keybord.net.cn/ also supports 2 more models:
 | Epomaker GT60 | `19F5:FB79` | One profile                           |
 | Epomaker HE30 | `19F5:FB27` | One profile                           |
-
-Only normal keyboard-configuration interfaces are requested.
 
 Firmware-updater and bootloader device IDs are not included in the application.
 
