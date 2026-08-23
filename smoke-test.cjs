@@ -55,6 +55,26 @@ async function verifyBrowserBootstrap() {
     browser.document.currentScript = { src: `https://example.test/repo/${file}` };
     vm.runInContext(readSource(file), browser, { filename: file });
   }
+  const demoSummary = vm.runInContext(`(() => {
+    const demo = makeDemoProfile();
+    const physicalIndexes = PHYSICAL_KEYS.map(({ index }) => index);
+    return {
+      name: demo.name,
+      mappedPerLayer: [0, 1, 2, 3].map((layer) => physicalIndexes.filter((index) => ![0, 255].includes(demo.userKeys[layer][index].type)).length),
+      rapidTriggerKeys: physicalIndexes.filter((index) => demo.travelKeys[index].key_mode > 0).length,
+      switchTypes: [...new Set(physicalIndexes.map((index) => demo.travelKeys[index].switch_type))].sort(),
+      advancedTypes: demo.advancedKeys.map(({ type }) => type).sort(),
+      colorCount: new Set(physicalIndexes.map((index) => demo.colorKeys[index])).size,
+      lightEffect: demo.light.effect,
+      stripEffect: demo.logoLight.effect,
+      fnProfileTargets: [30, 31, 32].map((index) => demo.userKeys[1][index].code1),
+      fn2FirstOutput: demo.userKeys[2][30].code2,
+    };
+  })()`, browser);
+  if (demoSummary.name !== "HE30 Interactive Demo" || JSON.stringify(demoSummary.mappedPerLayer) !== JSON.stringify([36, 36, 36, 36])) throw new Error("Demo Mode does not provide four complete, current mapping layers.");
+  if (demoSummary.rapidTriggerKeys !== 4 || JSON.stringify(demoSummary.switchTypes) !== JSON.stringify([0, 1, 2, 3])) throw new Error("Demo Mode does not showcase current Hall and switch-type controls.");
+  if (JSON.stringify(demoSummary.advancedTypes) !== JSON.stringify(["mt", "socd"]) || demoSummary.colorCount !== 6 || demoSummary.lightEffect !== 0 || demoSummary.stripEffect !== 3) throw new Error("Demo Mode does not showcase current Advanced and lighting controls.");
+  if (JSON.stringify(demoSummary.fnProfileTargets) !== JSON.stringify([253, 252, 251]) || demoSummary.fn2FirstOutput !== 64) throw new Error("Demo Fn layers do not contain representative profile, media, and function-row outputs.");
   const telemetryDistances = vm.runInContext(`(() => {
     const index = TELEMETRY_INDEX.get(4);
     const previousProfile = state.profile;
@@ -420,11 +440,17 @@ assertOrderedAssets(jsonEditorHtml, [...protocolFiles, ...appFiles], "script", "
 if (!appSource.includes('const APP_ROOT_URL = new URL("../../", APP_SCRIPT_URL)')) throw new Error("Nested app modules do not resolve assets from the site root.");
 for (const [source, label] of [[htmlSource, "live driver"], [jsonEditorHtml, "JSON editor"]]) {
   const diagnosticsPosition = source.indexOf('data-page="diagnostics"');
+  const gamepadPosition = source.indexOf('href="https://github.com/z750sasr/he-kb-analog-mapper"');
   const aboutPosition = source.indexOf('data-page="about"');
   if (aboutPosition < 0 || aboutPosition < diagnosticsPosition) throw new Error(`About me must appear below Diagnostics in the ${label} navigation.`);
+  if (gamepadPosition < diagnosticsPosition || gamepadPosition > aboutPosition || !source.includes('class="external-nav-link"') || !source.includes('Gamepad Mode')) throw new Error(`The external Gamepad Mode link must appear between Diagnostics and About me in the ${label} navigation.`);
 }
+if (!styleSource.includes(".sidebar nav button, .sidebar nav a") || !styleSource.includes(".sidebar nav button:hover, .sidebar nav a:hover")) throw new Error("External sidebar links must share the navigation button styling.");
 for (const fragment of ["ABOUT_ME_HTML", "ABOUT ME: START CUSTOM HTML", "ABOUT ME: END CUSTOM HTML", "renderAboutMe", "about: renderAboutMe", '${ABOUT_ME_HTML}']) {
   if (!appSource.includes(fragment)) throw new Error(`Customizable About me page is missing: ${fragment}`);
+}
+for (const fragment of ["DEMO_PAGE_DESCRIPTIONS", "HE30 Interactive Demo", "DEMO WORKSPACE", "HARDWARE-ONLY PREVIEW", "Demo preview · no telemetry", "export a new JSON backup", "DEMO SCOPE", "No telemetry is fabricated"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Current Demo Mode context is missing: ${fragment}`);
 }
 if (!styleSource.includes(".about-me-page") || !styleSource.includes(".about-me-custom") || !styleSource.includes(".about-me-links")) throw new Error("About me page styling is missing.");
 if (appSource.includes("Reconnect")) throw new Error("Reconnect UI must remain removed.");

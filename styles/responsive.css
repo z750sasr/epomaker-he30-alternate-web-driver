@@ -23,7 +23,7 @@
   .sidebar { height: auto; position: static; border: 0; padding: 9px 13px; }
   .device-summary, .sidebar-safety { display: none; }
   .sidebar nav { display: flex; overflow-x: auto; padding: 0; }
-  .sidebar nav button { width: auto; white-space: nowrap; }
+  .sidebar nav button, .sidebar nav a { width: auto; white-space: nowrap; }
   .work-area { padding: 22px 15px 50px; }
   .work-header { top: 80px; display: block; padding: 11px 12px; }
   .work-actions { margin-top: 16px; overflow-x: auto; }

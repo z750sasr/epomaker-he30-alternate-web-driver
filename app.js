@@ -182,6 +182,7 @@ function bindStaticControls() {
     if (state.page === "lighting" && button.dataset.page !== "lighting" && (state.liveLightingActive || state.liveLightingBusy)) await stopLiveLighting();
     state.page = button.dataset.page;
     renderPage();
+    resetWorkspaceScroll();
   });
   $("#exportButton")?.addEventListener("click", exportProfile);
   $("#revertButton")?.addEventListener("click", revertStaged);

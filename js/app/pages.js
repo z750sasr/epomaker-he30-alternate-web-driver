@@ -69,12 +69,20 @@ function layerTabs() {
 // ---------------------------------------------------------------------------
 function renderOverview() {
   const settings = state.profile.deviceSettings;
+  const demo = state.source === "demo";
+  const offline = APP_MODE === "json";
   const rapidCount = PHYSICAL_KEYS.filter(({ index }) => state.profile.travelKeys[index].key_mode > 0).length;
   const mappedCount = PHYSICAL_KEYS.filter(({ index }) => state.profile.userKeys[state.layer][index].type !== 255).length;
   const reportRate = ({ 1: "8,000", 2: "4,000", 3: "2,000", 4: "1,000" })[settings.reportRate] || "Unknown";
+  const profileDetail = state.identity?.multiProfile ? "Three onboard profiles · 12 total layers" : demo ? "Interactive sample · four editable layers" : "Active workspace";
+  const safetyCard = demo
+    ? `<aside class="panel safety-card"><span class="chip">DEMO WORKSPACE</span><h2>Explore every editor safely.</h2><p>This feature-rich sample is fully editable but never connects to a keyboard. Revert staged changes at any time or export a JSON backup to keep them.</p><ul><li>Four populated mapping layers</li><li>Sample Rapid Trigger and switch types</li><li>Preset per-key RGB and light strip</li><li>Example Mod-Tap and SOCD actions</li></ul></aside>`
+    : offline
+      ? `<aside class="panel safety-card"><span class="chip">OFFLINE WORKSPACE</span><h2>Your source file stays untouched.</h2><p>Edits remain in this browser tab until you export a new JSON backup.</p><ul><li>No WebHID connection</li><li>No keyboard or firmware writes</li><li>Revert all staged changes</li><li>Export creates a separate file</li></ul></aside>`
+      : `<aside class="panel safety-card"><span class="chip">WRITE SAFETY</span><h2>Changes stay local first.</h2><p>Keyboard reads create a restorable workspace. Apply writes only changed data banks, then reads them back to verify exact bytes.</p><ul><li>No firmware commands in this build</li><li>No automatic writes from controls</li><li>JSON export works without WebHID</li><li>Diagnostics never leave your browser</li></ul></aside>`;
   return `
     <div class="stats-grid">
-      ${statCard("Current profile", `Profile ${state.profile.profileIndex + 1}`, state.identity?.multiProfile ? "Three onboard profiles · 12 total layers" : "Active workspace", "▣")}
+      ${statCard("Current profile", `Profile ${state.profile.profileIndex + 1}`, profileDetail, "▣")}
       ${statCard("Polling rate", `${reportRate} Hz`, `Tick rate ${(["Low", "Medium", "High"])[settings.tickRate] || `Reserved ${settings.tickRate}`}`, "⌁")}
       ${statCard("Rapid Trigger", `${rapidCount} keys`, rapidCount ? "Enabled per-key" : "Standard actuation", "↕")}
       ${statCard("Advanced actions", state.profile.advancedKeys.length, `${mappedCount}/36 keys mapped on ${globalLayerLabel(state.profile.profileIndex, state.layer)}`, "◆")}
@@ -87,7 +95,7 @@ function renderOverview() {
         ${quickRow("✦", "Lighting", `${lightingEffectName("light", state.profile.light.effect)} · ${state.profile.light.brightness}% brightness`, "lighting")}
         ${quickRow("⌁", "Advanced functions", `${state.profile.advancedKeys.length} configured action${state.profile.advancedKeys.length === 1 ? "" : "s"}`, "advanced")}
       </div></section>
-      <aside class="panel safety-card"><span class="chip">WRITE SAFETY</span><h2>Changes stay local first.</h2><p>Keyboard reads create a restorable workspace. Apply writes only changed data banks, then reads them back to verify exact bytes.</p><ul><li>No firmware commands in this build</li><li>No automatic writes from controls</li><li>JSON export works without WebHID</li><li>Diagnostics never leave your browser</li></ul></aside>
+      ${safetyCard}
     </div>`;
 }
 
@@ -146,14 +154,15 @@ function switchComparisonHtml() {
 
 function calibrationPanelHtml() {
   const connected = state.source === "device" && Boolean(state.driver);
+  const demo = state.source === "demo";
   const completed = PHYSICAL_KEYS.filter(({ index }) => state.calibrationStatus[index] === 255).length;
   const activeKeys = PHYSICAL_KEYS.filter(({ index }) => state.calibrationStatus[index] != null && ![0, 255].includes(state.calibrationStatus[index])).length;
   const lastKey = state.calibrationLastIndex == null ? "Waiting for a key" : physicalName(state.calibrationLastIndex);
   const buttonText = state.calibrationBusy ? "Working\u2026" : state.calibrationActive ? "Stop calibration" : "Start calibration";
   return `<section class="panel calibration-panel${state.calibrationActive ? " active" : ""}">
-    <div class="calibration-heading"><div><span class="chip">SWITCH CALIBRATION</span><h2>${state.calibrationActive ? "Calibration in progress" : "Calibrate Magnetic Switches"}</h2><p>${state.calibrationActive ? "Press every physical key one at a time until it turns blue." : "Re-measure the top and bottom range of all 36 magnetic switches using the keyboard's original calibration mode."}</p></div><button class="button ${state.calibrationActive ? "secondary" : "primary"}" id="calibrationButton" type="button"${!connected || state.calibrationBusy ? " disabled" : ""}>${buttonText}</button></div>
+    <div class="calibration-heading"><div><span class="chip">${demo ? "HARDWARE-ONLY PREVIEW" : "SWITCH CALIBRATION"}</span><h2>${state.calibrationActive ? "Calibration in progress" : demo ? "Calibration requires a connected keyboard" : "Calibrate Magnetic Switches"}</h2><p>${state.calibrationActive ? "Press every physical key one at a time until it turns blue." : demo ? "Demo Mode keeps the current calibration interface visible, but it does not fabricate switch measurements." : "Re-measure the top and bottom range of all 36 magnetic switches using the keyboard's original calibration mode."}</p></div><button class="button ${state.calibrationActive ? "secondary" : "primary"}" id="calibrationButton" type="button"${!connected || state.calibrationBusy ? " disabled" : ""}>${buttonText}</button></div>
     ${state.calibrationActive ? `<div class="calibration-progress"><div><span>Completed</span><strong id="calibrationCompleted">${completed} / ${PHYSICAL_KEYS.length}</strong></div><div class="calibration-progress-track"><i id="calibrationProgressFill" style="width:${((completed / PHYSICAL_KEYS.length) * 100).toFixed(2)}%"></i></div><div><span>Current key</span><strong id="calibrationLastKey">${esc(lastKey)}</strong></div></div>
-      <div class="calibration-instructions"><ol><li>Press each key at a steady pace using normal typing force until it fully bottoms out.</li><li>Calibrate one key at a time. Blue means that key is complete.</li><li>When all keys are complete, choose <b>Stop calibration</b> to exit safely.</li><li>Recalibrate after replacing any magnetic switch.</li></ol><div class="calibration-legend"><span><i class="waiting"></i>Awaiting</span><span><i class="progress"></i>Measuring${activeKeys ? ` (${activeKeys})` : ""}</span><span><i class="complete"></i>Complete</span></div></div>` : `<div class="calibration-idle-note">Calibration is a live hardware operation and does not create staged profile changes. Live Hall monitoring is stopped before calibration begins.</div>`}
+      <div class="calibration-instructions"><ol><li>Press each key at a steady pace using normal typing force until it fully bottoms out.</li><li>Calibrate one key at a time. Blue means that key is complete.</li><li>When all keys are complete, choose <b>Stop calibration</b> to exit safely.</li><li>Recalibrate after replacing any magnetic switch.</li></ol><div class="calibration-legend"><span><i class="waiting"></i>Awaiting</span><span><i class="progress"></i>Measuring${activeKeys ? ` (${activeKeys})` : ""}</span><span><i class="complete"></i>Complete</span></div></div>` : `<div class="calibration-idle-note">${demo ? "Connect the live driver to run calibration. All saved Hall parameters below remain editable in Demo Mode." : "Calibration is a live hardware operation and does not create staged profile changes. Live Hall monitoring is stopped before calibration begins."}</div>`}
   </section>`;
 }
 
@@ -231,6 +240,7 @@ function renderHall() {
 /** Build the connected-device-only travel gauge and switch cutaway. */
 function liveMonitorHtml() {
   const connected = state.source === "device" && Boolean(state.driver);
+  const demo = state.source === "demo";
   const index = state.liveLastIndex ?? 0;
   const travel = state.profile.travelKeys[index] || defaultTravel();
   const distance = state.liveTravel[index] || 0;
@@ -242,7 +252,7 @@ function liveMonitorHtml() {
   const status = distance < .01 ? "Released" : distance >= actuation ? "Actuated" : "Pre-travel";
   const monitorText = state.calibrationActive ? "Calibration owns the stream" : state.liveMonitorBusy ? "Working…" : state.liveMonitorActive ? "Stop live monitor" : "Start live monitor";
   return `<section class="panel live-monitor hall-live-panel${state.liveMonitorActive ? " active" : ""}" id="liveMonitor" style="--live-travel:${travelPercent.toFixed(2)}%;--live-actuation:${actuationPercent.toFixed(2)}%;--live-offset:${(travelPercent * .44).toFixed(2)}px">
-      <div class="hall-live-heading"><div><h2>Live press distance</h2><p>See Hall travel and the actuation point while pressing a key.</p></div><span class="live-session-note">${state.calibrationActive ? "Paused for calibration" : state.liveMonitorActive ? "Diagnostic stream active" : connected ? "Ready to monitor" : "Keyboard connection required"}</span></div>
+      <div class="hall-live-heading"><div><h2>Live press distance</h2><p>${demo ? "Preview the selected key's configured travel range and actuation point." : "See Hall travel and the actuation point while pressing a key."}</p></div><span class="live-session-note">${state.calibrationActive ? "Paused for calibration" : state.liveMonitorActive ? "Diagnostic stream active" : connected ? "Ready to monitor" : demo ? "Demo preview · no telemetry" : "Keyboard connection required"}</span></div>
       <div class="live-monitor-copy">
         <div class="live-status-line"><span class="live-dot${state.liveMonitorActive ? " active" : ""}"></span><b id="liveConnectionStatus">${state.liveMonitorActive ? "Live" : "Paused"}</b></div>
         <h3 id="liveKeyName">${esc(physicalName(index))}</h3>
@@ -250,7 +260,7 @@ function liveMonitorHtml() {
         <strong class="live-distance" id="liveDistance">${distance.toFixed(2)} <small>mm</small></strong>
         <span class="live-state" id="liveState">${esc(status)}</span>
         <button class="button ${state.liveMonitorActive ? "secondary" : "primary"}" id="liveMonitorButton" type="button" ${!connected || state.liveMonitorBusy || state.calibrationActive ? "disabled" : ""}>${monitorText}</button>
-        <small class="live-safety">Temporarily uses the keyboard’s original Dynamic Display diagnostic flag and restores it when stopped.</small>
+        <small class="live-safety">${demo ? "The zero-distance gauge is intentional: Demo Mode never invents live key travel." : "Temporarily uses the keyboard’s original Dynamic Display diagnostic flag and restores it when stopped."}</small>
       </div>
       <div class="switch-infographic" aria-label="Live key travel infographic">
         <div class="switch-cutaway">
@@ -303,16 +313,17 @@ function hallSwitchRow(title, detail, id, checked, disabled = false) { return `<
 function factoryResetCardHtml() {
   const profileNumber = uiClamp((state.profile?.profileIndex ?? 0) + 1, 1, API.PROFILE_COUNT);
   const connected = state.source === "device" && Boolean(state.driver);
+  const demo = state.source === "demo";
   const disabled = !connected || state.factoryResetBusy;
-  const status = state.factoryResetBusy ? "RESETTING…" : connected ? "FACTORY PROFILE READY" : "CONNECT KEYBOARD";
-  const buttonTitle = connected ? "" : "Connect the keyboard to restore its onboard configuration.";
+  const status = state.factoryResetBusy ? "RESETTING…" : connected ? "FACTORY PROFILE READY" : demo ? "HARDWARE ONLY" : "CONNECT KEYBOARD";
+  const buttonTitle = connected ? "" : demo ? "Factory reset is disabled in Demo Mode. Use Revert staged to undo edits." : "Connect the keyboard to restore its onboard configuration.";
   return `<div class="section-heading factory-reset-heading"><div><h2>Factory reset</h2><p>Restore onboard mappings and behavior from the bundled Profile 1 factory configuration.</p></div><span class="chip factory-reset-status">${status}</span></div>
     <section class="panel panel-pad factory-reset-panel" aria-describedby="factoryResetScope">
       <div class="factory-reset-grid">
         <article class="factory-reset-action"><div><strong>Reset current profile</strong><p>Restores Profile ${profileNumber}'s four layers, Hall settings, advanced actions, macros, and lighting preset.</p></div><button class="button secondary" type="button" data-factory-reset="current"${disabled ? " disabled" : ""}${buttonTitle ? ` title="${esc(buttonTitle)}"` : ""}>${state.factoryResetBusy ? "Resetting…" : `Reset Profile ${profileNumber}`}</button></article>
         <article class="factory-reset-action danger"><div><strong>Reset all profiles</strong><p>Restores all three onboard profiles and translates the factory FN/FN1/FN2/FN3 targets to each profile's own four layers.</p></div><button class="button secondary" type="button" data-factory-reset="all"${disabled ? " disabled" : ""}${buttonTitle ? ` title="${esc(buttonTitle)}"` : ""}>${state.factoryResetBusy ? "Resetting…" : "Reset all profiles"}</button></article>
       </div>
-      <div class="callout factory-reset-note" id="factoryResetScope"><b>Exact scope:</b> the factory file does not contain device-performance settings or a per-key RGB bank, so those values are preserved. Each profile is read before writing and read back afterward for verification.</div>
+      <div class="callout factory-reset-note" id="factoryResetScope">${demo ? "<b>Demo Mode:</b> use Revert staged to undo local edits, or return home and reopen the sample for a clean workspace. Factory reset remains visible as a hardware-only feature preview." : "<b>Exact scope:</b> the factory file does not contain device-performance settings or a per-key RGB bank, so those values are preserved. Each profile is read before writing and read back afterward for verification."}</div>
     </section>`;
 }
 
@@ -409,16 +420,26 @@ function lightStripPreview() {
 }
 
 function renderLighting() {
+  const demo = state.source === "demo";
+  const offline = APP_MODE === "json";
   const selectedIndex = [...state.colorSelection][0];
   const selectedColor = API.normalizeHexColor(state.profile.colorKeys[selectedIndex ?? 0], state.profile.light.color);
   const selectedNames = [...state.colorSelection].map(physicalName);
   const selectionLabel = !selectedNames.length ? "No keys selected" : selectedNames.length <= 3 ? selectedNames.join(", ") : `${selectedNames.slice(0, 2).join(", ")} + ${selectedNames.length - 2} more`;
   const liveStatus = state.liveLightingActive ? "Live from keyboard" : state.liveLightingBusy ? "Starting live view" : state.source === "device" ? "Configured preview" : "Saved configuration";
+  const mainLightingDescription = demo ? "Simulated preview of the sample profile's configured 36-key output." : state.source === "device" ? "Current RGB output for all 36 keys when connected." : "Preview of the saved 36-key RGB configuration.";
+  const perKeyInstructions = offline ? "Configure each key individually, commit the selection locally, then export a new JSON backup to save it." : "Configure each key individually. Commit the selection, then choose Apply to keyboard.";
+  const stagedColorNote = offline ? "Colors stay in this workspace until you export a backup" : "Colors are staged locally until you apply them to the keyboard";
+  const lightingNote = demo
+    ? "Demo Mode animates the selected effects from saved settings and sample colors. Live framebuffer and strip reads remain reserved for a connected keyboard."
+    : state.source === "device"
+      ? "The 36-key preview reads the keyboard's current RGB framebuffer while connected. The strip also stays live: its onboard effect settings are refreshed from the keyboard and animated here, while firmware-provided strip pixels are used automatically when available."
+      : "This preview is generated entirely from the opened profile. Export a new backup to preserve your lighting edits.";
   return `<div class="lighting-control-grid">
-    <section class="panel form-card main-light-card"><div class="lighting-card-heading"><div><h3>Main key lighting</h3><p>Current RGB output for all 36 keys when connected.</p></div><span class="lighting-zone-badge${state.liveLightingActive ? " live" : ""}" id="liveLightingStatus">${esc(liveStatus)}</span></div><div class="lighting-preview keyboard-lighting-preview">${lightingKeyboardPreview()}</div>${effectPicker("light", state.profile.light)}<div class="field-grid lighting-effect-fields">${lightFields("light", state.profile.light)}</div></section>
+    <section class="panel form-card main-light-card"><div class="lighting-card-heading"><div><h3>Main key lighting</h3><p>${mainLightingDescription}</p></div><span class="lighting-zone-badge${state.liveLightingActive ? " live" : ""}" id="liveLightingStatus">${esc(liveStatus)}</span></div><div class="lighting-preview keyboard-lighting-preview">${lightingKeyboardPreview()}</div>${effectPicker("light", state.profile.light)}<div class="field-grid lighting-effect-fields">${lightFields("light", state.profile.light)}</div></section>
     <section class="panel form-card strip-light-card"><div class="lighting-card-heading"><div><h3>Light strip</h3><p>The small independent lighting strip on the keyboard.</p></div><span class="lighting-zone-badge${state.liveLightingActive ? " live" : ""}" id="liveStripStatus">${state.liveLightingActive ? "Live sync" : state.liveLightingBusy ? "Starting live view" : "1 zone"}</span></div><div class="lighting-preview strip-lighting-preview">${lightStripPreview()}</div>${effectPicker("logoLight", state.profile.logoLight)}<div class="field-grid lighting-effect-fields">${lightFields("logoLight", state.profile.logoLight)}</div></section>
   </div>
-  <div class="section-heading lighting-section-heading"><div><h2>Per-key colors</h2><p>Configure the RGB color for each key individually. This effect is saved in the "Preset" effect above. Commit changes, then click on "Apply to keyboard"</p></div><span class="configured-badge">Configured values</span></div>
+  <div class="section-heading lighting-section-heading"><div><h2>Per-key colors</h2><p>${perKeyInstructions} These values are displayed by the Preset effect above.</p></div><span class="configured-badge">Configured values</span></div>
   <div class="color-toolbar panel">
     <label class="field color-picker-field"><span>Selected color</span><div class="color-input-row"><input id="perKeyColor" type="color" value="${esc(selectedColor)}" /><output id="selectedColorHex">${esc(selectedColor.toUpperCase())}</output></div></label>
     <div class="color-selection-summary"><small>Selection</small><strong>${esc(selectionLabel)}</strong></div>
@@ -426,8 +447,8 @@ function renderLighting() {
     <button class="button secondary" id="useMainColorButton" type="button">Use main color</button>
     <button class="button secondary" id="selectAllColors" type="button">Select all 36</button>
   </div>
-  <section class="panel keyboard-panel color-keyboard-panel">${keyboardHtml("color", state.colorSelection)}<div class="keyboard-legend color-legend"><span><i class="selected-color-dot"></i>Selected</span><span>Click a key to select it · Ctrl/Cmd-click for multiple keys</span><span>Colors are staged locally until you apply them to the keyboard</span></div></section>
-  <div class="callout lighting-callout">The 36-key preview reads the keyboard's current RGB framebuffer while connected. The strip also stays live: its onboard effect settings are refreshed from the keyboard and animated here, while firmware-provided strip pixels are used automatically when available.</div>`;
+  <section class="panel keyboard-panel color-keyboard-panel">${keyboardHtml("color", state.colorSelection)}<div class="keyboard-legend color-legend"><span><i class="selected-color-dot"></i>Selected</span><span>Click a key to select it · Ctrl/Cmd-click for multiple keys</span><span>${stagedColorNote}</span></div></section>
+  <div class="callout lighting-callout">${lightingNote}</div>`;
 }
 
 function effectPicker(group, light) {
@@ -464,10 +485,11 @@ function lightFields(group, light) {
 function renderAdvanced() {
   const count = (type) => state.profile.advancedKeys.filter((item) => item.type === type).length;
   const shared = count("mt") + 2 * (count("rs") + count("socd"));
+  const configuredDescription = APP_MODE === "json" ? "Actions are compiled into the exported profile after you stage them." : "Actions are compiled into device banks only when you apply.";
   return `<div class="advanced-cards">${Object.entries(ADVANCED_META).map(([type, meta]) => `<article class="panel action-card"><span class="action-icon">${meta.icon}</span><h3>${meta.name}</h3><p>${meta.description}</p><button class="icon-action" type="button" data-add-advanced="${type}">+ Add ${meta.name}</button></article>`).join("")}</div>
     <div class="callout advanced-scope-note"><b>Four-layer support:</b> choose the action's layer inside the editor. Actions on Fn layers only run while that layer is active; paired Hall tuning remains physical and applies across every layer.</div>
     <div class="callout">Device banks: DKS ${count("dks")}/32 · Toggle ${count("tgl")}/32 · Shared Mod-Tap/pair bank ${shared}/32 · Macros ${count("macro")}/32. Pair actions use two shared slots.</div>
-    <div class="section-heading"><div><h2>Configured actions</h2><p>Actions are compiled into device banks only when you apply.</p></div></div>
+    <div class="section-heading"><div><h2>Configured actions</h2><p>${configuredDescription}</p></div></div>
     <div class="configured-list">${state.profile.advancedKeys.length ? state.profile.advancedKeys.map((item, index) => configuredAction(item, index)).join("") : `<div class="panel empty-state"><strong>No advanced actions configured</strong><p>Add one above. The host mapping and underlying bank entry will be staged together.</p></div>`}</div>`;
 }
 
@@ -542,18 +564,24 @@ function profileShareHtml() {
 
 function renderProfiles() {
   const multi = Boolean(state.identity?.multiProfile);
+  const demo = state.source === "demo";
   const profileIndexes = multi ? Array.from({ length: API.PROFILE_COUNT }, (_, index) => index) : [state.profile.profileIndex];
-  return `<div class="profile-grid">${profileIndexes.map((index) => `<article class="panel profile-card${index === state.profile.profileIndex ? " active" : ""}"><span class="profile-number">${index + 1}</span>${index === state.profile.profileIndex ? "<span class=\"active-label\">Active workspace</span>" : ""}<h3>Profile ${index + 1}</h3><p>${state.source === "device" ? "Stored in onboard memory." : "Profile identity recovered from this backup."}</p><button class="button ${index === state.profile.profileIndex ? "secondary" : "primary"}" type="button" data-profile="${index}" ${index === state.profile.profileIndex || state.source !== "device" ? "disabled" : ""}>${index === state.profile.profileIndex ? "Loaded" : "Switch and load"}</button></article>`).join("")}</div>
+  const profileDescription = state.source === "device" ? "Stored in onboard memory." : demo ? "Interactive example with four populated layers." : "Profile identity recovered from this backup.";
+  return `<div class="profile-grid">${profileIndexes.map((index) => `<article class="panel profile-card${index === state.profile.profileIndex ? " active" : ""}"><span class="profile-number">${index + 1}</span>${index === state.profile.profileIndex ? "<span class=\"active-label\">Active workspace</span>" : ""}<h3>Profile ${index + 1}</h3><p>${profileDescription}</p><button class="button ${index === state.profile.profileIndex ? "secondary" : "primary"}" type="button" data-profile="${index}" ${index === state.profile.profileIndex || state.source !== "device" ? "disabled" : ""}>${index === state.profile.profileIndex ? "Loaded" : "Switch and load"}</button></article>`).join("")}</div>
     <div class="section-heading"><div><h2>Profile portability</h2><p>Back up the complete current profile, including Hall and lighting data.</p></div></div>
     <section class="panel panel-pad"><div class="quick-list">${quickRow("⇩", "Export current backup", "Download a complete JSON copy of the current workspace", "export-profile")}${APP_MODE === "json" ? quickRow("⇧", "Import profile JSON", "Open another backup in this offline workspace", "import-profile") : quickRow("↗", "Open JSON editor", "Inspect or modify a backup without connecting a keyboard", "json-editor")}</div></section>
     ${profileShareHtml()}
-    ${multi ? `<div class="callout">Profile 1 owns layers 0–3, Profile 2 owns layers 4–7, and Profile 3 owns layers 8–11. A key mapped to FN/FN1–FN11 may jump directly to any corresponding global layer.</div>` : `<div class="callout">${state.identity ? `${esc(state.identity.name)} reports a single onboard profile.` : "Connect a supported multi-profile HE30 to switch among three onboard profiles."}</div>`}`;
+    ${multi ? `<div class="callout">Profile 1 owns layers 0–3, Profile 2 owns layers 4–7, and Profile 3 owns layers 8–11. A key mapped to FN/FN1–FN11 may jump directly to any corresponding global layer.</div>` : `<div class="callout">${demo ? "Demo Mode represents one complete profile with layers 0–3. Export it as JSON or a compressed share code; connect the live driver to read and switch all three onboard profiles." : state.identity ? `${esc(state.identity.name)} reports a single onboard profile.` : "Connect a supported multi-profile HE30 to switch among three onboard profiles."}</div>`}`;
 }
 
 function renderDiagnostics() {
   const identity = state.identity || {};
-  const rows = [["Workspace source", state.source], ["Device", identity.name || "Not connected"], ["VID:PID", identity.vidPid || "—"], ["Firmware", state.info?.firmware || "Not read"], ["Profile", state.profile.profileIndex + 1], ["WebHID", API.HE30Driver.supported() ? "Available" : "Unavailable"], ["Pending sections", [...state.dirty].join(", ") || "None"]];
-  return `<div class="overview-grid"><section class="panel panel-pad"><div class="section-heading"><div><h2>Identity and state</h2><p>Read-only information about this browser session.</p></div></div><table class="identity-table">${rows.map(([label, value]) => `<tr><th>${esc(label)}</th><td>${esc(value)}</td></tr>`).join("")}</table></section><aside class="panel safety-card"><span class="chip">SCOPE</span><h2>No firmware access.</h2><p>This build has no firmware image parser, bootloader device filter, updater command, or flash button.</p><ul><li>Normal-mode config devices only</li><li>Report writes require confirmation</li><li>Section read-back verification</li></ul></aside></div>
+  const demo = state.source === "demo";
+  const rows = [["Workspace source", demo ? "Interactive demo" : state.source], ["Device", demo ? "Simulated HE30 profile" : identity.name || "Not connected"], ["VID:PID", identity.vidPid || "—"], ["Firmware", demo ? "Not simulated" : state.info?.firmware || "Not read"], ["Profile", state.profile.profileIndex + 1], ["WebHID", demo ? "Not used in Demo Mode" : API.HE30Driver.supported() ? "Available" : "Unavailable"], ["Pending sections", [...state.dirty].join(", ") || "None"]];
+  const scopeCard = demo
+    ? `<aside class="panel safety-card"><span class="chip">DEMO SCOPE</span><h2>No hardware access.</h2><p>The demo uses the same editors and codecs as a real profile, with all state held in memory.</p><ul><li>No WebHID device opened</li><li>No telemetry is fabricated</li><li>Revert restores the sample</li><li>Export saves a separate JSON file</li></ul></aside>`
+    : `<aside class="panel safety-card"><span class="chip">SCOPE</span><h2>No firmware access.</h2><p>This build has no firmware image parser, bootloader device filter, updater command, or flash button.</p><ul><li>Normal-mode config devices only</li><li>Report writes require confirmation</li><li>Section read-back verification</li></ul></aside>`;
+  return `<div class="overview-grid"><section class="panel panel-pad"><div class="section-heading"><div><h2>Identity and state</h2><p>Read-only information about this browser session.</p></div></div><table class="identity-table">${rows.map(([label, value]) => `<tr><th>${esc(label)}</th><td>${esc(value)}</td></tr>`).join("")}</table></section>${scopeCard}</div>
     <div class="section-heading"><div><h2>Session log</h2><p>Kept in memory and cleared when the page closes.</p></div><button class="button secondary" id="exportLogButton" type="button">Export log</button></div>
     <section class="panel panel-pad log-list">${state.logs.length ? state.logs.map((entry) => `<div class="log-row"><time>${new Date(entry.time).toLocaleTimeString()}</time><span class="log-level ${esc(entry.level)}">${esc(entry.level)}</span><span>${esc(entry.message)}</span></div>`).join("") : `<div class="empty-state"><strong>No device traffic yet</strong><p>Connect a keyboard or edit a setting to begin the session log.</p></div>`}</section>`;
 }
@@ -574,7 +602,7 @@ function bindPageControls() {
     if (button.dataset.goPage === "json-editor") return window.location.assign("json_editor/");
     if (state.calibrationActive && button.dataset.goPage !== "hall") await stopCalibration(false);
     if (state.page === "hall" && button.dataset.goPage !== "hall") { state.hallEditPending = false; state.hallEditSelection.clear(); }
-    state.page = button.dataset.goPage; renderPage();
+    state.page = button.dataset.goPage; renderPage(); resetWorkspaceScroll();
   }));
   $$('[data-layer]').forEach((button) => button.addEventListener("click", () => { state.layer = Number(button.dataset.layer); renderPage(); }));
   $$('[data-keyboard-mode] .keycap').forEach((button) => button.addEventListener("click", (event) => {

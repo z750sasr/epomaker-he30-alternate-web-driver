@@ -193,6 +193,16 @@ const PAGE_META = Object.freeze({
   diagnostics: ["Transparency", "Diagnostics", "Inspect identity, connection state, and the local command log."],
   about: ["Personal", "About me", "fps lover, pc master race, cs2, apex legends, overwatch, AAA games"],
 });
+const DEMO_PAGE_DESCRIPTIONS = Object.freeze({
+  overview: "A feature-rich sample profile you can edit without connecting hardware.",
+  mapping: "Try remapping all four layers using the complete key library.",
+  hall: "Explore switch types, Rapid Trigger, precision, and deadzones with sample values.",
+  settings: "Preview profile settings safely; export a backup to keep your changes.",
+  lighting: "Experiment with every effect, the light strip, and per-key colors in a simulated preview.",
+  advanced: "Build and inspect Advanced actions without writing to a keyboard.",
+  profiles: "Export, import, and share the interactive sample as a complete profile.",
+  diagnostics: "Inspect Demo Mode state and its in-memory activity log.",
+});
 
 // ABOUT ME CUSTOM HTML — edit freely between the START and END comments.
 // This markup is intentionally rendered as HTML rather than escaped text.
@@ -379,7 +389,7 @@ function makeDemoProfile() {
   for (let layer = 0; layer < API.LAYER_COUNT; layer += 1) {
     userKeys[layer] = Array.from({ length: 128 }, (_, index) => API.makeMapping(255, 255, 255, 0, layer));
     PHYSICAL_KEYS.forEach(({ index }) => {
-      if (layer === 0 && index !== 26 && PHYSICAL_HID_CODES[index] != null) {
+      if (index !== 26 && PHYSICAL_HID_CODES[index] != null) {
         const hidCode = PHYSICAL_HID_CODES[index];
         userKeys[layer][index] = hidCode >= 224 && hidCode <= 231
           ? API.makeMapping(16, 1 << (hidCode - 224), 0, 0, layer)
@@ -388,15 +398,60 @@ function makeDemoProfile() {
     });
     userKeys[layer][26] = API.makeMapping(240, 255, 1, 0, layer);
   }
+  // Representative Fn outputs keep every layer useful in the offline demo.
+  userKeys[1][30] = API.makeMapping(240, 253, 0, 0, 1);
+  userKeys[1][31] = API.makeMapping(240, 252, 0, 0, 1);
+  userKeys[1][32] = API.makeMapping(240, 251, 0, 0, 1);
+  userKeys[1][33] = API.makeMapping(48, 182, 0, 0, 1);
+  userKeys[1][34] = API.makeMapping(48, 205, 0, 0, 1);
+  userKeys[1][35] = API.makeMapping(48, 181, 0, 0, 1);
+  [64, 65, 66, 67, 68, 69].forEach((hidCode, offset) => { userKeys[2][30 + offset] = API.makeMapping(16, 0, hidCode, 0, 2); });
+  userKeys[3][30] = API.makeMapping(48, 146, 1, 0, 3);
+  userKeys[3][31] = API.makeMapping(48, 35, 2, 0, 3);
+  userKeys[3][32] = API.makeMapping(48, 36, 2, 0, 3);
+  userKeys[3][33] = API.makeMapping(48, 37, 2, 0, 3);
+  userKeys[3][34] = API.makeMapping(48, 233, 0, 0, 3);
+  userKeys[3][35] = API.makeMapping(48, 234, 0, 0, 3);
+
+  const travelKeys = Array.from({ length: 128 }, defaultTravel);
+  PHYSICAL_KEYS.forEach(({ index }, position) => {
+    travelKeys[index].switch_type = Math.min(3, Math.floor(position / 9));
+  });
+  // WASD demonstrates ordinary RT plus the hidden 0.001 mm stored-unit mode.
+  [9, 14, 15, 16].forEach((index, position) => Object.assign(travelKeys[index], {
+    key_mode: 1,
+    key_actuation: 40,
+    rt_press: position % 2 ? 10 : 50,
+    rt_release: position % 2 ? 14 : 75,
+    pressPrecision: position % 2 ? 0 : 2,
+    releasePrecision: position % 2 ? 0 : 2,
+  }));
+
+  const colorKeys = Array(128).fill("#66f7c2");
+  const demoPalette = ["#66f7c2", "#7de7ff", "#5b8cff", "#b985ff", "#ffbe5c", "#ff7e8a"];
+  PHYSICAL_KEYS.forEach(({ index }, position) => { colorKeys[index] = demoPalette[position % demoPalette.length]; });
+  const advancedKeys = [
+    {
+      type: "mt", layer: 0, index1: 13, baseMapping: clone(userKeys[0][13]),
+      mtClickKey: API.makeMapping(16, 0, 41), mtDownKey: API.makeMapping(16, 1, 0), mtTime: 200,
+    },
+    {
+      type: "socd", layer: 0, index1: 14, index2: 16,
+      baseMapping: clone(userKeys[0][14]), baseMapping2: clone(userKeys[0][16]),
+      baseTravel1: clone(travelKeys[14]), baseTravel2: clone(travelKeys[16]),
+      key1: API.makeMapping(16, 0, 4), key2: API.makeMapping(16, 0, 7),
+      option: { actuation: 40, press: 10, release: 14, priority: 0 },
+    },
+  ];
   return normalizeProfile({
-    name: "HE30 Demo Profile",
+    name: "HE30 Interactive Demo",
     profileIndex: 0,
     userKeys,
-    travelKeys: Array.from({ length: 128 }, defaultTravel),
-    advancedKeys: [],
-    light: { effect: 1, brightness: 80, speed: 2, direction: 0, singleColor: true, color: "#66f7c2" },
-    logoLight: { effect: 1, brightness: 80, speed: 2, direction: 0, singleColor: true, color: "#66f7c2" },
-    colorKeys: Array(128).fill("#66f7c2"),
+    travelKeys,
+    advancedKeys,
+    light: { effect: 0, brightness: 80, speed: 2, direction: 0, singleColor: false, color: "#66f7c2" },
+    logoLight: { effect: 3, brightness: 80, speed: 2, direction: 0, singleColor: true, color: "#66f7c2" },
+    colorKeys,
     deviceSettings: defaultSettings(),
     _rawConfig: Array(64).fill(0),
   });
@@ -472,6 +527,11 @@ function updateProgress(percent, message) {
 
 function hideProgress() { $("#progressOverlay").classList.add("hidden"); }
 
+/** Keep a newly opened workspace section anchored below the fixed application header. */
+function resetWorkspaceScroll() {
+  window.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+}
+
 /** Install a normalized profile as both the staged workspace and rollback copy. */
 function setWorkspace(profile, source, metadata = {}) {
   const previousPage = state.page;
@@ -504,6 +564,7 @@ function setWorkspace(profile, source, metadata = {}) {
   $("#workspaceView").classList.remove("hidden");
   updateChrome();
   renderPage();
+  resetWorkspaceScroll();
 }
 
 function updateChrome() {
@@ -514,8 +575,8 @@ function updateChrome() {
     $("#connectButton").textContent = "Connect keyboard";
     $("#connectButton").classList.toggle("hidden", Boolean(connected));
   }
-  $("#deviceName").textContent = state.identity?.name || (state.source === "file" ? state.profile?.name || "JSON profile" : "HE30 Demo");
-  $("#deviceMeta").textContent = connected ? `${state.identity.vidPid} · Profile ${state.profile.profileIndex + 1}` : state.source === "file" ? state.fileName : "No hardware writes";
+  $("#deviceName").textContent = state.identity?.name || (state.source === "file" ? state.profile?.name || "JSON profile" : "HE30 Interactive Demo");
+  $("#deviceMeta").textContent = connected ? `${state.identity.vidPid} · Profile ${state.profile.profileIndex + 1}` : state.source === "file" ? state.fileName : state.source === "demo" ? "Interactive sample · Export to save" : "No hardware writes";
   $("#applyButton").disabled = !connected || state.dirty.size === 0;
   $("#applyButton").classList.toggle("hidden", APP_MODE !== "live");
   $("#revertButton").disabled = state.dirty.size === 0;
@@ -545,9 +606,9 @@ function renderMiniKeyboard() {
 function renderPage() {
   if (!state.profile) return;
   const [eyebrow, title, description] = PAGE_META[state.page];
-  $("#pageEyebrow").textContent = eyebrow;
+  $("#pageEyebrow").textContent = state.source === "demo" ? `Interactive demo · ${eyebrow}` : eyebrow;
   $("#pageTitle").textContent = title;
-  $("#pageDescription").textContent = description;
+  $("#pageDescription").textContent = state.source === "demo" ? DEMO_PAGE_DESCRIPTIONS[state.page] || description : description;
   const renderers = { overview: renderOverview, mapping: renderMapping, hall: renderHall, settings: renderSettings, lighting: renderLighting, advanced: renderAdvanced, profiles: renderProfiles, diagnostics: renderDiagnostics, about: renderAboutMe };
   $("#pageContent").innerHTML = renderers[state.page]();
   bindPageControls();
