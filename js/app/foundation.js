@@ -317,6 +317,7 @@ const state = {
 
   // Staged edits and modal/editor state.
   colorSelection: new Set([0]),
+  colorDrag: null,
   dirty: new Set(),
   logs: [],
   mappingIndex: null,
@@ -549,6 +550,7 @@ function setWorkspace(profile, source, metadata = {}) {
   state.hallEditSelection = new Set();
   state.hallEditPending = false;
   state.colorSelection = new Set([0]);
+  state.colorDrag = null;
   state.shareExportCode = "";
   state.shareImportText = "";
   state.shareImportProfile = null;

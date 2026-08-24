@@ -75,6 +75,12 @@ async function verifyBrowserBootstrap() {
   if (demoSummary.rapidTriggerKeys !== 4 || JSON.stringify(demoSummary.switchTypes) !== JSON.stringify([0, 1, 2, 3])) throw new Error("Demo Mode does not showcase current Hall and switch-type controls.");
   if (JSON.stringify(demoSummary.advancedTypes) !== JSON.stringify(["mt", "socd"]) || demoSummary.colorCount !== 6 || demoSummary.lightEffect !== 0 || demoSummary.stripEffect !== 3) throw new Error("Demo Mode does not showcase current Advanced and lighting controls.");
   if (JSON.stringify(demoSummary.fnProfileTargets) !== JSON.stringify([253, 252, 251]) || demoSummary.fn2FirstOutput !== 64) throw new Error("Demo Fn layers do not contain representative profile, media, and function-row outputs.");
+  const colorBoxSelection = vm.runInContext(`(() => {
+    const replacement = [...selectionAfterColorBox({ toggle: false, initialSelection: new Set([0, 1]) }, new Set([4, 5]))];
+    const toggled = [...selectionAfterColorBox({ toggle: true, initialSelection: new Set([0, 4]) }, new Set([4, 5]))];
+    return [replacement, toggled];
+  })()`, browser);
+  if (JSON.stringify(colorBoxSelection) !== JSON.stringify([[4, 5], [0, 5]])) throw new Error("Per-key lighting box selection did not replace or Ctrl/Cmd-toggle the expected keys.");
   const telemetryDistances = vm.runInContext(`(() => {
     const index = TELEMETRY_INDEX.get(4);
     const previousProfile = state.profile;

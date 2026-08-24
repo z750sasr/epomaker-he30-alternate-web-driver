@@ -447,7 +447,7 @@ function renderLighting() {
     <button class="button secondary" id="useMainColorButton" type="button">Use main color</button>
     <button class="button secondary" id="selectAllColors" type="button">Select all 36</button>
   </div>
-  <section class="panel keyboard-panel color-keyboard-panel">${keyboardHtml("color", state.colorSelection)}<div class="keyboard-legend color-legend"><span><i class="selected-color-dot"></i>Selected</span><span>Click a key to select it · Ctrl/Cmd-click for multiple keys</span><span>${stagedColorNote}</span></div></section>
+  <section class="panel keyboard-panel color-keyboard-panel">${keyboardHtml("color", state.colorSelection)}<div class="keyboard-legend color-legend"><span><i class="selected-color-dot"></i>Selected</span><span>Hold and drag around keys to select · Ctrl/Cmd-drag to add or remove</span><span>${stagedColorNote}</span></div></section>
   <div class="callout lighting-callout">${lightingNote}</div>`;
 }
 
@@ -608,9 +608,10 @@ function bindPageControls() {
   $$('[data-keyboard-mode] .keycap').forEach((button) => button.addEventListener("click", (event) => {
     const mode = button.closest("[data-keyboard-mode]").dataset.keyboardMode;
     if (mode === "hall" && state.calibrationActive) return;
-    if (mode !== "hall" || event.detail === 0) handleKeyClick(button, event);
+    if ((mode !== "hall" && mode !== "color") || event.detail === 0) handleKeyClick(button, event);
   }));
   bindHallDragSelection();
+  bindColorDragSelection();
   $("#liveMonitorButton")?.addEventListener("click", toggleLiveMonitor);
   $("#calibrationButton")?.addEventListener("click", toggleCalibration);
   if (state.page === "hall") scheduleLiveVisualUpdate();

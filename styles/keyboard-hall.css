@@ -5,13 +5,28 @@
 .tabs button.active { color: #07130f; background: var(--mint); }
 .keyboard-panel { padding: 22px; overflow: auto; }
 .keyboard-grid { width: max-content; min-width: 558px; display: grid; gap: 8px; margin-inline: auto; }
-.keyboard-grid[data-keyboard-mode="hall"] { position: relative; gap: 9px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.keyboard-grid[data-keyboard-mode="hall"] {
+  position: relative;
+  gap: 9px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+
+  /* Add padding around all 4 sides of the grid */
+  padding: 30px; 
+
+  /* Ensure padding expands outwards beyond the grid content width */
+    border: 1px solid var(--line);
+    border-radius: 15px;
+  border-color: rgb(38, 244, 227);
+}
 .keyboard-grid[data-keyboard-mode="hall"] .key-row { gap: 9px; }
 .keyboard-grid[data-keyboard-mode="hall"] .keycap { height: 66px; padding: 10px; }
 .keyboard-grid[data-keyboard-mode="hall"] .keycap .physical { font-size: 13px; }
 .keyboard-grid[data-keyboard-mode="hall"] .keycap .mapped { font-size: 11px; }
 .keyboard-grid[data-keyboard-mode="hall"].drag-selecting { cursor: crosshair; }
 .keyboard-grid[data-keyboard-mode="hall"].drag-selecting .keycap { cursor: crosshair; }
+
 .hall-selection-box { position: absolute; z-index: 8; border: 1px solid var(--mint); border-radius: 4px; background: rgb(102 247 194 / 13%); box-shadow: 0 0 0 1px rgb(102 247 194 / 10%), 0 0 18px rgb(102 247 194 / 10%); pointer-events: none; }
 .key-row { width: max-content; display: flex; gap: 8px; }
 .keycap { width: var(--key-width); min-width: 0; height: 62px; flex: 0 0 var(--key-width); position: relative; border: 1px solid #2a4761; border-radius: 10px; background: linear-gradient(#152a3f, #0f2032); color: var(--text); padding: 9px; text-align: left; cursor: pointer; box-shadow: inset 0 -4px rgb(0 0 0 / 18%); overflow: hidden; }

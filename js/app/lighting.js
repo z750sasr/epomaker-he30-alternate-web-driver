@@ -315,3 +315,101 @@ function previewSelectedKeyColor(value) {
     }
   });
 }
+
+// Per-key color selection mirrors the Hall editor's box gesture. The selection
+// stays local to the workspace; colors are still changed only by Commit.
+function bindColorDragSelection() {
+  const grid = $('[data-keyboard-mode="color"]');
+  if (!grid) return;
+  const finish = (event, cancelled = false) => {
+    const drag = state.colorDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    state.colorDrag = null;
+    try { if (grid.hasPointerCapture(event.pointerId)) grid.releasePointerCapture(event.pointerId); } catch (_) { /* no-op */ }
+    grid.classList.remove("drag-selecting");
+    drag.box.remove();
+    if (cancelled) {
+      state.colorSelection = new Set(drag.initialSelection);
+    } else if (!drag.moved && drag.startIndex != null) {
+      state.colorSelection = selectionAfterColorBox(drag, new Set([drag.startIndex]));
+    } else if (!state.colorSelection.size) {
+      state.colorSelection = new Set(drag.initialSelection);
+    }
+    renderPage();
+  };
+  grid.addEventListener("pointerdown", (event) => {
+    if (state.colorDrag) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const keycap = event.target.closest(".keycap[data-key-index]");
+    event.preventDefault();
+    const box = document.createElement("i");
+    box.className = "color-selection-box";
+    box.setAttribute("aria-hidden", "true");
+    box.hidden = true;
+    grid.append(box);
+    state.colorDrag = {
+      pointerId: event.pointerId,
+      startIndex: keycap && grid.contains(keycap) ? Number(keycap.dataset.keyIndex) : null,
+      startX: event.clientX,
+      startY: event.clientY,
+      currentX: event.clientX,
+      currentY: event.clientY,
+      moved: false,
+      toggle: event.ctrlKey || event.metaKey,
+      initialSelection: new Set(state.colorSelection),
+      box,
+    };
+    grid.classList.add("drag-selecting");
+    try { grid.setPointerCapture(event.pointerId); } catch (_) { /* no-op */ }
+  });
+  grid.addEventListener("pointermove", (event) => {
+    const drag = state.colorDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    drag.currentX = event.clientX;
+    drag.currentY = event.clientY;
+    drag.moved ||= Math.hypot(drag.currentX - drag.startX, drag.currentY - drag.startY) >= 4;
+    if (!drag.moved) return;
+    updateColorSelectionBox(grid, drag);
+  });
+  grid.addEventListener("pointerup", finish);
+  grid.addEventListener("pointercancel", (event) => finish(event, true));
+  grid.addEventListener("lostpointercapture", (event) => { if (state.colorDrag?.pointerId === event.pointerId) finish(event); });
+}
+
+function selectionAfterColorBox(drag, boxedIndexes) {
+  if (!drag.toggle) return new Set(boxedIndexes);
+  const selected = new Set(drag.initialSelection);
+  boxedIndexes.forEach((index) => {
+    if (selected.has(index)) selected.delete(index); else selected.add(index);
+  });
+  return selected;
+}
+
+function updateColorSelectionBox(grid, drag) {
+  const gridRect = grid.getBoundingClientRect();
+  const left = Math.min(drag.startX, drag.currentX);
+  const top = Math.min(drag.startY, drag.currentY);
+  const right = Math.max(drag.startX, drag.currentX);
+  const bottom = Math.max(drag.startY, drag.currentY);
+  drag.box.hidden = false;
+  Object.assign(drag.box.style, {
+    left: `${left - gridRect.left}px`,
+    top: `${top - gridRect.top}px`,
+    width: `${right - left}px`,
+    height: `${bottom - top}px`,
+  });
+  const boxedIndexes = new Set();
+  $$('.keycap[data-key-index]', grid).forEach((button) => {
+    const keyRect = button.getBoundingClientRect();
+    if (keyRect.right >= left && keyRect.left <= right && keyRect.bottom >= top && keyRect.top <= bottom) {
+      boxedIndexes.add(Number(button.dataset.keyIndex));
+    }
+  });
+  state.colorSelection = selectionAfterColorBox(drag, boxedIndexes);
+  $$('[data-keyboard-mode="color"] .keycap').forEach((button) => {
+    const selected = state.colorSelection.has(Number(button.dataset.keyIndex));
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+}
