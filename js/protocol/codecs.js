@@ -443,12 +443,18 @@ function compactProfileForShare(profile) {
     return mappings.slice(0, KEY_COUNT).map((mapping) => [Number(mapping.type), Number(mapping.code1), Number(mapping.code2)]);
   });
   if (!Array.isArray(profile.travelKeys) || profile.travelKeys.length < KEY_COUNT) throw new Error(`The profile does not contain ${KEY_COUNT} Hall records.`);
+  const advancedKeys = JSON.parse(JSON.stringify(profile.advancedKeys || [])).map((item) => {
+    if (item?.type !== "cb") return item;
+    const compact = { ...item, modifiers: clamp(item.modifiers ?? item.key1?.code1 ?? 0, 0, 255) };
+    delete compact.modifierOrder;
+    return compact;
+  });
   return {
     n: String(profile.name || `Keyboard Profile ${profileIndex + 1}`).slice(0, 200),
     i: profileIndex,
     k: keymaps,
     t: profile.travelKeys.slice(0, KEY_COUNT).map((record) => TRAVEL_SHARE_FIELDS.map((field) => field === "deadzone_status" ? Boolean(record[field]) : Number(record[field]))),
-    a: JSON.parse(JSON.stringify(profile.advancedKeys || [])),
+    a: advancedKeys,
     l: JSON.parse(JSON.stringify(profile.light || {})),
     s: JSON.parse(JSON.stringify(profile.logoLight || {})),
     c: Array.from(profile.colorKeys || []).slice(0, KEY_COUNT),
@@ -533,7 +539,12 @@ function expandProfileSharePayload(payload) {
     profileIndex,
     userKeys,
     travelKeys,
-    advancedKeys: JSON.parse(JSON.stringify(packed.a)),
+    advancedKeys: JSON.parse(JSON.stringify(packed.a)).map((item) => {
+      if (item?.type !== "cb") return item;
+      const action = { ...item, modifiers: clamp(item.modifiers ?? item.key1?.code1 ?? 0, 0, 255) };
+      delete action.modifierOrder;
+      return action;
+    }),
     light: JSON.parse(JSON.stringify(packed.l)),
     logoLight: JSON.parse(JSON.stringify(packed.s)),
     colorKeys: packed.c.map((color) => normalizeHexColor(color)),

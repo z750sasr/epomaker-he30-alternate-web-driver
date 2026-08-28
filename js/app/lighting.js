@@ -12,8 +12,8 @@
  * Live lighting preview.
  *
  * Saved lighting settings live in the staged profile. When a keyboard is
- * connected this module can also poll its volatile RGB framebuffer so the page
- * mirrors what the user sees on the physical device.
+ * connected this module polls only the 36-key RGB framebuffer. The light strip
+ * has no proven live-pixel report, so it stays an explicitly configured preview.
  */
 
 // ---------------------------------------------------------------------------
@@ -52,65 +52,49 @@ function spectrumLightingColor(hue, value) {
   return `#${[red, green, blue].map((channel) => Math.round(channel * 255).toString(16).padStart(2, "0")).join("")}`;
 }
 
-function liveStripFramebufferColors() {
-  if (!state.liveLightingActive) return null;
-  const targets = state.liveLightingColors.slice(LIVE_STRIP_FRAME_START, LIVE_STRIP_FRAME_START + LIVE_STRIP_SEGMENT_COUNT);
-  if (targets.some((color) => color && color !== "#000000")) state.liveStripFramebufferDetected = true;
-  if (!state.liveStripFramebufferDetected) return null;
-  return targets.map((target, index) => state.liveLightingDisplayColors[LIVE_STRIP_FRAME_START + index] || target || "#000000");
-}
-
 /** Produce one visual frame for firmware effects without writing any LEDs. */
 function stripFrameColors(light, timestamp) {
-  const framebuffer = liveStripFramebufferColors();
-  if (framebuffer) return { colors: framebuffer, source: "framebuffer" };
   const effect = Number(light?.effect);
   const brightness = uiClamp(light?.brightness, 0, 100) / 100;
   const baseColor = API.normalizeHexColor(light?.color, "#000000");
-  if (effect === 2 || brightness === 0) return { colors: new Array(LIVE_STRIP_SEGMENT_COUNT).fill("#000000"), source: "effect" };
+  if (effect === 2 || brightness === 0) return new Array(LIGHT_STRIP_PREVIEW_SEGMENT_COUNT).fill("#000000");
   const speed = uiClamp(light?.speed, 0, 4);
   const time = Number(timestamp) || 0;
   if (effect === 0) {
     const rotation = (time / Math.max(3000, 9000 - speed * 1200)) * 360;
-    return { colors: Array.from({ length: LIVE_STRIP_SEGMENT_COUNT }, (_, index) => spectrumLightingColor(rotation + (index * 360 / LIVE_STRIP_SEGMENT_COUNT), brightness)), source: "effect" };
+    return Array.from({ length: LIGHT_STRIP_PREVIEW_SEGMENT_COUNT }, (_, index) => spectrumLightingColor(rotation + (index * 360 / LIGHT_STRIP_PREVIEW_SEGMENT_COUNT), brightness));
   }
   if (effect === 1) {
     const phase = (time / Math.max(700, 1700 - speed * 220)) * Math.PI * 2;
-    return { colors: Array.from({ length: LIVE_STRIP_SEGMENT_COUNT }, (_, index) => scaleLightingColor(baseColor, brightness * (0.12 + 0.88 * ((Math.sin(phase - index * 0.7) + 1) / 2)))), source: "effect" };
+    return Array.from({ length: LIGHT_STRIP_PREVIEW_SEGMENT_COUNT }, (_, index) => scaleLightingColor(baseColor, brightness * (0.12 + 0.88 * ((Math.sin(phase - index * 0.7) + 1) / 2))));
   }
   if (effect === 4) {
     const phase = (time / Math.max(1400, 3200 - speed * 400)) * Math.PI * 2;
     const pulse = 0.1 + 0.9 * ((Math.sin(phase - Math.PI / 2) + 1) / 2);
-    return { colors: new Array(LIVE_STRIP_SEGMENT_COUNT).fill(scaleLightingColor(baseColor, brightness * pulse)), source: "effect" };
+    return new Array(LIGHT_STRIP_PREVIEW_SEGMENT_COUNT).fill(scaleLightingColor(baseColor, brightness * pulse));
   }
-  return { colors: new Array(LIVE_STRIP_SEGMENT_COUNT).fill(scaleLightingColor(baseColor, brightness)), source: "effect" };
+  return new Array(LIGHT_STRIP_PREVIEW_SEGMENT_COUNT).fill(scaleLightingColor(baseColor, brightness));
 }
 
-function updateLiveStripUI(timestamp) {
+function updateLightStripPreview(timestamp) {
   const device = $("[data-strip-lighting]");
-  if (!device || !state.liveLightingActive) return false;
-  const light = state.liveStripLight || state.profile.logoLight;
-  const frame = stripFrameColors(light, timestamp);
+  if (!device) return false;
+  const light = state.profile.logoLight;
+  const colors = stripFrameColors(light, timestamp);
   const segments = $$('[data-strip-segment]', device);
-  frame.colors.forEach((color, index) => segments[index]?.style.setProperty("--strip-color", color));
-  const representative = frame.colors[Math.floor(frame.colors.length / 2)] || "#000000";
+  colors.forEach((color, index) => segments[index]?.style.setProperty("--strip-color", color));
+  const representative = colors[Math.floor(colors.length / 2)] || "#000000";
   device.style.setProperty("--strip-color", representative);
   device.style.setProperty("--strip-opacity", "1");
-  device.dataset.stripSource = frame.source;
   device.dataset.stripEffect = String(Number(light.effect));
   const strip = $(".light-strip", device);
   if (strip) {
-    strip.setAttribute("aria-label", `${lightingEffectName("logoLight", light.effect)} light strip, live ${frame.source === "framebuffer" ? "framebuffer" : "effect"} preview`);
-    strip.title = `${lightingEffectName("logoLight", light.effect)} · ${light.brightness}% · Live ${frame.source === "framebuffer" ? "framebuffer" : "effect sync"}`;
+    strip.setAttribute("aria-label", `${lightingEffectName("logoLight", light.effect)} configured light strip preview`);
+    strip.title = `${lightingEffectName("logoLight", light.effect)} · ${light.brightness}% · Configured preview`;
   }
   const label = $("span", device);
-  if (label) label.textContent = `${lightingEffectName("logoLight", light.effect)} · ${light.brightness}% · Live ${frame.source === "framebuffer" ? "frame" : "effect sync"}`;
-  const status = $("#liveStripStatus");
-  if (status) {
-    status.textContent = state.liveStripError ? "Effect preview" : frame.source === "framebuffer" ? "Live from keyboard" : "Live effect sync";
-    status.classList.toggle("live", !state.liveStripError);
-  }
-  return frame.source === "effect" && [0, 1, 4].includes(Number(light.effect)) && Number(light.brightness) > 0;
+  if (label) label.textContent = `${lightingEffectName("logoLight", light.effect)} · ${light.brightness}% · Preview`;
+  return [0, 1, 4].includes(Number(light.effect)) && Number(light.brightness) > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,16 +123,8 @@ function animateLiveLighting(timestamp) {
     state.liveLightingDisplayColors[index] = next;
     if (next !== target) moving = true;
   });
-  for (let index = LIVE_STRIP_FRAME_START; index < LIVE_STRIP_FRAME_START + LIVE_STRIP_SEGMENT_COUNT; index += 1) {
-    const target = state.liveLightingColors[index];
-    if (!target) continue;
-    const current = state.liveLightingDisplayColors[index] || target;
-    const next = blendLightingColor(current, target, blend);
-    state.liveLightingDisplayColors[index] = next;
-    if (next !== target) moving = true;
-  }
   state.liveLightingFrameTime = timestamp;
-  const stripMoving = updateLiveLightingUI(timestamp);
+  const stripMoving = updateLightStripPreview(timestamp);
   if (moving || stripMoving) state.liveLightingFrame = requestAnimationFrame(animateLiveLighting);
   else state.liveLightingFrameTime = 0;
 }
@@ -165,12 +141,7 @@ function updateLiveLightingUI(timestamp = performance.now()) {
     status.textContent = state.liveLightingError ? "Live view retrying" : state.liveLightingActive ? "Live from keyboard" : state.liveLightingBusy ? "Starting live view" : "Configured preview";
     status.classList.toggle("live", state.liveLightingActive && !state.liveLightingError);
   }
-  const stripStatus = $("#liveStripStatus");
-  if (stripStatus && !state.liveLightingActive) {
-    stripStatus.textContent = state.liveLightingBusy ? "Starting live view" : "1 zone";
-    stripStatus.classList.remove("live");
-  }
-  if (!state.liveLightingActive) return false;
+  if (!state.liveLightingActive) return updateLightStripPreview(timestamp);
   PHYSICAL_KEYS.forEach(({ index, label }) => {
     const color = state.liveLightingDisplayColors[index] || state.liveLightingColors[index];
     if (!color) return;
@@ -181,14 +152,15 @@ function updateLiveLightingUI(timestamp = performance.now()) {
     key.style.setProperty("--key-glow", "45%");
     key.title = `${label} live color: ${color.toUpperCase()}`;
   });
-  return updateLiveStripUI(timestamp);
+  return updateLightStripPreview(timestamp);
 }
 
 // ---------------------------------------------------------------------------
 // Connected-keyboard polling lifecycle
 // ---------------------------------------------------------------------------
 /**
- * Read the volatile key framebuffer and, when needed, saved strip settings.
+ * Read the volatile 36-key framebuffer. The strip has no known live-pixel
+ * report, so the page deliberately does not infer physical strip colors.
  * `generation` invalidates an older async loop after the user stops/restarts it.
  */
 async function pollLiveLighting(generation) {
@@ -199,19 +171,6 @@ async function pollLiveLighting(generation) {
     state.liveLightingColors = colors.map((color) => API.normalizeHexColor(color, "#000000"));
     state.liveLightingUpdatedAt = Date.now();
     state.liveLightingError = "";
-    if (state.liveLightingUpdatedAt - state.liveStripUpdatedAt >= LIVE_STRIP_CONFIG_POLL_MS) {
-      state.liveStripUpdatedAt = state.liveLightingUpdatedAt;
-      try {
-        const stripLight = await state.driver.readLiveStripSettings(state.profile.profileIndex);
-        if (generation !== state.liveLightingGeneration || state.page !== "lighting") return;
-        state.liveStripLight = stripLight;
-        state.liveStripError = "";
-      } catch (stripError) {
-        if (generation !== state.liveLightingGeneration) return;
-        if (!state.liveStripError) log("warning", "Live light-strip settings read failed; using the last effect", stripError.message);
-        state.liveStripError = stripError.message;
-      }
-    }
     scheduleLiveLightingAnimation();
   } catch (error) {
     if (generation !== state.liveLightingGeneration) return;
@@ -231,13 +190,7 @@ async function startLiveLighting() {
   const generation = ++state.liveLightingGeneration;
   cancelLiveLightingAnimation({ clearDisplay: true });
   PHYSICAL_KEYS.forEach(({ index }) => { state.liveLightingDisplayColors[index] = configuredLightingColor(index); });
-  const initialStripColor = state.profile.logoLight.effect === 2 ? "#000000" : API.normalizeHexColor(state.profile.logoLight.color, "#000000");
-  for (let index = LIVE_STRIP_FRAME_START; index < LIVE_STRIP_FRAME_START + LIVE_STRIP_SEGMENT_COUNT; index += 1) state.liveLightingDisplayColors[index] = initialStripColor;
   state.liveLightingColors.fill(null);
-  state.liveStripLight = clone(state.profile.logoLight);
-  state.liveStripUpdatedAt = 0;
-  state.liveStripError = "";
-  state.liveStripFramebufferDetected = false;
   state.liveLightingBusy = true;
   state.liveLightingError = "";
   updateLiveLightingUI();
@@ -258,10 +211,6 @@ async function startLiveLighting() {
     state.liveLightingActive = false;
     state.liveLightingBusy = false;
     state.liveLightingError = error.message;
-    state.liveStripLight = null;
-    state.liveStripUpdatedAt = 0;
-    state.liveStripError = "";
-    state.liveStripFramebufferDetected = false;
     log("warning", "Live RGB framebuffer could not start", error.message);
     updateLiveLightingUI();
   }
@@ -278,10 +227,6 @@ async function stopLiveLighting() {
   state.liveLightingBusy = false;
   state.liveLightingError = "";
   state.liveLightingColors.fill(null);
-  state.liveStripLight = null;
-  state.liveStripUpdatedAt = 0;
-  state.liveStripError = "";
-  state.liveStripFramebufferDetected = false;
   updateLiveLightingUI();
   if (state.driver) {
     try { await state.driver.stopLiveTelemetry(); }

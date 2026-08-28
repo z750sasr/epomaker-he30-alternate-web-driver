@@ -38,7 +38,6 @@ function preserveAdvancedUiMetadata(profile, stagedActions) {
     ["baseMapping", "baseMapping2", "baseTravel1", "baseTravel2"].forEach((property) => {
       if (staged[property] != null) decoded[property] = clone(staged[property]);
     });
-    if (decoded.type === "cb") decoded.modifierOrder = normalizeModifierOrder(staged.modifierOrder, decoded.modifiers);
   });
   return profile;
 }

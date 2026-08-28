@@ -119,9 +119,7 @@ const SWITCH_SOURCE_LINKS = Object.freeze([
 ]);
 const TELEMETRY_INDEX = new Map(Object.entries(PHYSICAL_HID_CODES).map(([index, code]) => [code, Number(index)]));
 const LIVE_LIGHTING_SMOOTHING_MS = 72;
-const LIVE_STRIP_CONFIG_POLL_MS = 500;
-const LIVE_STRIP_FRAME_START = 36;
-const LIVE_STRIP_SEGMENT_COUNT = 12;
+const LIGHT_STRIP_PREVIEW_SEGMENT_COUNT = 12;
 
 // ---------------------------------------------------------------------------
 // Key-mapping catalog
@@ -310,10 +308,6 @@ const state = {
   liveLightingFrameTime: 0,
   liveLightingUpdatedAt: 0,
   liveLightingError: "",
-  liveStripLight: null,
-  liveStripUpdatedAt: 0,
-  liveStripError: "",
-  liveStripFramebufferDetected: false,
 
   // Staged edits and modal/editor state.
   colorSelection: new Set([0]),
@@ -365,6 +359,26 @@ function mappingLabel(mapping) {
     return modifiers.join("+") || "Unassigned";
   }
   return mapping.name || API.mappingName(mapping.type, mapping.code1, mapping.code2);
+}
+
+/** Compact, firmware-aware labels for keycaps; full names remain in tooltips and editors. */
+function mappingKeyboardLabel(mapping) {
+  if (!mapping || mapping.type === 255) return "Unassigned";
+  const macMode = Number(state.profile?.deviceSettings?.systemMode) === 1;
+  const preset = ALL_MAPPINGS.find((item) => item.type === Number(mapping.type) && item.code1 === Number(mapping.code1) && item.code2 === Number(mapping.code2));
+  if (preset) return (macMode && preset.macShort) || preset.short || preset.name;
+  if (Number(mapping.type) === 16 && Number(mapping.code1)) {
+    const modifierNames = macMode
+      ? ["Ctrl", "Shift", "Opt", "Cmd", "RCtrl", "RShift", "ROpt", "RCmd"]
+      : ["Ctrl", "Shift", "Alt", "Win", "RCtrl", "RShift", "RAlt", "RWin"];
+    const labels = modifierNames.filter((_, bit) => Number(mapping.code1) & (1 << bit));
+    if (Number(mapping.code2)) {
+      const base = ALL_MAPPINGS.find((item) => item.type === 16 && item.code1 === 0 && item.code2 === Number(mapping.code2));
+      labels.push(base?.short || base?.name || API.mappingName(16, 0, mapping.code2));
+    }
+    return labels.join("+") || "Unassigned";
+  }
+  return mappingLabel(mapping);
 }
 
 function defaultMappingForPhysical(index, layer = 0) {
@@ -486,7 +500,14 @@ function normalizeProfile(input) {
     });
   }
   profile.travelKeys = Array.from({ length: 128 }, (_, index) => ({ ...defaultTravel(), ...(profile.travelKeys?.[index] || {}) }));
-  profile.advancedKeys = Array.isArray(profile.advancedKeys) ? profile.advancedKeys : [];
+  profile.advancedKeys = Array.isArray(profile.advancedKeys) ? profile.advancedKeys.map((item) => {
+    const action = { ...item };
+    if (action.type === "cb") {
+      action.modifiers = uiClamp(Number(action.modifiers ?? action.key1?.code1 ?? 0), 0, 255);
+      delete action.modifierOrder;
+    }
+    return action;
+  }) : [];
   profile.light = { effect: 1, brightness: 80, speed: 2, direction: 0, singleColor: true, color: "#66f7c2", ...(profile.light || {}) };
   profile.logoLight = { effect: 1, brightness: 80, speed: 2, direction: 0, singleColor: true, color: "#66f7c2", ...(profile.logoLight || {}) };
   profile.colorKeys = Array.from({ length: 128 }, (_, index) => API.normalizeHexColor(profile.colorKeys?.[index] || profile.light.color));

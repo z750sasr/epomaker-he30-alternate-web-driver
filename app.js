@@ -116,10 +116,6 @@ async function resetToLanding({ closeDevice = false, stopMonitor = true, message
   state.liveLightingTimer = 0;
   cancelLiveLightingAnimation({ clearDisplay: true });
   state.liveLightingColors.fill(null);
-  state.liveStripLight = null;
-  state.liveStripUpdatedAt = 0;
-  state.liveStripError = "";
-  state.liveStripFramebufferDetected = false;
   if (closeDevice && state.driver) {
     try { await state.driver.close(); } catch (_) { /* no-op */ }
   }
@@ -190,7 +186,7 @@ function bindStaticControls() {
   $("#confirmBackupCheck")?.addEventListener("change", (event) => { $("#confirmApplyButton").disabled = !event.target.checked; });
   $("#confirmApplyButton")?.addEventListener("click", applyToKeyboard);
   $("#confirmSwitchButton")?.addEventListener("click", switchProfile);
-  $("#mappingSearch")?.addEventListener("input", (event) => renderMappingGroups(event.target.value));
+  ["input", "search"].forEach((type) => $("#mappingSearch")?.addEventListener(type, (event) => renderMappingGroups(event.target.value)));
   $("#clearMappingButton")?.addEventListener("click", clearMapping);
   $("#mappingDialog")?.addEventListener("close", () => { state.mappingPickerTarget = null; state.mappingPickerScope = "all"; });
   $("#saveAdvancedButton")?.addEventListener("click", saveAdvanced);

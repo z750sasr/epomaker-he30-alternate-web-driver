@@ -50,12 +50,14 @@
   .color-selection-summary { width: 100%; max-width: none; }
   .modal-toolbar { align-items: stretch; flex-direction: column; }
   .macro-row { grid-template-columns: 1fr 100px; }
-  .dks-grid { grid-template-columns: 90px repeat(4, minmax(105px, 1fr)); }
   .advanced-host-heading { flex-direction: column; }
   .advanced-host-slots, .advanced-single-host { width: 100%; min-width: 0; }
   .advanced-layer-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dks-travel-editor, .dks-transition-groups { grid-template-columns: 1fr; }
-  .dks-stage-picker { grid-template-columns: minmax(74px, 1fr) repeat(5, 29px); }
+  .dks-travel-editor, .dks-action-toolbar { grid-template-columns: 1fr; }
+  .dks-row-presets button { width: 100%; }
+  .dks-matrix-head { display: none; }
+  .dks-action-matrix { min-width: 0; grid-template-columns: 1fr; }
+  .dks-stage-distance { display: block; margin: 2px 0 -3px; color: var(--muted); font-size: 10px; font-weight: 850; }
   .calibration-heading { align-items: stretch; flex-direction: column; }
   .calibration-heading .button { width: 100%; }
   .calibration-progress { grid-template-columns: 1fr; }

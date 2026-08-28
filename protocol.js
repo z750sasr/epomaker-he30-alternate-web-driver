@@ -271,12 +271,6 @@ class HE30Driver {
     return decodeColors(bytes);
   }
 
-  async readLiveStripSettings(profileIndex = 0) {
-    const profile = clamp(profileIndex, 0, PROFILE_COUNT - 1);
-    const config = await this.readBlock(5, profileConfigOffset(profile), 64);
-    return decodeLighting(config).logoLight;
-  }
-
   /** Read every bank first, without interpretation, to make capture/debug easier. */
   async readRawProfile(profileIndex = 0, progress = () => {}) {
     const profile = clamp(profileIndex, 0, PROFILE_COUNT - 1);

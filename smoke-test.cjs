@@ -81,6 +81,19 @@ async function verifyBrowserBootstrap() {
     return [replacement, toggled];
   })()`, browser);
   if (JSON.stringify(colorBoxSelection) !== JSON.stringify([[4, 5], [0, 5]])) throw new Error("Per-key lighting box selection did not replace or Ctrl/Cmd-toggle the expected keys.");
+  const mappingSearchAndLabels = vm.runInContext(`(() => {
+    const basic = MAPPING_GROUPS.find((group) => group.title === "Basic characters");
+    const a = basic.items.find((item) => item.name === "A");
+    const b = basic.items.find((item) => item.name === "B");
+    return {
+      shortQueries: [mappingMatchesSearch(a, basic, "a"), mappingMatchesSearch(b, basic, "b")],
+      aliasQuery: mappingMatchesSearch(ALL_MAPPINGS.find((item) => item.short === "Vol+"), MAPPING_GROUPS.find((group) => group.title === "Media and applications"), "vol+"),
+      resetKeycap: mappingKeyboardLabel(makeMapping(240, 8, 0)),
+    };
+  })()`, browser);
+  if (JSON.stringify(mappingSearchAndLabels.shortQueries) !== JSON.stringify([true, true]) || !mappingSearchAndLabels.aliasQuery || mappingSearchAndLabels.resetKeycap !== "Reset 3s") {
+    throw new Error(`Mapping search aliases or compact virtual-keyboard labels regressed: ${JSON.stringify(mappingSearchAndLabels)}.`);
+  }
   const telemetryDistances = vm.runInContext(`(() => {
     const index = TELEMETRY_INDEX.get(4);
     const previousProfile = state.profile;
@@ -292,7 +305,7 @@ const profile = {
     { type: "tgl", layer: 0, index1: 2, tglKey: API.makeMapping(16, 0, 5) },
     { type: "rs", layer: 0, index1: 3, index2: 4, key1: API.makeMapping(16, 0, 4), key2: API.makeMapping(16, 0, 7), option: { actuation: 40, press: 10, release: 10 } },
     { type: "socd", layer: 0, index1: 5, index2: 6, key1: API.makeMapping(16, 0, 80), key2: API.makeMapping(16, 0, 79), option: { actuation: 40, press: 10, release: 10, priority: 1 } },
-    { type: "cb", layer: 0, index1: 7, modifiers: 3, modifierOrder: [2, 1], baseKey: API.makeMapping(16, 0, 7) },
+    { type: "cb", layer: 0, index1: 7, modifiers: 3, baseKey: API.makeMapping(16, 0, 7) },
     { type: "macro", layer: 0, index1: 8, macroRepeatCount: 1, actions: [{ action: "keydown", code: 4, delay: 0 }, { action: "keyup", code: 4, delay: 25 }] },
   ],
 };
@@ -332,7 +345,8 @@ const shareCode = await API.encodeProfileShare(shareReadyProfile);
 if (!shareCode.startsWith("HE30P1.") || shareCode.length >= JSON.stringify(shareReadyProfile).length) throw new Error("The profile share code was not versioned and compressed.");
 const sharedRoundTrip = await API.decodeProfileShare(shareCode);
 if (sharedRoundTrip.profileIndex !== 0 || sharedRoundTrip.userKeys[0].length !== 128 || sharedRoundTrip.travelKeys.length !== 128 || sharedRoundTrip.advancedKeys.length !== profile.advancedKeys.length || !sharedRoundTrip.deviceSettings.tachyonMode) throw new Error("The compressed profile share code did not round-trip all configuration sections.");
-equal(sharedRoundTrip.advancedKeys.find((item) => item.type === "cb")?.modifierOrder, [2, 1], "Combination-key modifier order was not preserved by profile sharing.");
+const sharedCombination = sharedRoundTrip.advancedKeys.find((item) => item.type === "cb");
+if (sharedCombination?.modifiers !== 3 || Object.hasOwn(sharedCombination, "modifierOrder")) throw new Error("Combination-key shares must preserve only the 8-bit HID modifier mask.");
 let rejectedCorruptShare = false;
 try {
   const corruptIndex = Math.floor(shareCode.length / 2);
@@ -358,7 +372,7 @@ for (const mode of ["Last Input Priority", "Absolute 1st key", "Absolute 2nd key
   if (!appSource.includes(mode)) throw new Error(`SOCD mode is missing: ${mode}`);
 }
 if (appSource.includes("Neutral / last input")) throw new Error("Neutral and Last Input Priority must remain separate SOCD modes.");
-for (const fragment of ["defaultMappingForPhysical", "restoreAdvancedHosts(item)", "preserveAdvancedUiMetadata", "mappingPickerField", "openAdvancedMappingPicker", "advancedHostPickerHtml", "data-advanced-host-key", "data-advanced-layer", "pairIndependentRt", "dksStagePicker", "profileDisclosureHtml", "data-profile-disclosure", "modifierPickerHtml", "comboModifierOrder", "modifierOrder", "Fn-layer warning:"]) {
+for (const fragment of ["defaultMappingForPhysical", "restoreAdvancedHosts(item)", "preserveAdvancedUiMetadata", "mappingPickerField", "openAdvancedMappingPicker", "advancedHostKeyboardHtml", "data-advanced-host-key", "data-advanced-layer", "pairIndependentRt", "DKS_STAGE_META", "dksActionCell", "data-dks-cell-action", "applyDksPreset", "Tap 4", "dksTimingActive", "Choose an output key for every active DKS row", "Dynamic keystroke grid", "profileDisclosureHtml", "data-profile-disclosure", "modifierPickerHtml", "comboModifierMask", "currentModifierMask", "HID mask bit order", "Fn-layer warning:"]) {
   if (!appSource.includes(fragment)) throw new Error(`Advanced-editor revamp is missing: ${fragment}`);
 }
 if (!appSource.includes('id="advLayer"') || !appSource.includes('$("#advLayer")?.value')) throw new Error("Advanced actions must expose and save the selected local layer.");
@@ -366,7 +380,7 @@ if (appSource.includes("Layer 0 only.")) throw new Error("The Advanced editor st
 if (!appSource.includes("editable = true") || !appSource.includes('$("#pairIndependentRt")?.checked')) throw new Error("Editable distance values or independent pair RT controls are missing.");
 const deleteAdvancedSource = appSource.match(/function deleteAdvanced\(index\) \{([\s\S]*?)\n  \}/)?.[1] || "";
 if (!deleteAdvancedSource.includes("restoreAdvancedHosts(item)") || deleteAdvancedSource.includes("makeMapping(255")) throw new Error("Deleting an Advanced action must restore its saved or physical-default host mappings.");
-for (const fragment of [".mapping-picker-control", ".modifier-options", ".modifier-order-item", ".advanced-host-keyboard", ".advanced-host-slots", ".dks-action-card", ".dks-stage-picker", ".profile-tool-disclosure", ".configured-action-buttons"]) {
+for (const fragment of [".mapping-picker-control", ".modifier-options", ".modifier-picker > p", ".advanced-host-keyboard", ".advanced-host-slots", ".dks-action-card", ".dks-matrix-cell", ".dks-row-presets", ".profile-tool-disclosure", ".configured-action-buttons"]) {
   if (!styleSource.includes(fragment)) throw new Error(`Advanced-editor styling is missing: ${fragment}`);
 }
 if (API.PROFILE_COUNT !== 3 || API.LAYER_COUNT !== 4 || API.TOTAL_LAYER_COUNT !== 12) throw new Error("The three-profile, twelve-layer topology is incorrect.");
@@ -398,7 +412,7 @@ for (const [code, name] of expectedNumpadNames) {
   if (API.mappingName(16, 0, code) !== name) throw new Error(`Numpad HID ${code} is missing or mislabeled.`);
 }
 equal(API.encodeMappings([{ type: 16, code1: 0, code2: 99 }]).slice(0, 3), [16, 0, 99], "Numpad mappings must retain their HID usage when encoded for the keyboard.");
-for (const fragment of ['title: "Numpad"', '["Num Lock", 83', '["Numpad . / Delete", 99', '["` / ~", 53, "Grave backtick tilde"]', '["/ / ?", 56, "Slash question mark"]', 'item.searchTerms || ""']) {
+for (const fragment of ['title: "Numpad"', '["Num Lock", 83', '["Numpad . / Delete", 99', '["` / ~", 53, "Grave backtick tilde"]', '["/ / ?", 56, "Slash question mark"]', 'mappingSearchFields', 'mappingMatchesSearch', 'item.macShort']) {
   if (!appSource.includes(fragment)) throw new Error(`Key-mapping picker support is missing: ${fragment}`);
 }
 equal([0, 1, 2].map((profileIndex) => API.translateFactoryFnLayer(1, profileIndex)), [1, 5, 9], "Factory FN1 targets were not translated per profile.");
@@ -543,7 +557,7 @@ for (const fragment of ["subscribeCalibration", "startCalibration", "endCalibrat
 }
 if (!protocolSource.includes("if (this.calibrationActive) throw new Error")) throw new Error("Calibration and live diagnostics must remain mutually exclusive.");
 if (!protocolSource.includes("readLiveColors") || !protocolSource.includes("this.readBlock(0xde, 0, 384)")) throw new Error("Live RGB framebuffer command 0xDE is missing.");
-if (!protocolSource.includes("readLiveStripSettings") || !protocolSource.includes("return decodeLighting(config).logoLight")) throw new Error("Live light-strip configuration reads are missing.");
+if (protocolSource.includes("readLiveStripSettings") || appSource.includes("LIVE_STRIP_FRAME_START") || appSource.includes("liveStripFramebufferDetected")) throw new Error("The strip must not claim a live framebuffer without a verified strip-pixel report.");
 for (const fragment of ["subscribeProfileChange", "handleHardwareProfileChange", "syncDeviceProfile", "preserveView: true"]) {
   if (!protocolSource.includes(fragment) && !appSource.includes(fragment)) throw new Error(`Live profile synchronization support is missing: ${fragment}`);
 }
@@ -625,10 +639,10 @@ equal([...stripEffectSource.matchAll(/\{ value: (\d+)/g)].map((match) => Number(
 for (const fragment of ["data-light-effect", "data-effect-value", "effectPicker", "lighting-effect-fields", "Hundred Flowers", "Always On Ripples", "Lights Off", "Preset", "Close", "Always on"]) {
   if (!appSource.includes(fragment)) throw new Error(`Original-driver lighting preset support is missing: ${fragment}`);
 }
-for (const fragment of ["startLiveLighting", "pollLiveLighting", "stopLiveLighting", "Live from keyboard", "readLiveColors", "readLiveStripSettings", "liveStripLight", "liveStripStatus"]) {
+for (const fragment of ["startLiveLighting", "pollLiveLighting", "stopLiveLighting", "Live from keyboard", "readLiveColors", "Configured preview", "LIGHT_STRIP_PREVIEW_SEGMENT_COUNT"]) {
   if (!appSource.includes(fragment)) throw new Error(`Live lighting behavior is missing: ${fragment}`);
 }
-for (const fragment of ["LIVE_LIGHTING_SMOOTHING_MS", "liveLightingDisplayColors", "requestAnimationFrame(animateLiveLighting)", "blendLightingColor", "LIVE_STRIP_CONFIG_POLL_MS", "LIVE_STRIP_FRAME_START", "LIVE_STRIP_SEGMENT_COUNT", "liveStripFramebufferDetected", "stripFrameColors", "updateLiveStripUI", "spectrumLightingColor", "data-strip-segment"]) {
+for (const fragment of ["LIVE_LIGHTING_SMOOTHING_MS", "liveLightingDisplayColors", "requestAnimationFrame(animateLiveLighting)", "blendLightingColor", "stripFrameColors", "updateLightStripPreview", "spectrumLightingColor", "data-strip-segment"]) {
   if (!appSource.includes(fragment)) throw new Error(`Smooth live-lighting rendering is missing: ${fragment}`);
 }
 if (!appSource.includes('const delay = [0, 3, 255].includes(state.profile?.light?.effect) ? 500 : 50')) throw new Error("Live-lighting smoothing must not increase HID polling traffic.");

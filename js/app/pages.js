@@ -32,7 +32,7 @@ function keyboardHtml(mode, selected = new Set()) {
     const mapping = compiled.userKeys[state.layer][index];
     const advanced = [112, 144, 145, 146, 147, 148].includes(mapping.type);
     const color = mode === "color" ? state.profile.colorKeys[index] : "";
-    const mapped = mode === "hall" ? `${(state.profile.travelKeys[index].key_actuation / 100).toFixed(2)} mm` : mode === "color" ? color : mappingLabel(mapping);
+    const mapped = mode === "hall" ? `${(state.profile.travelKeys[index].key_actuation / 100).toFixed(2)} mm` : mode === "color" ? color : mappingKeyboardLabel(mapping);
     const livePercent = mode === "hall" ? uiClamp((state.liveTravel[index] / switchTravelMaximum(state.profile.travelKeys[index])) * 100, 0, 100) : 0;
     const calibrationStatus = mode === "hall" && state.calibrationActive ? state.calibrationStatus[index] : null;
     const calibrationMaximum = mode === "hall" ? switchTravelMaximum(state.profile.travelKeys[index]) * 100 : 1;
@@ -50,7 +50,7 @@ function keyboardHtml(mode, selected = new Set()) {
         ? `<span class="physical">${esc(label)}</span><span class="key-color-value"><i style="--swatch:${esc(color)}"></i>${esc(color.toUpperCase())}</span>`
         : `<span class="physical">${esc(label)}</span><span class="mapped">${esc(mapped)}</span>`;
     const title = mode === "mapping"
-      ? ` title="Physical ${esc(label)} is mapped to ${esc(mapped)}"`
+      ? ` title="Physical ${esc(label)} is mapped to ${esc(mappingLabel(mapping))}"`
       : mode === "color" ? ` title="${esc(label)} saved color: ${esc(color.toUpperCase())}"` : "";
     const pressed = mode === "hall" || mode === "color" ? ` aria-pressed="${selected.has(index)}"` : "";
     const travelFill = mode === "hall" ? `<i class="travel-fill" aria-hidden="true"></i>` : "";
@@ -409,12 +409,12 @@ function lightingKeyboardPreview() {
 }
 
 function lightStripPreview() {
-  const light = state.liveLightingActive && state.liveStripLight ? state.liveStripLight : state.profile.logoLight;
+  const light = state.profile.logoLight;
   const color = light.effect === 2 || light.brightness === 0 ? "#000000" : API.normalizeHexColor(light.color, "#000000");
   const opacity = light.effect === 2 || light.brightness === 0 ? 0.15 : 0.35 + uiClamp(light.brightness, 0, 100) * 0.0065;
-  const segments = Array.from({ length: LIVE_STRIP_SEGMENT_COUNT }, (_, index) => `<i data-strip-segment="${index}" style="--strip-color:${esc(color)}"></i>`).join("");
+  const segments = Array.from({ length: LIGHT_STRIP_PREVIEW_SEGMENT_COUNT }, (_, index) => `<i data-strip-segment="${index}" style="--strip-color:${esc(color)}"></i>`).join("");
   return `<div class="strip-device" data-strip-lighting data-strip-effect="${Number(light.effect)}" style="--strip-color:${esc(color)};--strip-opacity:${opacity.toFixed(2)}">
-    <div class="light-strip" role="img" aria-label="Light strip preview color ${esc(color.toUpperCase())}">${segments}</div>
+    <div class="light-strip" role="img" aria-label="Configured light strip preview color ${esc(color.toUpperCase())}">${segments}</div>
     <span>${esc(lightingEffectName("logoLight", light.effect))} · ${light.brightness}% · ${esc(color.toUpperCase())}</span>
   </div>`;
 }
@@ -437,7 +437,7 @@ function renderLighting() {
       : "This preview is generated entirely from the opened profile. Export a new backup to preserve your lighting edits.";
   return `<div class="lighting-control-grid">
     <section class="panel form-card main-light-card"><div class="lighting-card-heading"><div><h3>Main key lighting</h3><p>${mainLightingDescription}</p></div><span class="lighting-zone-badge${state.liveLightingActive ? " live" : ""}" id="liveLightingStatus">${esc(liveStatus)}</span></div><div class="lighting-preview keyboard-lighting-preview">${lightingKeyboardPreview()}</div>${effectPicker("light", state.profile.light)}<div class="field-grid lighting-effect-fields">${lightFields("light", state.profile.light)}</div></section>
-    <section class="panel form-card strip-light-card"><div class="lighting-card-heading"><div><h3>Light strip</h3><p>The small independent lighting strip on the keyboard.</p></div><span class="lighting-zone-badge${state.liveLightingActive ? " live" : ""}" id="liveStripStatus">${state.liveLightingActive ? "Live sync" : state.liveLightingBusy ? "Starting live view" : "1 zone"}</span></div><div class="lighting-preview strip-lighting-preview">${lightStripPreview()}</div>${effectPicker("logoLight", state.profile.logoLight)}<div class="field-grid lighting-effect-fields">${lightFields("logoLight", state.profile.logoLight)}</div></section>
+    <section class="panel form-card strip-light-card"><div class="lighting-card-heading"><div><h3>Light strip</h3><p>The small independent lighting strip on the keyboard.</p></div><span class="lighting-zone-badge">Configured preview</span></div><div class="lighting-preview strip-lighting-preview">${lightStripPreview()}</div>${effectPicker("logoLight", state.profile.logoLight)}<div class="field-grid lighting-effect-fields">${lightFields("logoLight", state.profile.logoLight)}</div></section>
   </div>
   <div class="section-heading lighting-section-heading"><div><h2>Per-key colors</h2><p>${perKeyInstructions} These values are displayed by the Preset effect above.</p></div><span class="configured-badge">Configured values</span></div>
   <div class="color-toolbar panel">
