@@ -61,17 +61,18 @@
   .advanced-host-heading { flex-direction: column; }
   .advanced-host-slots, .advanced-single-host { width: 100%; min-width: 0; }
   .advanced-layer-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dks-thresholds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dks-thresholds > div:first-child, .dks-thresholds > div:nth-child(4) { grid-column: 1 / -1; }
   .dks-sequence-heading { align-items: stretch; flex-direction: column; }
   .dks-legend { justify-content: flex-start; }
-  .dks-timeline-head, .dks-action-row { min-width: 760px; grid-template-columns: 145px minmax(560px, 1fr) 40px; }
-  .dks-timeline-head { grid-template-columns: 145px repeat(7, minmax(0, 1fr)) 40px; }
-  .dks-action-key-wrap { grid-template-columns: minmax(0, 1fr) auto; }
   .dks-threshold-groups { grid-template-columns: 1fr; }
   .dks-threshold-groups section { grid-template-columns: 100px repeat(2, minmax(0, 1fr)); }
-  .dks-native-head, .dks-action-row { min-width: 760px; grid-template-columns: 180px minmax(400px, 1fr) 160px; }
-  .dks-native-head { grid-template-columns: 180px repeat(4, minmax(90px, 1fr)) 160px; }
+  .dks-sequence { overflow-x: visible; }
+  .dks-native-head { display: none; }
+  .dks-action-stack { gap: 12px; margin-top: 12px; }
+  .dks-action-row { min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 13px 12px; border: 1px solid var(--line); border-radius: 10px; background: #091522; }
+  .dks-action-key-wrap { grid-template-columns: 24px minmax(0, 1fr) auto; }
+  .dks-track-shell, .dks-row-summary, .dks-row-presets { grid-column: 1; }
+  .dks-row-presets { margin-top: 0; }
+  .dks-row-summary { min-height: 27px; }
   .calibration-heading { align-items: stretch; flex-direction: column; }
   .calibration-heading .button { width: 100%; }
   .calibration-progress { grid-template-columns: 1fr; }
@@ -89,6 +90,9 @@
 @media (max-width: 470px) {
   .main-light-card .effect-picker { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .strip-light-card .effect-picker { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dks-track-shell { padding-inline: 48px; }
+  .dks-checkpoint-wrap { width: 96px; }
+  .dks-checkpoint-label strong { font-size: 8px; }
 }
 
 @media (max-width: 480px) {

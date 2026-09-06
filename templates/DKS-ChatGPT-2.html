@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Magnetic Keyboard DKS Slider</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#090b10;
+    --panel:#11151d;
+    --panel-2:#0c1017;
+    --border:#252b38;
+    --text:#eef2f7;
+    --muted:#8d98aa;
+    --rail:#303744;
+    --checkpoint:#626d7d;
+    --ds:#6f8cff;
+    --de:#55d6be;
+    --us:#f3c969;
+    --ue:#ff8a65;
+    --danger:#ff6b7a;
+    --shadow:0 18px 60px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    min-height:100vh;
+    display:grid;
+    place-items:center;
+    padding:32px 20px;
+    background:
+      radial-gradient(900px 500px at 50% -10%, rgba(111,140,255,.12), transparent 65%),
+      var(--bg);
+    color:var(--text);
+    font:14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  .card{
+    width:min(920px,100%);
+    background:linear-gradient(180deg, rgba(255,255,255,.018), transparent 40%), var(--panel);
+    border:1px solid var(--border);
+    border-radius:20px;
+    box-shadow:var(--shadow);
+    overflow:hidden;
+  }
+
+  .header{
+    display:flex;
+    gap:20px;
+    align-items:flex-start;
+    justify-content:space-between;
+    padding:24px 26px 18px;
+    border-bottom:1px solid var(--border);
+  }
+
+  .eyebrow{
+    color:#9badff;
+    font-size:11px;
+    font-weight:750;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    margin-bottom:6px;
+  }
+
+  h1{font-size:20px;line-height:1.2;margin:0 0 8px}
+  .subtitle{margin:0;color:var(--muted);max-width:650px}
+
+  .reset{
+    flex:0 0 auto;
+    appearance:none;
+    border:1px solid var(--border);
+    background:#151a23;
+    color:var(--text);
+    border-radius:10px;
+    padding:9px 12px;
+    font:inherit;
+    cursor:pointer;
+  }
+  .reset:hover{border-color:#3b4455;background:#191f2a}
+
+  .content{padding:28px 26px 24px}
+
+  .legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px 18px;
+    margin-bottom:25px;
+    color:var(--muted);
+    font-size:12px;
+  }
+  .legend-item{display:flex;align-items:center;gap:7px}
+  .swatch{width:9px;height:9px;border-radius:999px;background:var(--c)}
+
+  .slider-wrap{
+    position:relative;
+    padding:24px 32px 12px;
+    user-select:none;
+  }
+
+  .track-area{
+    position:relative;
+    height:116px;
+    touch-action:none;
+  }
+
+  .base-rail{
+    position:absolute;
+    top:49px;
+    left:0;
+    right:0;
+    height:4px;
+    border-radius:999px;
+    background:var(--rail);
+    box-shadow:inset 0 1px 1px rgba(0,0,0,.35);
+  }
+
+  .span-layer{
+    position:absolute;
+    left:0;
+    right:0;
+    top:0;
+    bottom:0;
+    pointer-events:none;
+  }
+
+  .span{
+    position:absolute;
+    height:4px;
+    border-radius:999px;
+    transform:translateY(-50%);
+    box-shadow:0 0 18px color-mix(in srgb, var(--c) 35%, transparent);
+    background:var(--c);
+  }
+
+  .checkpoint-row{
+    position:absolute;
+    inset:0;
+  }
+
+  .checkpoint{
+    --x:0%;
+    position:absolute;
+    left:var(--x);
+    top:51px;
+    transform:translate(-50%,-50%);
+    width:24px;
+    height:24px;
+    border-radius:50%;
+    border:0;
+    padding:0;
+    cursor:ew-resize;
+    background:transparent;
+    touch-action:none;
+  }
+
+  .checkpoint::before{
+    content:"";
+    position:absolute;
+    inset:5px;
+    border-radius:50%;
+    background:var(--checkpoint);
+    border:2px solid var(--panel);
+    box-shadow:0 0 0 1px #424b5a;
+    transition:.13s ease;
+  }
+
+  .checkpoint:hover::before,
+  .checkpoint:focus-visible::before{
+    transform:scale(1.18);
+    box-shadow:0 0 0 2px #657083;
+  }
+
+  .checkpoint.active::before{
+    background:var(--c);
+    box-shadow:0 0 0 2px color-mix(in srgb, var(--c) 55%, #fff 5%), 0 0 18px color-mix(in srgb, var(--c) 35%, transparent);
+  }
+
+  .checkpoint.blocked{
+    cursor:not-allowed;
+  }
+  .checkpoint.blocked::before{
+    background:#3b414d;
+    box-shadow:0 0 0 1px #424752;
+    opacity:.45;
+  }
+
+  .point-label{
+    position:absolute;
+    left:var(--x);
+    top:73px;
+    transform:translateX(-50%);
+    width:150px;
+    text-align:center;
+  }
+  .name{
+    display:block;
+    font-size:12px;
+    font-weight:700;
+    color:var(--text);
+    letter-spacing:.01em;
+  }
+  .value-row{
+    margin-top:5px;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:5px;
+  }
+  .value{
+    min-width:30px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    height:22px;
+    padding:0 8px;
+    border-radius:999px;
+    color:var(--muted);
+    background:#0b0f16;
+    border:1px solid var(--border);
+    font-size:11px;
+    font-variant-numeric:tabular-nums;
+  }
+  .value.on{
+    color:var(--text);
+    border-color:color-mix(in srgb, var(--c) 45%, var(--border));
+  }
+  .clear{
+    width:22px;
+    height:22px;
+    border-radius:7px;
+    border:1px solid transparent;
+    background:transparent;
+    color:#687386;
+    cursor:pointer;
+    padding:0;
+    line-height:18px;
+    font-size:15px;
+  }
+  .clear:hover{color:var(--danger);border-color:#3a2830;background:#1a1116}
+  .clear:disabled{opacity:.25;cursor:default}
+
+  .hint{
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+    margin:18px 0 0;
+    padding:12px 14px;
+    border-radius:11px;
+    border:1px solid var(--border);
+    background:var(--panel-2);
+    color:var(--muted);
+    font-size:12px;
+  }
+  .hint strong{color:#cfd6e2}
+
+  .status{
+    min-height:24px;
+    padding:10px 2px 0;
+    color:var(--muted);
+    font-size:12px;
+  }
+  .status.error{color:#ff9ba5}
+  .status.ok{color:#9ab0ff}
+
+  .state{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:10px;
+    margin-top:18px;
+  }
+  .state-cell{
+    padding:11px 12px;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    border-radius:10px;
+  }
+  .state-key{color:var(--muted);font-size:11px;margin-bottom:2px}
+  .state-num{font-size:17px;font-weight:720;font-variant-numeric:tabular-nums}
+
+  .json{
+    margin-top:10px;
+    padding:12px 14px;
+    background:#080b10;
+    border:1px solid var(--border);
+    border-radius:10px;
+    color:#c8d1de;
+    font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    overflow:auto;
+  }
+
+  .footer-note{
+    padding:0 26px 22px;
+    color:#6f7a8d;
+    font-size:11px;
+  }
+  .footer-note a{color:#8498ec;text-decoration:none}
+  .footer-note a:hover{text-decoration:underline}
+
+  @media (max-width:680px){
+    .header{padding:20px;flex-direction:column}
+    .content{padding:24px 18px 20px}
+    .slider-wrap{padding-left:16px;padding-right:16px}
+    .point-label{width:90px}
+    .name{font-size:10px}
+    .state{grid-template-columns:repeat(2,1fr)}
+    .footer-note{padding:0 18px 18px}
+  }
+</style>
+</head>
+<body>
+<main class="card">
+  <header class="header">
+    <div>
+      <div class="eyebrow">Dynamic Keystroke</div>
+      <h1>DKS checkpoint slider</h1>
+      <p class="subtitle">Click a checkpoint to set its value to 1. Drag right from that checkpoint to extend its active span. The line stops immediately before the destination checkpoint.</p>
+    </div>
+    <button class="reset" id="resetBtn" type="button">Reset all</button>
+  </header>
+
+  <section class="content">
+    <div class="legend" aria-hidden="true">
+      <span class="legend-item"><i class="swatch" style="--c:var(--ds)"></i>downStart</span>
+      <span class="legend-item"><i class="swatch" style="--c:var(--de)"></i>downEnd</span>
+      <span class="legend-item"><i class="swatch" style="--c:var(--us)"></i>upStart</span>
+      <span class="legend-item"><i class="swatch" style="--c:var(--ue)"></i>upEnd</span>
+    </div>
+
+    <div class="slider-wrap">
+      <div class="track-area" id="trackArea" aria-label="DKS checkpoint editor">
+        <div class="base-rail"></div>
+        <div class="span-layer" id="spanLayer"></div>
+
+        <div class="checkpoint-row">
+          <button class="checkpoint" data-index="0" style="--x:0%;--c:var(--ds)" aria-label="downStart checkpoint"></button>
+          <button class="checkpoint" data-index="1" style="--x:33.333%;--c:var(--de)" aria-label="downEnd checkpoint"></button>
+          <button class="checkpoint" data-index="2" style="--x:66.666%;--c:var(--us)" aria-label="upStart checkpoint"></button>
+          <button class="checkpoint" data-index="3" style="--x:100%;--c:var(--ue)" aria-label="upEnd checkpoint"></button>
+
+          <div class="point-label" style="--x:0%;--c:var(--ds)">
+            <span class="name">downStart</span>
+            <span class="value-row"><span class="value" data-value="0">0</span><button class="clear" data-clear="0" title="Disable downStart">×</button></span>
+          </div>
+          <div class="point-label" style="--x:33.333%;--c:var(--de)">
+            <span class="name">downEnd</span>
+            <span class="value-row"><span class="value" data-value="1">0</span><button class="clear" data-clear="1" title="Disable downEnd">×</button></span>
+          </div>
+          <div class="point-label" style="--x:66.666%;--c:var(--us)">
+            <span class="name">upStart</span>
+            <span class="value-row"><span class="value" data-value="2">0</span><button class="clear" data-clear="2" title="Disable upStart">×</button></span>
+          </div>
+          <div class="point-label" style="--x:100%;--c:var(--ue)">
+            <span class="name">upEnd</span>
+            <span class="value-row"><span class="value" data-value="3">0</span><button class="clear" data-clear="3" title="Disable upEnd">×</button></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hint">
+        <span>↔</span>
+        <div><strong>Gesture:</strong> press directly on a checkpoint. Release without moving = value 1. Drag right = 2 / 3 / 4 where allowed. Use × below a checkpoint to return it to 0. Keyboard: focus a checkpoint, use ← / →, and Delete to disable.</div>
+      </div>
+
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="state" id="stateGrid"></div>
+    <pre class="json" id="jsonState"></pre>
+  </section>
+
+  <div class="footer-note">
+    DKS concept reference:
+    <a href="https://help.wooting.io/article/99-how-to-use-dks" target="_blank" rel="noreferrer">Wooting DKS guide</a>
+    ·
+    <a href="https://www.keychron.com/products/keychron-k4-he-wireless-magnetic-switch-custom-keyboard" target="_blank" rel="noreferrer">Keychron magnetic keyboard / DKS</a>
+  </div>
+</main>
+
+<script>
+(() => {
+  const KEYS = ["downStart", "downEnd", "upStart", "upEnd"];
+  const MAX = [4, 3, 2, 1];
+  const COLORS = ["var(--ds)", "var(--de)", "var(--us)", "var(--ue)"];
+  const LANE_Y = [43, 48, 54, 59];
+  const state = {
+    downStart: 0,
+    downEnd: 0,
+    upStart: 0,
+    upEnd: 0
+  };
+
+  const track = document.getElementById("trackArea");
+  const spanLayer = document.getElementById("spanLayer");
+  const status = document.getElementById("status");
+  const jsonState = document.getElementById("jsonState");
+  const stateGrid = document.getElementById("stateGrid");
+  const checkpoints = [...document.querySelectorAll(".checkpoint")];
+  const valueEls = [...document.querySelectorAll("[data-value]")];
+  const clearBtns = [...document.querySelectorAll("[data-clear]")];
+
+  let gesture = null;
+
+  function blockers(index) {
+    if (index === 1 && state.downStart >= 3) {
+      return `downEnd is locked because downStart = ${state.downStart}.`;
+    }
+    if (index === 2 && state.downStart === 4) {
+      return "upStart is locked because downStart = 4.";
+    }
+    if (index === 2 && state.downEnd === 3) {
+      return "upStart is locked because downEnd = 3.";
+    }
+    return "";
+  }
+
+  function normalizeAfterSet(index, value) {
+    const key = KEYS[index];
+    state[key] = Math.max(0, Math.min(MAX[index], value));
+
+    // Parent values invalidate dependent values.
+    if (key === "downStart") {
+      if (state.downStart === 4) {
+        if (state.downEnd || state.upStart) {
+          setStatus("downStart = 4 automatically disabled downEnd and upStart.", "ok");
+        }
+        state.downEnd = 0;
+        state.upStart = 0;
+      } else if (state.downStart === 3) {
+        if (state.downEnd) {
+          setStatus("downStart = 3 automatically disabled downEnd.", "ok");
+        }
+        state.downEnd = 0;
+      }
+    }
+
+    if (key === "downEnd" && state.downEnd === 3) {
+      if (state.upStart) {
+        setStatus("downEnd = 3 automatically disabled upStart.", "ok");
+      }
+      state.upStart = 0;
+    }
+
+    render();
+  }
+
+  function setStatus(message = "", kind = "") {
+    status.textContent = message;
+    status.className = "status" + (kind ? ` ${kind}` : "");
+  }
+
+  function pointX(index) {
+    const width = track.getBoundingClientRect().width;
+    return width * index / 3;
+  }
+
+  function renderSpans() {
+    spanLayer.replaceChildren();
+    const rect = track.getBoundingClientRect();
+    const width = rect.width;
+    const dotGap = 11; // finishes just before the destination checkpoint
+
+    KEYS.forEach((key, i) => {
+      const value = state[key];
+      if (value <= 1) return;
+
+      const endIndex = i + value - 1;
+      const startX = width * i / 3;
+      const destinationX = width * endIndex / 3;
+      const endX = Math.max(startX, destinationX - dotGap);
+
+      const span = document.createElement("div");
+      span.className = "span";
+      span.style.setProperty("--c", COLORS[i]);
+      span.style.left = `${startX}px`;
+      span.style.top = `${LANE_Y[i]}px`;
+      span.style.width = `${Math.max(0, endX - startX)}px`;
+      spanLayer.appendChild(span);
+    });
+  }
+
+  function render() {
+    KEYS.forEach((key, i) => {
+      const value = state[key];
+      const blocked = !!blockers(i);
+      checkpoints[i].classList.toggle("active", value > 0);
+      checkpoints[i].classList.toggle("blocked", blocked);
+      checkpoints[i].setAttribute("aria-disabled", blocked ? "true" : "false");
+      checkpoints[i].setAttribute("aria-valuemin", "0");
+      checkpoints[i].setAttribute("aria-valuemax", String(MAX[i]));
+      checkpoints[i].setAttribute("aria-valuenow", String(value));
+      checkpoints[i].title = blocked ? blockers(i) : `${key}: ${value}`;
+
+      valueEls[i].textContent = String(value);
+      valueEls[i].classList.toggle("on", value > 0);
+      valueEls[i].style.setProperty("--c", COLORS[i]);
+      clearBtns[i].disabled = value === 0;
+    });
+
+    renderSpans();
+
+    stateGrid.innerHTML = KEYS.map((key, i) => `
+      <div class="state-cell">
+        <div class="state-key">${key}</div>
+        <div class="state-num" style="color:${COLORS[i]}">${state[key]}</div>
+      </div>
+    `).join("");
+
+    jsonState.textContent = JSON.stringify(state, null, 2);
+  }
+
+  function valueFromPointer(index, clientX) {
+    const rect = track.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+    const start = pointX(index);
+
+    if (x <= start) return 1;
+
+    // Each next value activates after the cursor crosses the midpoint
+    // toward the next checkpoint, making the interaction feel snap-based.
+    let target = index;
+    for (let j = index + 1; j < 4; j++) {
+      const midpoint = (pointX(j - 1) + pointX(j)) / 2;
+      if (x >= midpoint) target = j;
+    }
+    return Math.min(MAX[index], target - index + 1);
+  }
+
+  function beginGesture(index, event) {
+    const reason = blockers(index);
+    if (reason) {
+      setStatus(reason, "error");
+      return;
+    }
+
+    gesture = {
+      index,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      dragged: false
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    normalizeAfterSet(index, 1); // click behavior
+    setStatus(`${KEYS[index]} = 1`);
+  }
+
+  checkpoints.forEach((checkpoint, index) => {
+    checkpoint.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      beginGesture(index, event);
+    });
+
+    checkpoint.addEventListener("pointermove", (event) => {
+      if (!gesture || gesture.pointerId !== event.pointerId || gesture.index !== index) return;
+
+      if (Math.abs(event.clientX - gesture.startX) > 4) gesture.dragged = true;
+      if (!gesture.dragged) return;
+
+      const nextValue = valueFromPointer(index, event.clientX);
+      normalizeAfterSet(index, nextValue);
+      setStatus(`${KEYS[index]} = ${nextValue}`);
+    });
+
+    const finish = (event) => {
+      if (!gesture || gesture.pointerId !== event.pointerId || gesture.index !== index) return;
+      const value = state[KEYS[index]];
+      setStatus(`${KEYS[index]} set to ${value}.`, "ok");
+      gesture = null;
+    };
+
+    checkpoint.addEventListener("pointerup", finish);
+    checkpoint.addEventListener("pointercancel", finish);
+
+    checkpoint.addEventListener("keydown", (event) => {
+      const reason = blockers(index);
+      if (reason && !["Delete", "Backspace"].includes(event.key)) {
+        setStatus(reason, "error");
+        return;
+      }
+
+      const current = state[KEYS[index]];
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        normalizeAfterSet(index, Math.min(MAX[index], Math.max(1, current + 1)));
+        setStatus(`${KEYS[index]} = ${state[KEYS[index]]}`);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        normalizeAfterSet(index, current <= 1 ? 1 : current - 1);
+        setStatus(`${KEYS[index]} = ${state[KEYS[index]]}`);
+      } else if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        normalizeAfterSet(index, 1);
+        setStatus(`${KEYS[index]} = 1`);
+      } else if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        normalizeAfterSet(index, 0);
+        setStatus(`${KEYS[index]} disabled.`, "ok");
+      }
+    });
+  });
+
+  clearBtns.forEach((button, index) => {
+    button.addEventListener("click", () => {
+      normalizeAfterSet(index, 0);
+      setStatus(`${KEYS[index]} disabled.`, "ok");
+    });
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    KEYS.forEach(key => state[key] = 0);
+    setStatus("All DKS checkpoints disabled.", "ok");
+    render();
+  });
+
+  window.addEventListener("resize", renderSpans);
+  render();
+})();
+</script>
+</body>
+</html>

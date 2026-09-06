@@ -146,14 +146,21 @@ async function verifyBrowserBootstrap() {
     const equality = createDksDraft({ dksPoint: [10, 10, 30, 30], dksKeys: [] });
     const equalityErrors = validateDksDraft(equality).errors;
     const outlierWarnings = validateDksDraft(createDksDraft({ dksPoint: [0, 31, 30, 10] })).warnings.length;
+    const snapRow = { downStart: 0, downEnd: 0, upStart: 0, upEnd: 0 };
+    const pointerSnaps = [0.1, 0.17, 0.49, 0.5, 0.84].map((ratio) => dksPointerValueFromRatio(snapRow, 0, ratio));
+    const cappedPointerSnap = dksPointerValueFromRatio({ ...snapRow, downEnd: 1 }, 0, 0.99);
+    state.dksDraft = draft;
+    const editorMarkup = dksEditorHtml();
+    const markupReady = ["dks-point-scale", "dks-track-shell", "dksInteractionStatus", "Quick timing", "data-dks-row-point"].every((fragment) => editorMarkup.includes(fragment));
     clearDksDraftRow(draft, 0);
     const cleared = [dksOutputAssigned(draft.rows[0]), dksTimingActive(draft.rows[0]), draft.rows[0]._timingDirty];
     state.profile = previousProfile;
-    return { projectionPure, padded, rawPreserved, fullHold, rowIsolation, overlapResolved, adjacentValid, taps, emptyMappings, equalityErrors, outlierWarnings, cleared };
+    return { projectionPure, padded, rawPreserved, fullHold, rowIsolation, overlapResolved, adjacentValid, taps, emptyMappings, equalityErrors, outlierWarnings, pointerSnaps, cappedPointerSnap, markupReady, cleared };
   })()`, browser);
   if (!dksBehavior.projectionPure || dksBehavior.padded !== 4 || JSON.stringify(dksBehavior.rawPreserved) !== JSON.stringify([0, 31, 31])) throw new Error(`DKS draft creation or read-only projection regressed: ${JSON.stringify(dksBehavior)}.`);
   if (JSON.stringify(dksBehavior.fullHold) !== JSON.stringify([4, 0, 0, 0, true]) || !dksBehavior.rowIsolation || JSON.stringify(dksBehavior.overlapResolved) !== JSON.stringify([2, 1]) || !dksBehavior.adjacentValid) throw new Error(`DKS native range editing or row isolation regressed: ${JSON.stringify(dksBehavior)}.`);
   if (JSON.stringify(dksBehavior.taps) !== JSON.stringify([[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]) || JSON.stringify(dksBehavior.emptyMappings) !== JSON.stringify([false, false, true])) throw new Error(`DKS tap recipes or empty mappings regressed: ${JSON.stringify(dksBehavior)}.`);
+  if (JSON.stringify(dksBehavior.pointerSnaps) !== JSON.stringify([1, 2, 2, 3, 4]) || dksBehavior.cappedPointerSnap !== 2 || !dksBehavior.markupReady) throw new Error(`DKS checkpoint table or midpoint snapping regressed: ${JSON.stringify(dksBehavior)}.`);
   if (dksBehavior.equalityErrors.length || !dksBehavior.outlierWarnings || JSON.stringify(dksBehavior.cleared) !== JSON.stringify([false, false, true])) throw new Error(`DKS threshold validation or row removal regressed: ${JSON.stringify(dksBehavior)}.`);
   const telemetryDistances = vm.runInContext(`(() => {
     const index = TELEMETRY_INDEX.get(4);
@@ -490,7 +497,7 @@ for (const mode of ["Last Input Priority", "Absolute 1st key", "Absolute 2nd key
   if (!appSource.includes(mode)) throw new Error(`SOCD mode is missing: ${mode}`);
 }
 if (appSource.includes("Neutral / last input")) throw new Error("Neutral and Last Input Priority must remain separate SOCD modes.");
-for (const fragment of ["defaultMappingForPhysical", "restoreAdvancedHosts(item)", "preserveAdvancedUiMetadata", "mappingPickerField", "openAdvancedMappingPicker", "advancedHostKeyboardHtml", "data-advanced-host-key", "data-advanced-layer", "pairIndependentRt", "DKS_FIELD_META", "createDksDraft", "projectDksRow", "editDksAnchor", "validateDksDraft", "dksRawToMm", "dksMmToRaw", "data-dks-anchor-toggle", "data-dks-anchor-range", "Tap R1", "Full hold", "dksTimingActive", "Choose an output key for every active DKS row", "Dynamic Keystroke", "profileDisclosureHtml", "data-profile-disclosure", "modifierPickerHtml", "comboModifierMask", "currentModifierMask", "HID mask bit order", "Fn-layer warning:"]) {
+for (const fragment of ["defaultMappingForPhysical", "restoreAdvancedHosts(item)", "preserveAdvancedUiMetadata", "mappingPickerField", "openAdvancedMappingPicker", "advancedHostKeyboardHtml", "data-advanced-host-key", "data-advanced-layer", "pairIndependentRt", "DKS_FIELD_META", "createDksDraft", "projectDksRow", "editDksAnchor", "validateDksDraft", "dksRawToMm", "dksMmToRaw", "data-dks-checkpoint", "data-dks-anchor-clear", "dksPointerValue", "dksPointerValueFromRatio", "dksUpdateRowVisual", "dksInteractionStatus", "syncDksPointLabels", "Tap R1", "Full hold", "dksTimingActive", "Choose an output key for every active DKS row", "Dynamic Keystroke", "profileDisclosureHtml", "data-profile-disclosure", "modifierPickerHtml", "comboModifierMask", "currentModifierMask", "HID mask bit order", "Fn-layer warning:"]) {
   if (!appSource.includes(fragment)) throw new Error(`Advanced-editor revamp is missing: ${fragment}`);
 }
 for (const forbidden of ["dksMaskToFields", "dksTimelineMaskFromEntry", "DKS_TIMELINE_POINTS", "document.onpointerup"]) {
@@ -501,7 +508,7 @@ if (appSource.includes("Layer 0 only.")) throw new Error("The Advanced editor st
 if (!appSource.includes("editable = true") || !appSource.includes('$("#pairIndependentRt")?.checked')) throw new Error("Editable distance values or independent pair RT controls are missing.");
 const deleteAdvancedSource = appSource.match(/function deleteAdvanced\(index\) \{([\s\S]*?)\n  \}/)?.[1] || "";
 if (!deleteAdvancedSource.includes("restoreAdvancedHosts(item)") || deleteAdvancedSource.includes("makeMapping(255")) throw new Error("Deleting an Advanced action must restore its saved or physical-default host mappings.");
-for (const fragment of [".mapping-picker-control", ".modifier-options", ".modifier-picker > p", ".advanced-host-keyboard", ".advanced-host-slots", ".dks-action-row", ".dks-native-track", ".dks-anchor-control", ".dks-threshold-groups", ".dks-row-presets", ".profile-tool-disclosure", ".configured-action-buttons"]) {
+for (const fragment of [".mapping-picker-control", ".modifier-options", ".modifier-picker > p", ".advanced-host-keyboard", ".advanced-host-slots", ".dks-action-row", ".dks-track-shell", ".dks-native-track", ".dks-checkpoint", ".dks-point-scale", ".dks-interaction-status", ".dks-gesture-hint", ".dks-threshold-groups", ".dks-row-presets", ".profile-tool-disclosure", ".configured-action-buttons"]) {
   if (!styleSource.includes(fragment)) throw new Error(`Advanced-editor styling is missing: ${fragment}`);
 }
 if (API.PROFILE_COUNT !== 3 || API.LAYER_COUNT !== 4 || API.TOTAL_LAYER_COUNT !== 12) throw new Error("The three-profile, twelve-layer topology is incorrect.");

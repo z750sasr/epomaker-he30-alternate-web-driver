@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DKS Magnetic Keyboard Setup</title>
+  <style>
+    :root {
+      --bg: #091522;
+      --card-bg: #0e1e2e;
+      --line-color: #233547;
+      --active-line: #00f2a1;
+      --cp-disabled: #2b3a4a;
+      --cp-active: #00f2a1;
+      --cp-hover: #00c482;
+      --text: #ffffff;
+      --text-muted: #64748b;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+
+    .dks-container {
+      background: var(--card-bg);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      width: 480px;
+    }
+
+    .dks-track {
+      position: relative;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 20px 0;
+      padding: 0 20px;
+    }
+
+    .track-background {
+      position: absolute;
+      left: 20px;
+      right: 20px;
+      height: 4px;
+      background: var(--line-color);
+      z-index: 1;
+    }
+
+    .active-line-segment {
+      position: absolute;
+      height: 4px;
+      background: var(--active-line);
+      z-index: 2;
+      transition: all 0.15s ease;
+      box-shadow: 0 0 8px rgba(0, 242, 161, 0.4);
+    }
+
+    .checkpoint {
+      position: relative;
+      z-index: 3;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--card-bg);
+      border: 3px solid var(--cp-disabled);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      user-select: none;
+      transition: all 0.2s ease;
+    }
+
+    .checkpoint.active {
+      border-color: var(--cp-active);
+      color: #000;
+      background: var(--cp-active);
+      box-shadow: 0 0 10px var(--cp-active);
+    }
+
+    .checkpoint.highlight {
+      border-color: var(--cp-active);
+    }
+
+    .checkpoint.dragging {
+      scale: 1.25;
+      cursor: grabbing;
+    }
+
+    .controls-panel {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .field-group label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .field-group select {
+      background: #142536;
+      color: var(--text);
+      border: 1px solid var(--line-color);
+      padding: 8px;
+      border-radius: 6px;
+      outline: none;
+    }
+
+    .field-group select:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="dks-container">
+    <h3>DKS Travel Line</h3>
+    
+    <div class="dks-track" id="dksTrack">
+      <div class="track-background"></div>
+      <div class="active-line-segment" id="lineSegment"></div>
+      
+      <div class="checkpoint" data-cp="1">1</div>
+      <div class="checkpoint" data-cp="2">2</div>
+      <div class="checkpoint" data-cp="3">3</div>
+      <div class="checkpoint" data-cp="4">4</div>
+    </div>
+
+    <div class="controls-panel">
+      <div class="field-group">
+        <label>Down Start (P1)</label>
+        <select id="downStart">
+          <option value="0">0 (Disabled)</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+
+      <div class="field-group">
+        <label>Down End (P2)</label>
+        <select id="downEnd">
+          <option value="0">0 (Disabled)</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+      </div>
+
+      <div class="field-group">
+        <label>Up Start (R1)</label>
+        <select id="upStart">
+          <option value="0">0 (Disabled)</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+        </select>
+      </div>
+
+      <div class="field-group">
+        <label>Up End (R2)</label>
+        <select id="upEnd">
+          <option value="0">0 (Disabled)</option>
+          <option value="1">1</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const state = { downStart: 0, downEnd: 0, upStart: 0, upEnd: 0 };
+
+    const selects = {
+      downStart: document.getElementById('downStart'),
+      downEnd: document.getElementById('downEnd'),
+      upStart: document.getElementById('upStart'),
+      upEnd: document.getElementById('upEnd')
+    };
+
+    const checkpoints = Array.from(document.querySelectorAll('.checkpoint'));
+    const lineSegment = document.getElementById('lineSegment');
+    const track = document.getElementById('dksTrack');
+
+    let activeDragPoint = null;
+
+    function enforceRules() {
+      // Rule checks based on selection state
+      if (state.downStart === 4) {
+        state.downEnd = 0;
+        state.upStart = 0;
+      }
+      if (state.downStart === 3) {
+        state.downEnd = 0;
+      }
+      if (state.downEnd === 3) {
+        state.upStart = 0;
+      }
+
+      // Sync UI Select Option elements (Enabled/Disabled states)
+      selects.downEnd.querySelectorAll('option').forEach(opt => {
+        const val = parseInt(opt.value);
+        opt.disabled = (state.downStart === 4 || state.downStart === 3) && val !== 0;
+      });
+
+      selects.upStart.querySelectorAll('option').forEach(opt => {
+        const val = parseInt(opt.value);
+        opt.disabled = ((state.downStart === 4) || (state.downEnd === 3)) && val !== 0;
+      });
+
+      // Update Form Value states
+      for (const key in selects) {
+        selects[key].value = state[key];
+      }
+
+      renderUI();
+    }
+
+    function renderUI() {
+      checkpoints.forEach(cp => cp.className = 'checkpoint');
+      lineSegment.style.display = 'none';
+
+      // 1. Check highlight only (Value = 1)
+      if (state.downStart === 1) checkpoints[0].classList.add('active');
+      if (state.downEnd === 1) checkpoints[1].classList.add('active');
+      if (state.upStart === 1) checkpoints[2].classList.add('active');
+      if (state.upEnd === 1) checkpoints[3].classList.add('active');
+
+      // 2. Line Rendering logic
+      let startCP = null;
+      let targetCP = null;
+
+      if (state.downStart > 1) {
+        startCP = 1;
+        targetCP = state.downStart;
+      } else if (state.downEnd > 1) {
+        startCP = 2;
+        targetCP = state.downEnd + 1;
+      } else if (state.upStart > 1) {
+        startCP = 3;
+        targetCP = state.upStart + 2;
+      }
+
+      if (startCP && targetCP) {
+        drawSegment(startCP, targetCP);
+      }
+    }
+
+    function drawSegment(fromPoint, toPoint) {
+      const trackRect = track.getBoundingClientRect();
+      const startElem = checkpoints[fromPoint - 1].getBoundingClientRect();
+      const targetElem = checkpoints[toPoint - 1].getBoundingClientRect();
+
+      const startX = (startElem.left + startElem.width / 2) - trackRect.left;
+      
+      // Stop right before the target checkpoint
+      const targetX = targetElem.left - trackRect.left - 4; 
+
+      lineSegment.style.left = `${startX}px`;
+      lineSegment.style.width = `${Math.max(0, targetX - startX)}px`;
+      lineSegment.style.display = 'block';
+
+      // Highlight source node point
+      checkpoints[fromPoint - 1].classList.add('active');
+    }
+
+    // Interactive Dragging and Clicking Logic
+    checkpoints.forEach((cp, index) => {
+      const cpIndex = index + 1;
+
+      cp.addEventListener('mousedown', (e) => {
+        activeDragPoint = cpIndex;
+        cp.classList.add('dragging');
+      });
+
+      cp.addEventListener('click', () => {
+        // Single Click = set to 1
+        if (cpIndex === 1) state.downStart = state.downStart === 1 ? 0 : 1;
+        if (cpIndex === 2) state.downEnd = state.downEnd === 1 ? 0 : 1;
+        if (cpIndex === 3) state.upStart = state.upStart === 1 ? 0 : 1;
+        if (cpIndex === 4) state.upEnd = state.upEnd === 1 ? 0 : 1;
+        
+        enforceRules();
+      });
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!activeDragPoint) return;
+
+      const trackRect = track.getBoundingClientRect();
+      const mouseX = e.clientX - trackRect.left;
+
+      // Map mouse position to nearest checkpoint (1 to 4)
+      let currentTarget = 1;
+      checkpoints.forEach((cp, idx) => {
+        const cpX = cp.offsetLeft + cp.offsetWidth / 2;
+        if (mouseX > cpX - 25) currentTarget = idx + 1;
+      });
+
+      if (currentTarget >= activeDragPoint) {
+        if (activeDragPoint === 1) state.downStart = currentTarget;
+        if (activeDragPoint === 2) state.downEnd = currentTarget - 1;
+        if (activeDragPoint === 3) state.upStart = currentTarget - 2;
+        enforceRules();
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (activeDragPoint) {
+        checkpoints.forEach(cp => cp.classList.remove('dragging'));
+        activeDragPoint = null;
+      }
+    });
+
+    // Dropdown Change Listeners
+    Object.keys(selects).forEach(key => {
+      selects[key].addEventListener('change', (e) => {
+        state[key] = parseInt(e.target.value);
+        enforceRules();
+      });
+    });
+
+    // Initial setup
+    enforceRules();
+  </script>
+</body>
+</html>

@@ -22,6 +22,8 @@ const DKS_FIELD_META = Object.freeze([
   { field: "upEnd", maximum: 1 },
 ]);
 const DKS_COLORS = Object.freeze(["#ff6f91", "#ffb454", "#6fa8ff", "#73f0c0"]);
+const DKS_ANCHOR_COLORS = Object.freeze(["#6f8cff", "#55d6be", "#f3c969", "#ff8a65"]);
+let dksPointerGesture = null;
 
 function dksRawToMm(raw) {
   return Number(raw) / 10;
@@ -172,7 +174,7 @@ function dksThresholdField(index, raw) {
 }
 
 function dksThresholdHeader(points) {
-  return `<div class="dks-native-head"><span>Output</span>${DKS_POINT_META.map((meta, index) => `<div class="${meta.phase}"><b>${meta.label}</b><small data-dks-point-label="${index}">${dksRawToMm(points[index]).toFixed(1)} mm</small></div>`).join("")}<span>Summary</span></div>`;
+  return `<div class="dks-native-head"><span>Output key</span><div class="dks-path-heading"><b style="margin-bottom: 2rem;">Press → bottom → release</b><div class="dks-point-scale">${DKS_POINT_META.map((meta, index) => `<span style="--dks-anchor:${DKS_ANCHOR_COLORS[index]};--dks-x:${dksAnchorPercent(index)}"><i>${meta.label}</i><small>${DKS_FIELD_META[index].field}</small><em data-dks-point-label="${index}">${dksRawToMm(points[index]).toFixed(1)} mm</em></span>`).join("")}</div></div><span>Behavior</span></div>`;
 }
 
 function dksRowSummary(row) {
@@ -185,24 +187,36 @@ function dksRowSummary(row) {
   }).join(". ");
 }
 
+function dksAnchorPercent(anchor) {
+  return `${(Number(anchor) * 100) / 3}%`;
+}
+
+function dksSegmentStyle(anchor, segment) {
+  return `--dks-anchor:${DKS_ANCHOR_COLORS[anchor]};--dks-start:${dksAnchorPercent(anchor)};--dks-end:${dksAnchorPercent(segment?.end ?? anchor)};--dks-lane:${30 + anchor * 4}px`;
+}
+
 function dksRowTrack(row, rowIndex) {
   const semantic = dksSemanticRow(row);
   const segments = projectDksRow(semantic);
-  return `<div class="dks-native-track" role="group" aria-label="Output ${rowIndex + 1} timing">${segments.map((segment) => `<i class="dks-native-segment${segment.tap ? " tap" : ""}" style="grid-column:${segment.anchor + 1}/${segment.end + 2}" aria-hidden="true"></i>`).join("")}${DKS_FIELD_META.map(({ field }, anchor) => {
+  return `<div class="dks-track-shell"><div class="dks-native-track" data-dks-track="${rowIndex}" role="group" aria-label="Output ${rowIndex + 1} timing"><div class="dks-base-rail" aria-hidden="true"></div><div class="dks-span-layer" aria-hidden="true">${DKS_FIELD_META.map(({ field }, anchor) => {
+    const segment = segments.find((candidate) => candidate.field === field);
+    return `<i class="dks-native-segment${segment?.tap ? " tap" : ""}${segment ? " active" : ""}" data-dks-span="${rowIndex}:${anchor}" style="${dksSegmentStyle(anchor, segment)}"></i>`;
+  }).join("")}</div>${DKS_FIELD_META.map(({ field }, anchor) => {
     const value = Number(semantic[field]) || 0;
     const maximum = dksAnchorMaximum(semantic, anchor);
-    return `<div class="dks-anchor-control${value ? " active" : ""}"><button type="button" data-dks-anchor-toggle="${rowIndex}:${anchor}" aria-pressed="${Boolean(value)}" title="${value ? "Remove" : "Add one-shot at"} ${DKS_POINT_META[anchor].label}"><span>${DKS_POINT_META[anchor].label}</span></button><input type="range" min="1" max="${maximum}" step="1" value="${Math.max(1, Math.min(value || 1, maximum))}" data-dks-anchor-range="${rowIndex}:${anchor}" ${value ? "" : "disabled"} aria-label="${DKS_POINT_META[anchor].label} hold length" /><small>${value <= 1 ? (value ? "tap" : "off") : `hold ${value - 1} span${value === 2 ? "" : "s"}`}</small></div>`;
-  }).join("")}</div>`;
+    const point = DKS_POINT_META[anchor];
+    return `<div class="dks-checkpoint-wrap${value ? " active" : ""}" style="--dks-x:${dksAnchorPercent(anchor)};--dks-anchor:${DKS_ANCHOR_COLORS[anchor]}"><button class="dks-checkpoint" type="button" data-dks-checkpoint="${rowIndex}:${anchor}" aria-pressed="${Boolean(value)}" aria-valuemin="0" aria-valuemax="${maximum}" aria-valuenow="${value}" aria-label="${point.label} ${point.detail}; native value ${value}" title="Click for a tap; drag right to extend"></button><div class="dks-checkpoint-label"><span>${field} · <i data-dks-row-point="${anchor}">${dksRawToMm(state.dksDraft.points[anchor]).toFixed(1)} mm</i></span><span class="dks-native-value${value ? " on" : ""}" data-dks-value="${rowIndex}:${anchor}" title="Native hold-range value">${value}</span><button type="button" data-dks-anchor-clear="${rowIndex}:${anchor}" ${value ? "" : "disabled"} aria-label="Disable ${point.label}" title="Disable ${point.label}">×</button></div></div>`;
+  }).join("")}</div></div>`;
 }
 
 function dksActionEditor(row, index) {
   const invalid = dksOutputAssigned(row) !== dksTimingActive(row);
-  return `<article class="dks-action-row${dksOutputAssigned(row) ? " assigned" : " empty"}${invalid ? " invalid" : ""}" data-dks-action-card="${index}" style="--dks-action:${DKS_COLORS[index]}"><div class="dks-action-key-wrap">${mappingPickerField(`dksKey${index}`, row.key, `Output ${index + 1} key`)}<button class="dks-clear-action" type="button" data-dks-clear="${index}">Remove output</button><div class="dks-row-presets"><button type="button" data-dks-preset="tapP1" data-dks-action-index="${index}">Tap P1</button><button type="button" data-dks-preset="tapP2" data-dks-action-index="${index}">Tap P2</button><button type="button" data-dks-preset="tapR2" data-dks-action-index="${index}">Tap R2</button><button type="button" data-dks-preset="tapR1" data-dks-action-index="${index}">Tap R1</button><button type="button" data-dks-preset="fullHold" data-dks-action-index="${index}">Full hold</button></div></div>${dksRowTrack(row, index)}<p class="dks-row-summary">${esc(dksRowSummary(row))}</p></article>`;
+  return `<article class="dks-action-row${dksOutputAssigned(row) ? " assigned" : " empty"}${invalid ? " invalid" : ""}" data-dks-action-card="${index}" style="--dks-action:${DKS_COLORS[index]}"><div class="dks-action-key-wrap"><i class="dks-output-number">${index + 1}</i>${mappingPickerField(`dksKey${index}`, row.key, `Output ${index + 1} key`)}<button class="dks-clear-action" type="button" data-dks-clear="${index}">Remove output</button></div>${dksRowTrack(row, index)}<p class="dks-row-summary">${esc(dksRowSummary(row))}</p></article>`;
 }
 
 function dksEditorHtml() {
   const draft = state.dksDraft;
-  return `<div class="form-section dks-editor"><div class="dks-section-heading"><div><h3>Dynamic Keystroke</h3><p>HE30 uses four trigger anchors. A longer native range carries an output through the intervals between anchors; those intervals are not separate trigger slots.</p></div><span class="chip">HE30 NATIVE · 4 OUTPUTS</span></div><div class="dks-threshold-groups"><section><header><span>DOWNSTROKE</span><b>Press points</b></header>${dksThresholdField(0, draft.points[0])}${dksThresholdField(1, draft.points[1])}</section><section class="release"><header><span>UPSTROKE</span><b>Release points</b></header>${dksThresholdField(2, draft.points[2])}${dksThresholdField(3, draft.points[3])}</section></div><div class="dks-sequence"><div class="dks-sequence-heading"><div><h3>Output timing</h3><p>Click an anchor for a one-shot action. Use its slider to extend the action as a held key. Starting a later action shortens an earlier hold if needed to prevent overlap.</p></div><div class="dks-legend"><span><i class="event"></i>trigger</span><span><i class="span"></i>implicit hold</span></div></div>${dksThresholdHeader(draft.points)}<div class="dks-action-stack" id="dksActionStack">${draft.rows.map(dksActionEditor).join("")}</div></div><div class="form-error dks-inline-validation" id="dksInlineValidation" aria-live="polite"></div><details class="callout dks-tutorial"><summary>How HE30 DKS timing works</summary><p>Click an anchor for one trigger. Extend its slider across later anchors to behave like a normally held key. Crossing back over a configured starting point can trigger that action again. HE30 stores constrained anchor/range values; unlike AE64, its in-between spans are not independently selectable bits.</p></details><div class="callout dks-firmware-note"><b>Read-back safety:</b> untouched native timing words—including unknown bits—are preserved byte-for-byte. Editing a row intentionally replaces that row with a supported HE30 timing recipe.</div></div>`;
+  return `<div class="form-section dks-editor"><div class="dks-section-heading"><div><h3>Dynamic Keystroke</h3><p>HE30 uses four trigger anchors. A longer native range carries an output through the intervals between anchors; those intervals are not separate trigger slots.</p></div><span class="chip">HE30 NATIVE · 4 OUTPUTS</span></div><div class="dks-threshold-groups"><section><header><span>DOWNSTROKE</span><b>Press points</b></header>${dksThresholdField(0, draft.points[0])}${dksThresholdField(1, draft.points[1])}</section><section class="release"><header><span>UPSTROKE</span><b>Release points</b></header>${dksThresholdField(2, draft.points[2])}${dksThresholdField(3, draft.points[3])}</section></div><div class="dks-sequence"><div class="dks-sequence-heading"><div><h3>Output timing</h3><p>Press a checkpoint and release without moving for value 1. Drag right for values 2–4 where supported. Use × beneath a checkpoint to disable it.</p></div><div class="dks-legend">${DKS_POINT_META.map((point, index) => `<span><i style="--legend-color:${DKS_ANCHOR_COLORS[index]}"></i>${point.label}</span>`).join("")}</div></div><p class="dks-interaction-status" id="dksInteractionStatus" aria-live="polite">Choose an output, then click a checkpoint for a tap or drag it right to hold through later checkpoints.</p>${dksThresholdHeader(draft.points)}<div class="dks-action-stack" id="dksActionStack">${draft.rows.map(dksActionEditor).join("")}</div><div class="dks-gesture-hint"><span>↔</span><p><b>Mouse or touch:</b> click a checkpoint for a tap; drag right to extend its held range. <b>Keyboard:</b> focus a checkpoint, use ←/→ to change its native value, and Delete or Backspace to disable it.</p></div></div><div class="form-error dks-inline-validation" id="dksInlineValidation" aria-live="polite"></div><details class="callout dks-tutorial"><summary>How HE30 DKS timing works</summary><p>Click an anchor for one trigger. Extend its slider across later anchors to behave like a normally held key. Crossing back over a configured starting point can trigger that action again. HE30 stores constrained anchor/range values; unlike AE64, its in-between spans are not independently selectable bits.</p></details><div class="callout dks-firmware-note"><b>Read-back safety:</b> untouched native timing words—including unknown bits—are preserved byte-for-byte. Editing a row intentionally replaces that row with a supported HE30 timing recipe.</div></div>`;
 }
 
 function syncDksInlineValidation() {
@@ -221,35 +235,164 @@ function renderDksActionRows() {
   syncDksInlineValidation();
 }
 
+function setDksInteractionStatus(message, tone = "") {
+  const target = $("#dksInteractionStatus");
+  if (!target) return;
+  target.textContent = message;
+  target.classList.toggle("active", tone === "active");
+  target.classList.toggle("cleared", tone === "cleared");
+}
+
+function syncDksPointLabels(index, raw) {
+  const text = `${dksRawToMm(raw).toFixed(1)} mm`;
+  $$(`[data-dks-point-label="${index}"], [data-dks-row-point="${index}"]`, $("#advancedFields")).forEach((label) => { label.textContent = text; });
+}
+
+function dksDescribeAnchorEdit(rowIndex, anchor) {
+  const row = dksSemanticRow(state.dksDraft?.rows?.[rowIndex]);
+  const point = DKS_POINT_META[anchor];
+  const value = Number(row?.[DKS_FIELD_META[anchor].field]) || 0;
+  if (!value) return `Output ${rowIndex + 1} · ${point.label} disabled.`;
+  if (value === 1) return `Output ${rowIndex + 1} · ${point.label} is a one-shot tap at ${dksRawToMm(state.dksDraft.points[anchor]).toFixed(1)} mm.`;
+  const end = DKS_POINT_META[Math.min(3, anchor + value - 1)].label;
+  return `Output ${rowIndex + 1} · ${point.label} holds through ${end} (native value ${value}).`;
+}
+
+function dksUpdateRowVisual(rowIndex) {
+  const root = $("#advancedFields");
+  const row = state.dksDraft?.rows?.[rowIndex];
+  if (!root || !row) return;
+  const semantic = dksSemanticRow(row);
+  const segments = projectDksRow(semantic);
+  const card = $(`[data-dks-action-card="${rowIndex}"]`, root);
+  if (card) {
+    card.classList.toggle("assigned", dksOutputAssigned(row));
+    card.classList.toggle("empty", !dksOutputAssigned(row));
+    card.classList.toggle("invalid", dksOutputAssigned(row) !== dksTimingActive(row));
+  }
+  $$('[data-dks-checkpoint]', root).forEach((checkpoint) => {
+    const [currentRow, anchor] = checkpoint.dataset.dksCheckpoint.split(":").map(Number);
+    if (currentRow !== rowIndex) return;
+    const field = DKS_FIELD_META[anchor].field;
+    const value = Number(semantic[field]) || 0;
+    const maximum = dksAnchorMaximum(semantic, anchor);
+    const point = DKS_POINT_META[anchor];
+    checkpoint.parentElement.classList.toggle("active", Boolean(value));
+    checkpoint.setAttribute("aria-pressed", String(Boolean(value)));
+    checkpoint.setAttribute("aria-valuemin", "0");
+    checkpoint.setAttribute("aria-valuemax", String(maximum));
+    checkpoint.setAttribute("aria-valuenow", String(value));
+    checkpoint.setAttribute("aria-label", `${point.label} ${point.detail}; native value ${value}`);
+  });
+  $$('[data-dks-value]', root).forEach((label) => {
+    const [currentRow, anchor] = label.dataset.dksValue.split(":").map(Number);
+    if (currentRow !== rowIndex) return;
+    const value = Number(semantic[DKS_FIELD_META[anchor].field]) || 0;
+    label.textContent = String(value);
+    label.classList.toggle("on", Boolean(value));
+  });
+  $$('[data-dks-anchor-clear]', root).forEach((button) => {
+    const [currentRow, anchor] = button.dataset.dksAnchorClear.split(":").map(Number);
+    if (currentRow !== rowIndex) return;
+    button.disabled = !(Number(semantic[DKS_FIELD_META[anchor].field]) > 0);
+  });
+  $$('[data-dks-span]', root).forEach((span) => {
+    const [currentRow, anchor] = span.dataset.dksSpan.split(":").map(Number);
+    if (currentRow !== rowIndex) return;
+    const field = DKS_FIELD_META[anchor].field;
+    const segment = segments.find((candidate) => candidate.field === field);
+    span.classList.toggle("active", Boolean(segment));
+    span.classList.toggle("tap", Boolean(segment?.tap));
+    span.setAttribute("style", dksSegmentStyle(anchor, segment));
+  });
+  const summary = card ? $(".dks-row-summary", card) : null;
+  if (summary) summary.textContent = dksRowSummary(row);
+  syncDksInlineValidation();
+}
+
+function dksPointerValue(rowIndex, anchor, clientX) {
+  const track = $(`[data-dks-track="${rowIndex}"]`, $("#advancedFields"));
+  if (!track) return 1;
+  const bounds = track.getBoundingClientRect();
+  if (!bounds.width) return 1;
+  const relative = uiClamp((clientX - bounds.left) / bounds.width, 0, 1);
+  return dksPointerValueFromRatio(state.dksDraft.rows[rowIndex], anchor, relative);
+}
+
+/** Snap after the pointer crosses the midpoint between two checkpoints. */
+function dksPointerValueFromRatio(row, anchor, ratio) {
+  const maximum = dksAnchorMaximum(dksSemanticRow(row), anchor);
+  const relative = uiClamp(Number(ratio) || 0, 0, 1);
+  let value = 1;
+  for (let destination = anchor + 1; destination < 4; destination += 1) {
+    if (relative >= (destination - 0.5) / 3) value = destination - anchor + 1;
+  }
+  return uiClamp(value, 1, maximum);
+}
+
 function bindDksRowControls() {
-  $$('[data-dks-anchor-toggle]', $("#advancedFields")).forEach((button) => {
-    button.onclick = () => {
-      const [rowIndex, anchor] = button.dataset.dksAnchorToggle.split(":").map(Number);
-      const field = DKS_FIELD_META[anchor].field;
-      editDksAnchor(state.dksDraft, rowIndex, anchor, Number(state.dksDraft.rows[rowIndex][field]) > 0 ? 0 : 1);
+  $$('[data-dks-checkpoint]', $("#advancedFields")).forEach((checkpoint) => {
+    const [rowIndex, anchor] = checkpoint.dataset.dksCheckpoint.split(":").map(Number);
+    checkpoint.onpointerdown = (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      checkpoint.focus();
+      dksPointerGesture = { rowIndex, anchor, pointerId: event.pointerId, startX: event.clientX, dragged: false };
+      checkpoint.setPointerCapture?.(event.pointerId);
+    };
+    checkpoint.onpointermove = (event) => {
+      if (!dksPointerGesture || dksPointerGesture.pointerId !== event.pointerId || dksPointerGesture.rowIndex !== rowIndex || dksPointerGesture.anchor !== anchor) return;
+      if (!dksPointerGesture.dragged && Math.abs(event.clientX - dksPointerGesture.startX) < 4) return;
+      dksPointerGesture.dragged = true;
+      editDksAnchor(state.dksDraft, rowIndex, anchor, dksPointerValue(rowIndex, anchor, event.clientX));
+      dksUpdateRowVisual(rowIndex);
+      setDksInteractionStatus(dksDescribeAnchorEdit(rowIndex, anchor), "active");
+    };
+    const finishPointerGesture = (event) => {
+      if (!dksPointerGesture || (event && dksPointerGesture.pointerId !== event.pointerId)) return;
+      const gesture = dksPointerGesture;
+      if (event?.type === "pointerup" && !gesture.dragged) editDksAnchor(state.dksDraft, rowIndex, anchor, 1);
+      dksPointerGesture = null;
       renderDksActionRows();
+      setDksInteractionStatus(dksDescribeAnchorEdit(rowIndex, anchor), "active");
+    };
+    checkpoint.onpointerup = finishPointerGesture;
+    checkpoint.onpointercancel = finishPointerGesture;
+    checkpoint.onlostpointercapture = finishPointerGesture;
+    checkpoint.onkeydown = (event) => {
+      const value = Number(dksSemanticRow(state.dksDraft.rows[rowIndex])[DKS_FIELD_META[anchor].field]) || 0;
+      let nextValue = null;
+      if (event.key === "ArrowRight") nextValue = Math.min(dksAnchorMaximum(dksSemanticRow(state.dksDraft.rows[rowIndex]), anchor), Math.max(1, value + 1));
+      if (event.key === "ArrowLeft") nextValue = value <= 1 ? 1 : value - 1;
+      if (event.key === "Enter" || event.key === " ") nextValue = 1;
+      if (event.key === "Delete" || event.key === "Backspace") nextValue = 0;
+      if (nextValue === null) return;
+      event.preventDefault();
+      editDksAnchor(state.dksDraft, rowIndex, anchor, nextValue);
+      dksUpdateRowVisual(rowIndex);
+      setDksInteractionStatus(dksDescribeAnchorEdit(rowIndex, anchor), nextValue ? "active" : "cleared");
     };
   });
-  $$('[data-dks-anchor-range]', $("#advancedFields")).forEach((input) => {
-    input.oninput = () => {
-      const [rowIndex, anchor] = input.dataset.dksAnchorRange.split(":").map(Number);
-      editDksAnchor(state.dksDraft, rowIndex, anchor, Number(input.value));
-      const label = input.nextElementSibling;
-      if (label) label.textContent = Number(input.value) <= 1 ? "tap" : `hold ${Number(input.value) - 1} span${Number(input.value) === 2 ? "" : "s"}`;
-      syncDksInlineValidation();
+  $$('[data-dks-anchor-clear]', $("#advancedFields")).forEach((button) => {
+    button.onclick = () => {
+      const [rowIndex, anchor] = button.dataset.dksAnchorClear.split(":").map(Number);
+      editDksAnchor(state.dksDraft, rowIndex, anchor, 0);
+      renderDksActionRows();
+      setDksInteractionStatus(dksDescribeAnchorEdit(rowIndex, anchor), "cleared");
     };
-    input.onchange = renderDksActionRows;
   });
   $$('[data-dks-preset]', $("#advancedFields")).forEach((button) => {
     button.onclick = () => {
       applyDksPresetToDraft(state.dksDraft, Number(button.dataset.dksActionIndex), button.dataset.dksPreset);
       renderDksActionRows();
+      setDksInteractionStatus(`Output ${Number(button.dataset.dksActionIndex) + 1} timing preset applied.`, "active");
     };
   });
   $$('[data-dks-clear]', $("#advancedFields")).forEach((button) => {
     button.onclick = () => {
       clearDksDraftRow(state.dksDraft, Number(button.dataset.dksClear));
       renderDksActionRows();
+      setDksInteractionStatus(`Output ${Number(button.dataset.dksClear) + 1} key and timing removed.`, "cleared");
     };
   });
   $$('[data-open-mapping-picker]', $("#dksActionStack")).forEach((button) => { button.onclick = () => openAdvancedMappingPicker(button); });
@@ -265,8 +408,7 @@ function bindDksEditor() {
       state.dksDraft.pointEdited[index] = true;
       const number = $(`[data-dks-threshold-number="${index}"]`);
       if (number) number.value = dksRawToMm(state.dksDraft.points[index]).toFixed(1);
-      const label = $(`[data-dks-point-label="${index}"]`);
-      if (label) label.textContent = `${dksRawToMm(state.dksDraft.points[index]).toFixed(1)} mm`;
+      syncDksPointLabels(index, state.dksDraft.points[index]);
       syncDksInlineValidation();
     };
   });
@@ -280,8 +422,7 @@ function bindDksEditor() {
       state.dksDraft.pointEdited[index] = true;
       const range = $(`[data-dks-threshold-range="${index}"]`);
       if (range) range.value = String(uiClamp(normalized, DKS_POINT_MIN, DKS_POINT_MAX));
-      const label = $(`[data-dks-point-label="${index}"]`);
-      if (label) label.textContent = `${dksRawToMm(normalized).toFixed(1)} mm`;
+      syncDksPointLabels(index, normalized);
       if (finalize) input.value = dksRawToMm(normalized).toFixed(1);
       syncDksInlineValidation();
     };
