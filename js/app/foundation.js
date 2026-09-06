@@ -32,6 +32,9 @@ const PROFILE_SHARE_SECTIONS = Object.freeze(["advanced", "keymap", "hall", "set
 const WOOTING_PROFILE_API_URL = "https://api.wooting.io/public/wootility/profiles";
 // Optional: set this to your own same-origin endpoint that accepts ?code= and returns Wooting's { data: profile } JSON.
 const WOOTING_PROFILE_PROXY_URL = "";
+// GitHub Pages hosts only the browser UI. Point this meta tag at the separately
+// deployed server/ application; MongoDB credentials must never enter this file.
+const CLOUD_CONFIG_API_URL = String(document.querySelector('meta[name="he30-cloud-api"]')?.content || "").replace(/\/$/, "");
 const clone = (value) => JSON.parse(JSON.stringify(value));
 // UI code owns a separately named clamp helper. Protocol scripts also contain a
 // private clamp(), and classic browser scripts share one global declaration
@@ -169,6 +172,12 @@ const MAPPING_GROUPS = Object.freeze([
 ]);
 const ALL_MAPPINGS = MAPPING_GROUPS.flatMap((group) => group.items);
 const BASIC_MAPPING_CHOICES = ALL_MAPPINGS.filter((mapping) => mapping.type === 16 && mapping.code1 === 0);
+// The macro bank stores a one-byte HID code plus a keyboard/mouse kind. Keep its
+// picker narrower than normal remapping so unsupported consumer/layer actions
+// cannot be represented as a misleading macro event.
+const MACRO_MAPPING_CHOICES = ALL_MAPPINGS.filter((mapping) =>
+  (mapping.type === 16 && (mapping.code1 === 0 || (mapping.code2 === 0 && (mapping.code1 & (mapping.code1 - 1)) === 0)))
+  || (mapping.type === 32 && mapping.code2 === 0));
 const ADVANCED_META = Object.freeze({
   dks: { name: "DKS", icon: "4×", description: "Trigger up to four actions across press and release travel." },
   mt: { name: "Mod-Tap", icon: "M/T", description: "Tap for one key, hold for another after a time threshold." },
@@ -336,10 +345,15 @@ const state = {
   wootingStatus: "",
   wootingError: false,
   wootingBusy: false,
-  profileDisclosureOpen: { wooting: false, sharing: false },
+  profileDisclosureOpen: { wooting: false, sharing: false, cloud: false },
+  cloudPassphrase: "",
+  cloudBusy: false,
+  cloudStatus: "",
+  cloudError: false,
   advancedLayer: 0,
   advancedHostSelection: [],
   advancedHostSlot: 0,
+  dksDraft: null,
 };
 
 // ---------------------------------------------------------------------------

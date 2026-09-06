@@ -76,6 +76,10 @@ async function switchProfile(event) {
   if (!state.driver || state.pendingProfile == null) return;
   const profileIndex = state.pendingProfile;
   state.pendingProfile = null;
+  state.cloudPassphrase = "";
+  state.cloudBusy = false;
+  state.cloudStatus = "";
+  state.cloudError = false;
   await syncDeviceProfile(profileIndex, { activate: true, layer: 0, origin: "interface" });
 }
 

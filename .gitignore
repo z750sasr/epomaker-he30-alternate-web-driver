@@ -2,3 +2,6 @@
 /libhmk/
 /firmware-analysis/
 /hmkconf/
+server/.env
+server/node_modules/
+*.har

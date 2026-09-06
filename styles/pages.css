@@ -120,6 +120,16 @@
 .share-validation { padding: 10px 11px; border: 1px solid; border-radius: 9px; font-size: 11px; line-height: 1.5; }
 .share-validation.valid { border-color: rgb(102 247 194 / 28%); color: var(--mint); background: rgb(102 247 194 / 7%); }
 .share-validation.error { border-color: rgb(255 126 138 / 30%); color: #ffc3c9; background: rgb(255 126 138 / 7%); }
+.cloud-profile-grid { padding-top: 18px; }
+.cloud-device-key { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #07111d; }
+.cloud-device-key span { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.cloud-device-key strong { color: var(--mint); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 18px; letter-spacing: .12em; }
+.cloud-device-key small { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.cloud-actions { display: flex; gap: 8px; margin-top: auto; }
+.cloud-actions .button { flex: 1; }
+.cloud-validation { margin-top: 13px; }
+.cloud-privacy-note { margin-top: 13px; }
+.cloud-privacy-note b { color: var(--mint); }
 .share-targets { display: grid; gap: 12px; padding-top: 2px; }
 .share-targets strong, .share-targets small { display: block; }
 .share-targets strong { font-size: 13px; }

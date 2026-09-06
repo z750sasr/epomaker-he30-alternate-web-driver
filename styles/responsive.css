@@ -40,6 +40,7 @@
   .profile-disclosure-actions .chip { display: none; }
   .share-card-heading .button, .share-card-footer .button { width: 100%; }
   .share-target-grid { grid-template-columns: 1fr; }
+  .cloud-actions { flex-direction: column; }
   .wooting-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mapping-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .modifier-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -49,15 +50,28 @@
   .strip-light-card .effect-picker-light-strip { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .color-selection-summary { width: 100%; max-width: none; }
   .modal-toolbar { align-items: stretch; flex-direction: column; }
-  .macro-row { grid-template-columns: 1fr 100px; }
+  .macro-toolbar { align-items: stretch; flex-direction: column; }
+  .macro-repeat-field { width: 100%; }
+  .macro-summary { margin-right: 0; }
+  .macro-add-actions .button { flex: 1; }
+  .macro-column-head { display: none; }
+  .macro-row { grid-template-columns: 44px minmax(0, 1fr) 105px; }
+  .macro-row .macro-delay { grid-column: 2 / 3; }
+  .macro-row-actions { grid-column: 3; grid-row: 1 / 3; flex-direction: column; }
   .advanced-host-heading { flex-direction: column; }
   .advanced-host-slots, .advanced-single-host { width: 100%; min-width: 0; }
   .advanced-layer-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dks-travel-editor, .dks-action-toolbar { grid-template-columns: 1fr; }
-  .dks-row-presets button { width: 100%; }
-  .dks-matrix-head { display: none; }
-  .dks-action-matrix { min-width: 0; grid-template-columns: 1fr; }
-  .dks-stage-distance { display: block; margin: 2px 0 -3px; color: var(--muted); font-size: 10px; font-weight: 850; }
+  .dks-thresholds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dks-thresholds > div:first-child, .dks-thresholds > div:nth-child(4) { grid-column: 1 / -1; }
+  .dks-sequence-heading { align-items: stretch; flex-direction: column; }
+  .dks-legend { justify-content: flex-start; }
+  .dks-timeline-head, .dks-action-row { min-width: 760px; grid-template-columns: 145px minmax(560px, 1fr) 40px; }
+  .dks-timeline-head { grid-template-columns: 145px repeat(7, minmax(0, 1fr)) 40px; }
+  .dks-action-key-wrap { grid-template-columns: minmax(0, 1fr) auto; }
+  .dks-threshold-groups { grid-template-columns: 1fr; }
+  .dks-threshold-groups section { grid-template-columns: 100px repeat(2, minmax(0, 1fr)); }
+  .dks-native-head, .dks-action-row { min-width: 760px; grid-template-columns: 180px minmax(400px, 1fr) 160px; }
+  .dks-native-head { grid-template-columns: 180px repeat(4, minmax(90px, 1fr)) 160px; }
   .calibration-heading { align-items: stretch; flex-direction: column; }
   .calibration-heading .button { width: 100%; }
   .calibration-progress { grid-template-columns: 1fr; }

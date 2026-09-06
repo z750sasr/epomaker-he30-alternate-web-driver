@@ -365,6 +365,7 @@ class HE30Driver {
       vendorId: this.device.vendorId,
       productId: this.device.productId,
       productName: this.device.productName,
+      serialNumber: String(this.device.serialNumber || "").trim(),
       vidPid: `${hex(this.device.vendorId, 4)}:${hex(this.device.productId, 4)}`,
     };
   }
@@ -410,6 +411,9 @@ global.HE30Control = Object.freeze({
   decodeColors,
   encodeColors,
   encodeDksBank,
+  decodeDksBank,
+  encodeDksStatusWord,
+  decodeDksStatusWord,
   encodeMtBank,
   encodeTglBank,
   encodeMacros,

@@ -559,7 +559,7 @@ function profileShareHtml() {
         ${pending ? `<div class="share-targets"><div><strong>Validated Profile ${sourceProfile}</strong><small>Choose the onboard destination. Fn targets inside layers ${(sourceProfile - 1) * API.LAYER_COUNT}–${sourceProfile * API.LAYER_COUNT - 1} will move with the profile; deliberate cross-profile Fn targets stay unchanged.</small></div><div class="share-target-grid">${Array.from({ length: API.PROFILE_COUNT }, (_, index) => `<button class="button ${index === state.profile.profileIndex ? "primary" : "secondary"}" type="button" data-share-target="${index}"${!multiProfile || state.shareBusy ? " disabled" : ""}>Replace Profile ${index + 1}${index === state.profile.profileIndex ? " · loaded" : ""}</button>`).join("")}</div>${!multiProfile ? `<div class="callout"><b>Connect the three-profile HE30</b> to write this validated code to onboard memory.</div>` : ""}</div>` : ""}
       </section>
     </div>`;
-  return `${wootingImportHtml()}${profileDisclosureHtml("sharing", "Compressed profile sharing", "Export or import one complete profile as a versioned text code.", "HE30P1", content)}`;
+  return `${cloudProfileHtml()}${wootingImportHtml()}${profileDisclosureHtml("sharing", "Compressed profile sharing", "Export or import one complete profile as a versioned text code.", "HE30P1", content)}`;
 }
 
 function renderProfiles() {
@@ -664,6 +664,13 @@ function bindPageControls() {
   $("#chooseWootingFile")?.addEventListener("click", () => $("#wootingFileInput")?.click());
   $("#wootingFileInput")?.addEventListener("change", (event) => loadWootingJsonFile(event.target.files?.[0]));
   $("#stageWootingImport")?.addEventListener("click", stageWootingImport);
+  $("#cloudUploadProfile")?.addEventListener("click", uploadCloudProfile);
+  $("#cloudRestoreProfile")?.addEventListener("click", restoreCloudProfile);
+  $("#cloudPassphrase")?.addEventListener("input", (event) => {
+    state.cloudPassphrase = event.target.value;
+    state.cloudStatus = "";
+    state.cloudError = false;
+  });
   $("#wootingCodeInput")?.addEventListener("input", (event) => {
     state.wootingCode = event.target.value;
     state.wootingImport = null;

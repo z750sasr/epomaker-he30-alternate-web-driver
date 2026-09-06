@@ -6,7 +6,7 @@ const root = __dirname;
 // concatenate the same order so cross-file declarations behave exactly as they
 // do in the browser while each file can still be syntax-checked independently.
 const protocolFiles = ["js/protocol/core.js", "js/protocol/codecs.js", "protocol.js"];
-const appFiles = ["js/app/foundation.js", "js/app/pages.js", "js/app/hall.js", "js/app/lighting.js", "js/app/editors.js", "js/app/profiles.js", "app.js"];
+const appFiles = ["js/app/foundation.js", "js/app/pages.js", "js/app/hall.js", "js/app/lighting.js", "js/app/dks.js", "js/app/editors.js", "js/app/profiles.js", "js/app/cloud.js", "app.js"];
 const styleFiles = ["styles.css", "styles/workspace.css", "styles/keyboard-hall.css", "styles/pages.css", "styles/components.css", "styles/responsive.css"];
 const readSource = (file) => fs.readFileSync(`${root}/${file}`, "utf8");
 const protocolSource = protocolFiles.map(readSource).join("\n");
@@ -15,6 +15,7 @@ const htmlSource = fs.readFileSync(`${root}/index.html`, "utf8");
 const jsonEditorHtml = fs.readFileSync(`${root}/json_editor/index.html`, "utf8");
 const styleSource = styleFiles.map(readSource).join("\n");
 const factoryProfile = JSON.parse(fs.readFileSync(`${root}/src/factory_config.json`, "utf8"));
+const cloudServerSource = fs.readFileSync(`${root}/server/src/server.js`, "utf8");
 
 /**
  * Execute every production script as a separate classic browser script, then
@@ -94,6 +95,66 @@ async function verifyBrowserBootstrap() {
   if (JSON.stringify(mappingSearchAndLabels.shortQueries) !== JSON.stringify([true, true]) || !mappingSearchAndLabels.aliasQuery || mappingSearchAndLabels.resetKeycap !== "Reset 3s") {
     throw new Error(`Mapping search aliases or compact virtual-keyboard labels regressed: ${JSON.stringify(mappingSearchAndLabels)}.`);
   }
+  const macroMappings = vm.runInContext(`(() => {
+    const previousProfile = state.profile;
+    state.profile = makeDemoProfile();
+    const modifier = MACRO_MAPPING_CHOICES.find((item) => item.name === "Left Shift");
+    const mouse = MACRO_MAPPING_CHOICES.find((item) => item.name === "Mouse left");
+    const result = {
+      modifier: macroCodeAndKind(modifier),
+      mouse: macroCodeAndKind(mouse),
+      decodedModifier: macroMappingFromAction({ action: "keydown", code: 225, kind: "key" }).name,
+      decodedMouse: macroMappingFromAction({ action: "keyup", code: 1, kind: "mouse" }).name,
+      markup: advancedFormHtml("macro", { actions: [{ action: "keydown", code: 4, delay: 0 }, { action: "keyup", code: 4, delay: 50 }] }),
+    };
+    state.profile = previousProfile;
+    return result;
+  })()`, browser);
+  if (JSON.stringify(macroMappings.modifier) !== JSON.stringify({ code: 225, kind: "key" }) || JSON.stringify(macroMappings.mouse) !== JSON.stringify({ code: 1, kind: "mouse" })) throw new Error("Macro keyboard/modifier/mouse mapping conversion regressed.");
+  if (macroMappings.decodedModifier !== "Left Shift" || macroMappings.decodedMouse !== "Mouse left" || !macroMappings.markup.includes("Macro timeline") || !macroMappings.markup.includes("Add keystroke")) throw new Error("Redesigned macro timeline surface is incomplete.");
+  const dksBehavior = vm.runInContext(`(() => {
+    const previousProfile = state.profile;
+    state.profile = makeDemoProfile();
+    const source = {
+      dksPoint: [0, 31, 30, 10],
+      dksKeys: [{ key: makeMapping(16, 0, 4), downStart: 3, downEnd: 2, upStart: 0, upEnd: 0, _statusBits: 31 }],
+    };
+    const draft = createDksDraft(source);
+    const untouched = JSON.stringify(draft);
+    projectDksRow(draft.rows[0]);
+    const projectionPure = JSON.stringify(draft) === untouched;
+    const padded = draft.rows.length;
+    const rawPreserved = [draft.points[0], draft.points[1], draft.rows[0]._statusBits];
+    const othersBefore = JSON.stringify(draft.rows.slice(1));
+    applyDksPresetToDraft(draft, 0, "fullHold");
+    const fullHold = [draft.rows[0].downStart, draft.rows[0].downEnd, draft.rows[0].upStart, draft.rows[0].upEnd, draft.rows[0]._timingDirty];
+    const rowIsolation = JSON.stringify(draft.rows.slice(1)) === othersBefore;
+    editDksAnchor(draft, 0, 1, 1);
+    const overlapResolved = [draft.rows[0].downStart, draft.rows[0].downEnd];
+    editDksAnchor(draft, 0, 1, 2);
+    const adjacentValid = validateDksDraft(draft).errors.filter((message) => message.includes("overlap")).length === 0;
+    const taps = ["tapP1", "tapP2", "tapR2", "tapR1"].map((preset) => {
+      const sample = createDksDraft({});
+      applyDksPresetToDraft(sample, 0, preset);
+      return sample.rows[0];
+    }).map((row) => [row.downStart, row.downEnd, row.upStart, row.upEnd]);
+    const emptyMappings = [
+      dksOutputAssigned({ key: makeMapping(0, 0, 0) }),
+      dksOutputAssigned({ key: makeMapping(255, 255, 255) }),
+      dksOutputAssigned({ key: makeMapping(16, 0, 4) }),
+    ];
+    const equality = createDksDraft({ dksPoint: [10, 10, 30, 30], dksKeys: [] });
+    const equalityErrors = validateDksDraft(equality).errors;
+    const outlierWarnings = validateDksDraft(createDksDraft({ dksPoint: [0, 31, 30, 10] })).warnings.length;
+    clearDksDraftRow(draft, 0);
+    const cleared = [dksOutputAssigned(draft.rows[0]), dksTimingActive(draft.rows[0]), draft.rows[0]._timingDirty];
+    state.profile = previousProfile;
+    return { projectionPure, padded, rawPreserved, fullHold, rowIsolation, overlapResolved, adjacentValid, taps, emptyMappings, equalityErrors, outlierWarnings, cleared };
+  })()`, browser);
+  if (!dksBehavior.projectionPure || dksBehavior.padded !== 4 || JSON.stringify(dksBehavior.rawPreserved) !== JSON.stringify([0, 31, 31])) throw new Error(`DKS draft creation or read-only projection regressed: ${JSON.stringify(dksBehavior)}.`);
+  if (JSON.stringify(dksBehavior.fullHold) !== JSON.stringify([4, 0, 0, 0, true]) || !dksBehavior.rowIsolation || JSON.stringify(dksBehavior.overlapResolved) !== JSON.stringify([2, 1]) || !dksBehavior.adjacentValid) throw new Error(`DKS native range editing or row isolation regressed: ${JSON.stringify(dksBehavior)}.`);
+  if (JSON.stringify(dksBehavior.taps) !== JSON.stringify([[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]) || JSON.stringify(dksBehavior.emptyMappings) !== JSON.stringify([false, false, true])) throw new Error(`DKS tap recipes or empty mappings regressed: ${JSON.stringify(dksBehavior)}.`);
+  if (dksBehavior.equalityErrors.length || !dksBehavior.outlierWarnings || JSON.stringify(dksBehavior.cleared) !== JSON.stringify([false, false, true])) throw new Error(`DKS threshold validation or row removal regressed: ${JSON.stringify(dksBehavior)}.`);
   const telemetryDistances = vm.runInContext(`(() => {
     const index = TELEMETRY_INDEX.get(4);
     const previousProfile = state.profile;
@@ -269,6 +330,23 @@ if (!wootingConverted.summary.staticLightingImported || wootingConverted.summary
 if (wootingConverted.profile.colorKeys[26] !== "#961464" || !wootingConverted.summary.sections.includes("lighting") || !wootingConverted.summary.sections.includes("colors")) throw new Error("Wooting per-key colors or lighting sections were not staged correctly.");
 if (wootingConverted.profile.colorKeys[30] !== "#1e1464") throw new Error("Compact Wooting Preset lighting did not mirror the number-row color onto the matching HE30 function key.");
 
+const wootingDksConverted = API.convertWootingProfile({
+  ...wootingSource,
+  analog: { ...wootingSource.analog, actPoint: 4096 },
+  akc: [],
+  dks: [{
+    keyIndex: { rowNr: 1, colNr: 0 }, layer: 0,
+    dks: {
+      secondaryActuation: 8192,
+      action0: 1,
+      point0: { action0: 1 }, point1: { action0: 2 },
+      point2: { action0: 3 }, point3: { action0: 3 },
+    },
+  }],
+}, wootingTarget);
+const importedWootingDks = wootingDksConverted.profile.advancedKeys.find((item) => item.type === "dks");
+if (!importedWootingDks || importedWootingDks.dksPoint[0] !== 10 || importedWootingDks.dksPoint[1] !== 20) throw new Error(`Wooting DKS 1.00/2.00 mm thresholds were not converted to HE30 raw 10/20: ${JSON.stringify(importedWootingDks?.dksPoint)}.`);
+
 const explicitTravelConverted = API.convertWootingProfile({
   ...wootingSource,
   switchSelector: { switches: [{ index: { rowNr: 1, colNr: 1 }, totalTravelMm: 3.5 }] },
@@ -311,8 +389,48 @@ const profile = {
 };
 const compiled = API.compileAdvanced(profile);
 if (compiled.banks.dks.length !== 1 || compiled.banks.mt.length !== 5 || compiled.banks.tgl.length !== 1 || compiled.banks.macros.length !== 1) throw new Error("Advanced actions did not compile into the expected banks.");
+const thirtyTwoDks = Array.from({ length: 32 }, (_, index) => ({ type: "dks", layer: 0, index1: index, dksPoint: [10, 30, 30, 10], dksKeys: [] }));
+if (API.compileAdvanced({ ...profile, advancedKeys: thirtyTwoDks }).banks.dks.length !== 32) throw new Error("The valid 32-slot DKS limit was rejected.");
+let rejectedThirtyThirdDks = false;
+try { API.compileAdvanced({ ...profile, advancedKeys: [...thirtyTwoDks, { ...thirtyTwoDks[0], index1: 32 }] }); } catch (_) { rejectedThirtyThirdDks = true; }
+if (!rejectedThirtyThirdDks) throw new Error("The 33rd DKS entry was not rejected.");
 if (API.encodeDksBank(compiled.banks.dks).length !== 1024 || API.encodeMtBank(compiled.banks.mt).length !== 256 || API.encodeTglBank(compiled.banks.tgl).length !== 128 || API.encodeMacros(compiled.banks.macros).length !== 2048) throw new Error("An advanced bank has the wrong size.");
 if (API.encodeDksBank([{ dksPoint: [300, 20, 30, 40], dksKeys: [] }])[0] !== 255) throw new Error("DKS travel stages were not clamped to the firmware byte range.");
+const nativeTapWords = [
+  { row: { downStart: 1 }, word: 1 },
+  { row: { downEnd: 1 }, word: 8 },
+  { row: { upStart: 1 }, word: 64 },
+  { row: { upEnd: 1 }, word: 512 },
+];
+nativeTapWords.forEach(({ row, word }) => equal(API.encodeDksStatusWord(row), word, `DKS native tap word ${word} is incorrect.`));
+equal(API.decodeDksStatusWord(API.encodeDksStatusWord({ downStart: 4 })), { downStart: 4, downEnd: 0, upStart: 0, upEnd: 0, _statusBits: 255 }, "DKS full-hold special case did not round-trip.");
+equal(API.decodeDksStatusWord(API.encodeDksStatusWord({ downStart: 3 })), { downStart: 3, downEnd: 2, upStart: 0, upEnd: 0, _statusBits: 31 }, "DKS downStart=3 special case did not normalize as the firmware expects.");
+equal(API.decodeDksStatusWord(API.encodeDksStatusWord({ downEnd: 3 })), { downStart: 0, downEnd: 3, upStart: 0, upEnd: 0, _statusBits: 248 }, "DKS downEnd=3 special case did not normalize as the firmware expects.");
+for (const [field, maximum] of [["downStart", 4], ["downEnd", 3], ["upStart", 2], ["upEnd", 1]]) {
+  for (let value = 0; value <= maximum; value += 1) {
+    const word = API.encodeDksStatusWord({ [field]: value });
+    if (!Number.isInteger(word) || word < 0 || word > 0xffff) throw new Error(`DKS ${field}=${value} did not encode to a native word.`);
+  }
+}
+const rawDksBytes = new Array(1024).fill(0);
+rawDksBytes.splice(0, 4, 0, 31, 255, 10);
+for (let action = 0; action < 4; action += 1) {
+  const offset = 4 + action * 5;
+  rawDksBytes[offset] = 16;
+  rawDksBytes[offset + 1] = 0;
+  rawDksBytes[offset + 2] = 4 + action;
+  const word = [0xffff, 31, 248, 512][action];
+  rawDksBytes[offset + 3] = word & 255;
+  rawDksBytes[offset + 4] = word >> 8;
+}
+const decodedRawDks = API.decodeDksBank(rawDksBytes);
+equal(API.encodeDksBank(decodedRawDks), rawDksBytes, "A no-op DKS decode/save did not preserve threshold bytes, mappings, and raw status words.");
+const untouchedStatus = API.encodeDksBank(decodedRawDks).slice(7, 9);
+decodedRawDks[0].dksKeys[0].key = API.makeMapping(16, 0, 40);
+equal(API.encodeDksBank(decodedRawDks).slice(7, 9), untouchedStatus, "Changing only a DKS output mapping rewrote its timing word.");
+decodedRawDks[0].dksKeys[1].downStart = 4;
+decodedRawDks[0].dksKeys[1]._timingDirty = true;
+equal(API.encodeDksBank(decodedRawDks).slice(12, 14), [255, 0], "An intentional DKS timing edit did not replace that row with the native full-hold word.");
 const layeredAdvancedCompiled = API.compileAdvanced({
   ...profile,
   advancedKeys: [
@@ -372,15 +490,18 @@ for (const mode of ["Last Input Priority", "Absolute 1st key", "Absolute 2nd key
   if (!appSource.includes(mode)) throw new Error(`SOCD mode is missing: ${mode}`);
 }
 if (appSource.includes("Neutral / last input")) throw new Error("Neutral and Last Input Priority must remain separate SOCD modes.");
-for (const fragment of ["defaultMappingForPhysical", "restoreAdvancedHosts(item)", "preserveAdvancedUiMetadata", "mappingPickerField", "openAdvancedMappingPicker", "advancedHostKeyboardHtml", "data-advanced-host-key", "data-advanced-layer", "pairIndependentRt", "DKS_STAGE_META", "dksActionCell", "data-dks-cell-action", "applyDksPreset", "Tap 4", "dksTimingActive", "Choose an output key for every active DKS row", "Dynamic keystroke grid", "profileDisclosureHtml", "data-profile-disclosure", "modifierPickerHtml", "comboModifierMask", "currentModifierMask", "HID mask bit order", "Fn-layer warning:"]) {
+for (const fragment of ["defaultMappingForPhysical", "restoreAdvancedHosts(item)", "preserveAdvancedUiMetadata", "mappingPickerField", "openAdvancedMappingPicker", "advancedHostKeyboardHtml", "data-advanced-host-key", "data-advanced-layer", "pairIndependentRt", "DKS_FIELD_META", "createDksDraft", "projectDksRow", "editDksAnchor", "validateDksDraft", "dksRawToMm", "dksMmToRaw", "data-dks-anchor-toggle", "data-dks-anchor-range", "Tap R1", "Full hold", "dksTimingActive", "Choose an output key for every active DKS row", "Dynamic Keystroke", "profileDisclosureHtml", "data-profile-disclosure", "modifierPickerHtml", "comboModifierMask", "currentModifierMask", "HID mask bit order", "Fn-layer warning:"]) {
   if (!appSource.includes(fragment)) throw new Error(`Advanced-editor revamp is missing: ${fragment}`);
+}
+for (const forbidden of ["dksMaskToFields", "dksTimelineMaskFromEntry", "DKS_TIMELINE_POINTS", "document.onpointerup"]) {
+  if (appSource.includes(forbidden)) throw new Error(`Lossy or global DKS interaction code remains: ${forbidden}`);
 }
 if (!appSource.includes('id="advLayer"') || !appSource.includes('$("#advLayer")?.value')) throw new Error("Advanced actions must expose and save the selected local layer.");
 if (appSource.includes("Layer 0 only.")) throw new Error("The Advanced editor still incorrectly restricts actions to Layer 0.");
 if (!appSource.includes("editable = true") || !appSource.includes('$("#pairIndependentRt")?.checked')) throw new Error("Editable distance values or independent pair RT controls are missing.");
 const deleteAdvancedSource = appSource.match(/function deleteAdvanced\(index\) \{([\s\S]*?)\n  \}/)?.[1] || "";
 if (!deleteAdvancedSource.includes("restoreAdvancedHosts(item)") || deleteAdvancedSource.includes("makeMapping(255")) throw new Error("Deleting an Advanced action must restore its saved or physical-default host mappings.");
-for (const fragment of [".mapping-picker-control", ".modifier-options", ".modifier-picker > p", ".advanced-host-keyboard", ".advanced-host-slots", ".dks-action-card", ".dks-matrix-cell", ".dks-row-presets", ".profile-tool-disclosure", ".configured-action-buttons"]) {
+for (const fragment of [".mapping-picker-control", ".modifier-options", ".modifier-picker > p", ".advanced-host-keyboard", ".advanced-host-slots", ".dks-action-row", ".dks-native-track", ".dks-anchor-control", ".dks-threshold-groups", ".dks-row-presets", ".profile-tool-disclosure", ".configured-action-buttons"]) {
   if (!styleSource.includes(fragment)) throw new Error(`Advanced-editor styling is missing: ${fragment}`);
 }
 if (API.PROFILE_COUNT !== 3 || API.LAYER_COUNT !== 4 || API.TOTAL_LAYER_COUNT !== 12) throw new Error("The three-profile, twelve-layer topology is incorrect.");
@@ -473,6 +594,10 @@ for (const fragment of ["DEMO_PAGE_DESCRIPTIONS", "HE30 Interactive Demo", "DEMO
   if (!appSource.includes(fragment)) throw new Error(`Current Demo Mode context is missing: ${fragment}`);
 }
 if (!styleSource.includes(".about-me-page") || !styleSource.includes(".about-me-custom") || !styleSource.includes(".about-me-links")) throw new Error("About me page styling is missing.");
+for (const fragment of ["deviceKey(serialNumber)", "createHmac(\"sha256\"", "crypto.scrypt", "/api/configs/upload", "/api/configs/download", "validateProfile(config)"]) {
+  if (!cloudServerSource.includes(fragment)) throw new Error(`MongoDB cloud API safety or endpoint logic is missing: ${fragment}`);
+}
+if (appSource.includes("MONGODB_URI") || appSource.includes("mongodb+srv://")) throw new Error("MongoDB credentials must not appear in browser application code.");
 if (appSource.includes("Reconnect")) throw new Error("Reconnect UI must remain removed.");
 for (const fragment of ["resetToLanding", "Returned to the connection screen", 'document.addEventListener("keydown"', "event.preventDefault()", "event.stopImmediatePropagation()"] ) {
   if (!appSource.includes(fragment)) throw new Error(`Connection or keyboard-capture behavior is missing: ${fragment}`);
@@ -530,8 +655,9 @@ const localProfileChange = API.decodeProfileChangeReport([0xa1, 3, 1]);
 if (!localProfileChange || localProfileChange.layer !== 3 || localProfileChange.globalLayer !== 7 || localProfileChange.profileIndex !== 1) throw new Error("Local profile-change reports were not expanded to a global layer correctly.");
 const crossProfileFnChange = API.decodeProfileChangeReport([0xa1, 7, 0]);
 if (!crossProfileFnChange || crossProfileFnChange.layer !== 3 || crossProfileFnChange.globalLayer !== 7 || crossProfileFnChange.profileIndex !== 1) throw new Error("A global FN7 event did not resolve to Profile 2, Layer 7.");
-const fakeDevice = { vendorId: 0x19f5, productId: 0xfb4c, productName: "Test HE30", opened: true, addEventListener() {}, removeEventListener() {} };
+const fakeDevice = { vendorId: 0x19f5, productId: 0xfb4c, productName: "Test HE30", serialNumber: "HE30-SERIAL-001", opened: true, addEventListener() {}, removeEventListener() {} };
 const fakeDriver = new API.HE30Driver(fakeDevice);
+if (fakeDriver.identity.serialNumber !== "HE30-SERIAL-001") throw new Error("The WebHID serial number is missing from the connected device identity.");
 let routedTelemetry = null;
 fakeDriver.telemetryActive = true;
 fakeDriver.subscribeTelemetry((event) => { routedTelemetry = event; });

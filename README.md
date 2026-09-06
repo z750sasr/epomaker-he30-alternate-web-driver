@@ -52,6 +52,7 @@ Firefox and Safari do not currently support WebHID, but they can still be used w
 - Main-key lighting, the small light-strip zone, and saved colors for all 36 physical keys
 - Live RGB framebuffer preview for all 36 keys, plus a live multi-segment light-strip preview synchronized from its onboard effect settings
 - Onboard profile switching on multi-profile models
+- Optional private MongoDB profile backup keyed by a server-side HMAC of the connected keyboard serial and protected by a separate passphrase
 - Live profile and layer tracking: onboard profile-key presses automatically refresh every workspace page
 - DKS, Mod-Tap, Toggle, Rappy Snappy, SOCD, combination keys, and macros
 - Staged edits, explicit write confirmation, byte-for-byte read-back verification, and an in-browser recovery backup
@@ -112,6 +113,15 @@ http://localhost:4173/json_editor/
 ```
 
 JSON-only mode and demo mode do not require WebHID.
+
+## Optional MongoDB Cloud Backup
+
+GitHub Pages cannot run a database server or safely keep a MongoDB connection
+string. The optional cloud panel therefore talks to a separate Node.js API in
+[`server/`](server/README.md). Deploy that folder, configure its MongoDB and
+CORS environment variables, then set the `he30-cloud-api` meta tag in
+`index.html` to the API's HTTPS URL. Until that URL is configured, the cloud
+panel remains visible in setup mode and its upload/restore buttons stay disabled.
 
 ## Technical Compatibility Notes
 
