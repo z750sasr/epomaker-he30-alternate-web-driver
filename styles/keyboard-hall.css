@@ -62,7 +62,7 @@
 .field input:disabled, .field select:disabled { cursor: not-allowed; }
 .field input[type="color"] { height: 42px; padding: 4px; }
 .field small { color: var(--muted); font-size: 11px; }
-.range-line { display: grid; grid-template-columns: 1fr 58px; gap: 9px; align-items: center; }
+.range-line { display: grid; grid-template-columns: 1fr 58px; grid-auto-flow: column; gap: 9px; align-items: center; }
 .range-line.editable { grid-template-columns: minmax(90px, 1fr) 96px; }
 .range-line input[type="range"] { padding: 0; accent-color: var(--mint); border: 0; }
 .range-value { text-align: center; border: 1px solid var(--line); padding: 7px 4px; border-radius: 7px; color: var(--mint); font-size: 12px; }

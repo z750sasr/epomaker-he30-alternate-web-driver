@@ -222,46 +222,54 @@ function renderDksActionRows() {
 }
 
 function bindDksRowControls() {
-  $$('[data-dks-anchor-toggle]', $("#advancedFields")).forEach((button) => { button.onclick = () => {
-    const [rowIndex, anchor] = button.dataset.dksAnchorToggle.split(":").map(Number);
-    const field = DKS_FIELD_META[anchor].field;
-    editDksAnchor(state.dksDraft, rowIndex, anchor, Number(state.dksDraft.rows[rowIndex][field]) > 0 ? 0 : 1);
-    renderDksActionRows();
-  }; });
+  $$('[data-dks-anchor-toggle]', $("#advancedFields")).forEach((button) => {
+    button.onclick = () => {
+      const [rowIndex, anchor] = button.dataset.dksAnchorToggle.split(":").map(Number);
+      const field = DKS_FIELD_META[anchor].field;
+      editDksAnchor(state.dksDraft, rowIndex, anchor, Number(state.dksDraft.rows[rowIndex][field]) > 0 ? 0 : 1);
+      renderDksActionRows();
+    };
+  });
   $$('[data-dks-anchor-range]', $("#advancedFields")).forEach((input) => {
     input.oninput = () => {
-    const [rowIndex, anchor] = input.dataset.dksAnchorRange.split(":").map(Number);
-    editDksAnchor(state.dksDraft, rowIndex, anchor, Number(input.value));
-    const label = input.nextElementSibling;
-    if (label) label.textContent = Number(input.value) <= 1 ? "tap" : `hold ${Number(input.value) - 1} span${Number(input.value) === 2 ? "" : "s"}`;
-    syncDksInlineValidation();
+      const [rowIndex, anchor] = input.dataset.dksAnchorRange.split(":").map(Number);
+      editDksAnchor(state.dksDraft, rowIndex, anchor, Number(input.value));
+      const label = input.nextElementSibling;
+      if (label) label.textContent = Number(input.value) <= 1 ? "tap" : `hold ${Number(input.value) - 1} span${Number(input.value) === 2 ? "" : "s"}`;
+      syncDksInlineValidation();
     };
     input.onchange = renderDksActionRows;
   });
-  $$('[data-dks-preset]', $("#advancedFields")).forEach((button) => { button.onclick = () => {
-    applyDksPresetToDraft(state.dksDraft, Number(button.dataset.dksActionIndex), button.dataset.dksPreset);
-    renderDksActionRows();
-  }; });
-  $$('[data-dks-clear]', $("#advancedFields")).forEach((button) => { button.onclick = () => {
-    clearDksDraftRow(state.dksDraft, Number(button.dataset.dksClear));
-    renderDksActionRows();
-  }; });
+  $$('[data-dks-preset]', $("#advancedFields")).forEach((button) => {
+    button.onclick = () => {
+      applyDksPresetToDraft(state.dksDraft, Number(button.dataset.dksActionIndex), button.dataset.dksPreset);
+      renderDksActionRows();
+    };
+  });
+  $$('[data-dks-clear]', $("#advancedFields")).forEach((button) => {
+    button.onclick = () => {
+      clearDksDraftRow(state.dksDraft, Number(button.dataset.dksClear));
+      renderDksActionRows();
+    };
+  });
   $$('[data-open-mapping-picker]', $("#dksActionStack")).forEach((button) => { button.onclick = () => openAdvancedMappingPicker(button); });
 }
 
 function bindDksEditor() {
   if (!state.dksDraft) return;
   bindDksRowControls();
-  $$('[data-dks-threshold-range]', $("#advancedFields")).forEach((input) => { input.oninput = () => {
-    const index = Number(input.dataset.dksThresholdRange);
-    state.dksDraft.points[index] = Number(input.value);
-    state.dksDraft.pointEdited[index] = true;
-    const number = $(`[data-dks-threshold-number="${index}"]`);
-    if (number) number.value = dksRawToMm(state.dksDraft.points[index]).toFixed(1);
-    const label = $(`[data-dks-point-label="${index}"]`);
-    if (label) label.textContent = `${dksRawToMm(state.dksDraft.points[index]).toFixed(1)} mm`;
-    syncDksInlineValidation();
-  }; });
+  $$('[data-dks-threshold-range]', $("#advancedFields")).forEach((input) => {
+    input.oninput = () => {
+      const index = Number(input.dataset.dksThresholdRange);
+      state.dksDraft.points[index] = Number(input.value);
+      state.dksDraft.pointEdited[index] = true;
+      const number = $(`[data-dks-threshold-number="${index}"]`);
+      if (number) number.value = dksRawToMm(state.dksDraft.points[index]).toFixed(1);
+      const label = $(`[data-dks-point-label="${index}"]`);
+      if (label) label.textContent = `${dksRawToMm(state.dksDraft.points[index]).toFixed(1)} mm`;
+      syncDksInlineValidation();
+    };
+  });
   $$('[data-dks-threshold-number]', $("#advancedFields")).forEach((input) => {
     const update = (finalize) => {
       const index = Number(input.dataset.dksThresholdNumber);

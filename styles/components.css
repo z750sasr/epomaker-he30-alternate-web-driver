@@ -131,8 +131,8 @@
 .dks-row-presets button:hover { border-color: var(--mint); color: var(--text); }
 .dks-firmware-note { margin-top: 10px; }
 .dks-firmware-note b { color: var(--blue); }
-.dks-threshold-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 15px; }
-.dks-threshold-groups section { display: grid; grid-template-columns: 110px repeat(2, minmax(150px, 1fr)); align-items: end; gap: 9px; padding: 12px; border: 1px solid var(--line); border-radius: 11px; background: #091522; }
+.dks-threshold-groups { display: grid; gap: 10px; margin-top: 15px; }
+.dks-threshold-groups section { display: grid; grid-template-columns: 110px repeat(2, minmax(150px, 1fr)); gap: 9px; padding: 12px; border: 1px solid var(--line); border-radius: 11px; background: #091522; }
 .dks-threshold-groups header span, .dks-threshold-groups header b { display: block; }
 .dks-threshold-groups header span { color: var(--mint); font-size: 8px; font-weight: 900; letter-spacing: .08em; }
 .dks-threshold-groups .release header span { color: var(--blue); }
