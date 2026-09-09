@@ -155,9 +155,38 @@ async function returnHome() {
 // ---------------------------------------------------------------------------
 // One-time application bootstrap
 // ---------------------------------------------------------------------------
+const UI_THEME_STORAGE_KEY = "he30-ui-theme";
+
+function savedUiTheme() {
+  try { return localStorage?.getItem?.(UI_THEME_STORAGE_KEY); } catch (_) { return null; }
+}
+
+function applyUiTheme(theme, { persist = true } = {}) {
+  const resolvedTheme = theme === "light" ? "light" : "dark";
+  if (document.documentElement) document.documentElement.dataset.theme = resolvedTheme;
+  const isLight = resolvedTheme === "light";
+  const toggle = $("#themeToggle");
+  if (toggle) {
+    toggle.setAttribute?.("aria-pressed", String(isLight));
+    toggle.setAttribute?.("aria-label", `Switch to ${isLight ? "dark" : "light"} mode`);
+    toggle.title = `Switch to ${isLight ? "dark" : "light"} mode`;
+  }
+  const themeColor = document.querySelector?.('meta[name="theme-color"]');
+  themeColor?.setAttribute?.("content", isLight ? "#ffffff" : "#07111f");
+  if (persist) {
+    try { localStorage?.setItem?.(UI_THEME_STORAGE_KEY, resolvedTheme); } catch (_) { /* Keep the in-memory theme. */ }
+  }
+}
+
+function toggleUiTheme() {
+  const current = document.documentElement?.dataset?.theme === "light" ? "light" : "dark";
+  applyUiTheme(current === "light" ? "dark" : "light");
+}
+
 // Unlike bindPageControls(), these elements are part of index.html and survive
 // every page render, so their listeners are attached exactly once.
 function bindStaticControls() {
+  $("#themeToggle")?.addEventListener("click", toggleUiTheme);
   $("#connectButton")?.addEventListener("click", connectKeyboard);
   $("#welcomeConnectButton")?.addEventListener("click", connectKeyboard);
   $("#openFileButton")?.addEventListener("click", () => $("#fileInput")?.click());
@@ -214,6 +243,7 @@ function bindStaticControls() {
 }
 
 // Start only after every preceding application module has loaded.
+applyUiTheme(document.documentElement?.dataset?.theme === "light" || savedUiTheme() === "light" ? "light" : "dark", { persist: false });
 renderMiniKeyboard();
 bindStaticControls();
 if (APP_MODE === "live" && !API.HE30Driver.supported()) {

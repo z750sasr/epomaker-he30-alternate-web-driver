@@ -35,6 +35,13 @@ button { color: inherit; }
 .brand strong { font-size: 18px; letter-spacing: .01em; }
 .brand small { color: var(--muted); margin-top: 2px; font-size: 13px; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
+.theme-toggle { min-height: 38px; display: inline-flex; align-items: center; gap: 8px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: rgb(17 31 49 / 72%); cursor: pointer; transition: border-color .18s ease, background .18s ease, color .18s ease; }
+.theme-toggle:hover { border-color: var(--line-strong); color: var(--text); background: var(--surface-2); }
+.theme-toggle:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+.theme-toggle-icon { font-size: 17px; line-height: 1; }
+.theme-toggle-label { font-size: 13px; font-weight: 750; }
+.theme-toggle-track { width: 32px; height: 18px; position: relative; flex: 0 0 auto; border: 1px solid var(--line-strong); border-radius: 99px; background: #091522; transition: .18s ease; }
+.theme-toggle-track i { width: 12px; height: 12px; position: absolute; top: 2px; left: 2px; border-radius: 50%; background: #71869a; transition: transform .18s ease, background .18s ease; }
 .local-pill, .connection-pill { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 99px; white-space: nowrap; }
 .local-pill i, .connection-pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 9px var(--mint); }
 .connection-pill i { background: #607488; box-shadow: none; }

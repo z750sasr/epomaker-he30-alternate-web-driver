@@ -6,6 +6,11 @@
     <meta name="description" content="Open, inspect, remap, and export HE30 keyboard JSON backups locally in your browser." />
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#07111f" />
+    <script>
+      try {
+        if (localStorage.getItem("he30-ui-theme") === "light") document.documentElement.dataset.theme = "light";
+      } catch (_) { /* Storage can be unavailable in privacy-restricted contexts. */ }
+    </script>
     <meta name="he30-cloud-api" content="" />
     <link rel="canonical" href="https://z750sasr.github.io/epomaker-he30-alternate-web-driver/json_editor/" />
     <title>EPOMAKER HE30 Profile JSON Editor</title>
@@ -16,6 +21,7 @@
     <link rel="stylesheet" href="../styles/pages.css" />
     <link rel="stylesheet" href="../styles/components.css" />
     <link rel="stylesheet" href="../styles/responsive.css" />
+    <link rel="stylesheet" href="../styles/theme-light.css" />
   </head>
   <body data-app-mode="json">
     <div class="app-shell">
@@ -25,6 +31,11 @@
           <span><strong>HE30 Control</strong><small>Offline JSON editor</small></span>
         </button>
         <div class="topbar-actions">
+          <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to light mode" aria-pressed="false" title="Switch to light mode">
+            <span class="theme-toggle-icon" aria-hidden="true">☼</span>
+            <span class="theme-toggle-label">Light</span>
+            <span class="theme-toggle-track" aria-hidden="true"><i></i></span>
+          </button>
           <span class="local-pill"><i></i> Local only</span>
           <a class="button secondary compact route-link" href="../">Live keyboard control</a>
           <button class="button primary compact" id="openFileButton" type="button">Open JSON</button>

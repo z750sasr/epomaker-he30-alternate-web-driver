@@ -7,6 +7,11 @@
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <meta name="google-site-verification" content="PUk9OiI-Cq2YrFn-p4tZdN2vddSIlqG0yXbhTgHOZU8" />
     <meta name="theme-color" content="#07111f" />
+    <script>
+      try {
+        if (localStorage.getItem("he30-ui-theme") === "light") document.documentElement.dataset.theme = "light";
+      } catch (_) { /* Storage can be unavailable in privacy-restricted contexts. */ }
+    </script>
     <!-- Set content to the HTTPS URL where server/ is deployed, without a trailing slash. -->
     <meta name="he30-cloud-api" content="" />
     <meta property="og:type" content="website" />
@@ -28,6 +33,7 @@
     <link rel="stylesheet" href="styles/pages.css" />
     <link rel="stylesheet" href="styles/components.css" />
     <link rel="stylesheet" href="styles/responsive.css" />
+    <link rel="stylesheet" href="styles/theme-light.css" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -50,6 +56,11 @@
           <span><strong>Unofficial EPOMAKER HE30 Web Driver</strong><small>Under development</small></span>
         </button>
         <div class="topbar-actions">
+          <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to light mode" aria-pressed="false" title="Switch to light mode">
+            <span class="theme-toggle-icon" aria-hidden="true">☼</span>
+            <span class="theme-toggle-label">Light</span>
+            <span class="theme-toggle-track" aria-hidden="true"><i></i></span>
+          </button>
           <span class="connection-pill" id="connectionPill"><i></i><span>Not connected</span></span>
           <a class="button secondary compact route-link" href="json_editor/">JSON editor</a>
           <button class="button primary compact" id="connectButton" type="button">Connect keyboard</button>

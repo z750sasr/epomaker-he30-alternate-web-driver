@@ -7,7 +7,7 @@ const root = __dirname;
 // do in the browser while each file can still be syntax-checked independently.
 const protocolFiles = ["js/protocol/core.js", "js/protocol/codecs.js", "protocol.js"];
 const appFiles = ["js/app/foundation.js", "js/app/pages.js", "js/app/hall.js", "js/app/lighting.js", "js/app/dks.js", "js/app/editors.js", "js/app/profiles.js", "js/app/cloud.js", "app.js"];
-const styleFiles = ["styles.css", "styles/workspace.css", "styles/keyboard-hall.css", "styles/pages.css", "styles/components.css", "styles/responsive.css"];
+const styleFiles = ["styles.css", "styles/workspace.css", "styles/keyboard-hall.css", "styles/pages.css", "styles/components.css", "styles/responsive.css", "styles/theme-light.css"];
 const readSource = (file) => fs.readFileSync(`${root}/${file}`, "utf8");
 const protocolSource = protocolFiles.map(readSource).join("\n");
 const appSource = appFiles.map(readSource).join("\n");
@@ -39,13 +39,14 @@ async function verifyBrowserBootstrap() {
     return node;
   };
   let requestCount = 0;
+  let storedTheme = null;
   const browser = {
     console, URL, Blob, Response, CompressionStream, DecompressionStream, TextEncoder, TextDecoder,
     Uint8Array, ArrayBuffer, DataView, Promise, Math, Number, String, Boolean, Object, Array, Set, Map, JSON, Error, Date, RegExp, btoa, atob,
     setTimeout: () => 1, clearTimeout() {}, requestAnimationFrame: () => 1, cancelAnimationFrame() {}, performance: { now: () => 0 },
-    confirm: () => true, localStorage: { setItem() {} },
+    confirm: () => true, localStorage: { getItem() { return storedTheme; }, setItem(_key, value) { storedTheme = value; } },
     navigator: { hid: { async requestDevice() { requestCount += 1; return []; }, addEventListener() {} } },
-    document: { body: { dataset: { appMode: "live" } }, currentScript: null, querySelector: element, querySelectorAll: () => [], addEventListener() {} },
+    document: { documentElement: { dataset: {} }, body: { dataset: { appMode: "live" } }, currentScript: null, querySelector: element, querySelectorAll: () => [], addEventListener() {} },
     HTMLTextAreaElement: class {}, HTMLSelectElement: class {}, HTMLInputElement: class {},
   };
   browser.window = browser;
@@ -55,6 +56,10 @@ async function verifyBrowserBootstrap() {
   for (const file of [...protocolFiles, ...appFiles]) {
     browser.document.currentScript = { src: `https://example.test/repo/${file}` };
     vm.runInContext(readSource(file), browser, { filename: file });
+  }
+  vm.runInContext('applyUiTheme("light")', browser);
+  if (browser.document.documentElement.dataset.theme !== "light" || storedTheme !== "light" || !elements.get("#themeToggle")?.listeners.has("click")) {
+    throw new Error("The topbar theme toggle did not apply and persist light mode.");
   }
   const demoSummary = vm.runInContext(`(() => {
     const demo = makeDemoProfile();
@@ -151,7 +156,7 @@ async function verifyBrowserBootstrap() {
     const cappedPointerSnap = dksPointerValueFromRatio({ ...snapRow, downEnd: 1 }, 0, 0.99);
     state.dksDraft = draft;
     const editorMarkup = dksEditorHtml();
-    const markupReady = ["dks-point-scale", "dks-track-shell", "dksInteractionStatus", "Quick timing", "data-dks-row-point"].every((fragment) => editorMarkup.includes(fragment));
+    const markupReady = ["dks-point-scale", "dks-track-shell", "dksInteractionStatus", "Output timing", "data-dks-row-point"].every((fragment) => editorMarkup.includes(fragment));
     clearDksDraftRow(draft, 0);
     const cleared = [dksOutputAssigned(draft.rows[0]), dksTimingActive(draft.rows[0]), draft.rows[0]._timingDirty];
     state.profile = previousProfile;
@@ -497,7 +502,7 @@ for (const mode of ["Last Input Priority", "Absolute 1st key", "Absolute 2nd key
   if (!appSource.includes(mode)) throw new Error(`SOCD mode is missing: ${mode}`);
 }
 if (appSource.includes("Neutral / last input")) throw new Error("Neutral and Last Input Priority must remain separate SOCD modes.");
-for (const fragment of ["defaultMappingForPhysical", "restoreAdvancedHosts(item)", "preserveAdvancedUiMetadata", "mappingPickerField", "openAdvancedMappingPicker", "advancedHostKeyboardHtml", "data-advanced-host-key", "data-advanced-layer", "pairIndependentRt", "DKS_FIELD_META", "createDksDraft", "projectDksRow", "editDksAnchor", "validateDksDraft", "dksRawToMm", "dksMmToRaw", "data-dks-checkpoint", "data-dks-anchor-clear", "dksPointerValue", "dksPointerValueFromRatio", "dksUpdateRowVisual", "dksInteractionStatus", "syncDksPointLabels", "Tap R1", "Full hold", "dksTimingActive", "Choose an output key for every active DKS row", "Dynamic Keystroke", "profileDisclosureHtml", "data-profile-disclosure", "modifierPickerHtml", "comboModifierMask", "currentModifierMask", "HID mask bit order", "Fn-layer warning:"]) {
+for (const fragment of ["defaultMappingForPhysical", "restoreAdvancedHosts(item)", "preserveAdvancedUiMetadata", "mappingPickerField", "openAdvancedMappingPicker", "advancedHostKeyboardHtml", "data-advanced-host-key", "data-advanced-layer", "pairIndependentRt", "DKS_FIELD_META", "createDksDraft", "projectDksRow", "editDksAnchor", "validateDksDraft", "dksRawToMm", "dksMmToRaw", "data-dks-checkpoint", "data-dks-anchor-clear", "dksPointerValue", "dksPointerValueFromRatio", "dksUpdateRowVisual", "dksInteractionStatus", "syncDksPointLabels", "tapR1", "fullHold", "dksTimingActive", "Choose an output key for every active DKS row", "Dynamic Keystroke", "profileDisclosureHtml", "data-profile-disclosure", "modifierPickerHtml", "comboModifierMask", "currentModifierMask", "HID mask bit order", "Fn-layer warning:"]) {
   if (!appSource.includes(fragment)) throw new Error(`Advanced-editor revamp is missing: ${fragment}`);
 }
 for (const forbidden of ["dksMaskToFields", "dksTimelineMaskFromEntry", "DKS_TIMELINE_POINTS", "document.onpointerup"]) {
@@ -510,6 +515,15 @@ const deleteAdvancedSource = appSource.match(/function deleteAdvanced\(index\) \
 if (!deleteAdvancedSource.includes("restoreAdvancedHosts(item)") || deleteAdvancedSource.includes("makeMapping(255")) throw new Error("Deleting an Advanced action must restore its saved or physical-default host mappings.");
 for (const fragment of [".mapping-picker-control", ".modifier-options", ".modifier-picker > p", ".advanced-host-keyboard", ".advanced-host-slots", ".dks-action-row", ".dks-track-shell", ".dks-native-track", ".dks-checkpoint", ".dks-point-scale", ".dks-interaction-status", ".dks-gesture-hint", ".dks-threshold-groups", ".dks-row-presets", ".profile-tool-disclosure", ".configured-action-buttons"]) {
   if (!styleSource.includes(fragment)) throw new Error(`Advanced-editor styling is missing: ${fragment}`);
+}
+for (const fragment of ['id="themeToggle"', 'styles/theme-light.css', 'he30-ui-theme']) {
+  if (!htmlSource.includes(fragment)) throw new Error(`Theme-switch markup is missing: ${fragment}`);
+}
+for (const fragment of ["UI_THEME_STORAGE_KEY", "applyUiTheme", "toggleUiTheme"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Persistent theme behavior is missing: ${fragment}`);
+}
+for (const fragment of [':root[data-theme="light"]', ".theme-toggle-track", ".lighting-preview", ".modal"]) {
+  if (!styleSource.includes(fragment)) throw new Error(`Light workspace styling is missing: ${fragment}`);
 }
 if (API.PROFILE_COUNT !== 3 || API.LAYER_COUNT !== 4 || API.TOTAL_LAYER_COUNT !== 12) throw new Error("The three-profile, twelve-layer topology is incorrect.");
 equal([0, 1, 2].map(API.profileConfigOffset), [0, 64, 128], "Live telemetry config offsets must follow the active profile.");
