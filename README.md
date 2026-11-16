@@ -13,8 +13,36 @@ A simple web-based configuration tool for supported Epomaker HE30-family Hall-ef
 
 Use it to change key mappings, Hall-effect settings, lighting, profiles, macros, and other keyboard options directly from your browser. Nothing needs to be installed, and your keyboard data stays on your computer.
 
+# 16th Nov 2026: This project has not been updated for 2 months, read my excuse below and I have some hopeful news for you guys
+- I am still using this keyboard daily, just got 25k Red ratings on CS2 (dying game haha). I have no intention stop development of this project.
+- Right now I am shifting development towards the Everglide AE64 Pro magnetic keyboard - yes I own both of them, play games using the HE30, typing using the Everglide AE64 Pro. Checkout [**Everglide AE64 Pro webdriver GitHub page**](https://github.com/tuk3kCS/everglide-ae64-pro-webdriver)
+- All of the factory stock features of this keyboards are fully implemented (with additional thingy to). So the only thing I can improve on this project is the UI/UX - not worth it right now.
+
+## **Hopeful news**: 
+Before telling you guys the good news, I will tell you sad news first (:cry:):
+
+- It is very likely that the OEM of this keyboard (the guys behind the epomaker.keybord web driver) dropped support for this keyboard, same like the other keyboards they made (Drunkdeer A75 series).
+- This keyboard has no new firmware update since its release, still rocking the old factory firmware 0x0109, build Mar 29 2026,14:42:21
+- For now, there is no way to extract the keyboard's firmware - OEM's webdriver gives out 404 when I tried to get the keyboard on their website - which means I cannot create a custom firmware for this keyboard. If you check out the AE64 Pro GitHub link I mention above, I was able to reverse AE64's firmware and created custom firmware that supports gamepad/controller mode and lighting settings that matches Wooting's features.
+
+**Here comes the good news (hopefully):**
+
+<table>
+  <tr>
+    <td><img src="images/WCHLinkE.jpg" alt="Black Epomaker HE30 keyboard" width="300"></td>
+    <td><img src="images\W_Debug_pin.jpg" alt="White Epomaker HE30 keyboard" width="300"></td>
+  </tr>
+</table>
+
+I have ordered this WCH-LinkE and the prob pins. Theoretically, if I can pull out some magic, I will be able to **read/extract the keyboard's firmware directly**. And finally, I can develop custom firmware for this keyboard, yippe! 
+- I dream of many things haha - gamepad/controller mode, FN layers's custom lighting same as Wooting, multi-point trigger (One physical switch can emit two or three different key values as it travels deeper), end key (emit one output on press and another when the key reaches its end state).
+- The processing power of the keyboard is superior to Wooting's offerings - so these features should be feasible.
+
+Bonus: here is the picture of the HE30's pcb: 
+<table><tr><img src="images\W_pcb.jpg" alt="White Epomaker HE30 keyboard" width="60%"></tr></table>
+
 > [!IMPORTANT]
-> Firmware updates and bootloader flashing are not supported.
+> Firmware updates and bootloader flashing are not supported (for now).
 
 ## Open the Driver
 

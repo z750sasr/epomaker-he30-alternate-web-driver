@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HE30 Sensor Mapper</title>
+  <style>
+    body { color-scheme: dark; background: #141b23; color: #e9eef3; font: 16px/1.55 system-ui, sans-serif; max-width: 900px; margin: 2.5rem auto; padding: 0 1rem; }
+    a { color: #9ce3d0; }
+    section { background: #1c2834; border: 1px solid #3d5061; border-radius: 12px; padding: 1rem; margin: 1rem 0; }
+    h2 { font-size: 1.2rem; margin-top: 0; }
+    button, input, select { font: inherit; color: inherit; background: #273949; border: 1px solid #577389; border-radius: 6px; padding: .5rem .7rem; margin: .25rem; }
+    button:disabled { opacity: .5; }
+    table { border-collapse: collapse; width: 100%; text-align: left; }
+    th, td { padding: .45rem; border-bottom: 1px solid #3d5061; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <a href="../">HE30 Control</a>
+  <h1>HE30 Sensor Mapper</h1>
+  <p>Match physical keys to the identities emitted by the stock firmware’s Hall travel stream.</p>
+  <section>
+    <h2>1. Start monitoring</h2>
+    <p>Use the HE30 in normal mode and close other configurators. Start Monitor enables the stock Dynamic Display setting on the active profile if needed. Use Stop &amp; Restore before closing this tab or unplugging.</p>
+    <button id="connect" disabled>Connect HE30</button>
+    <button id="start" disabled>Start Monitor</button>
+    <button id="stop" disabled>Stop &amp; Restore</button>
+    <p id="status" role="status">Ready.</p>
+  </section>
+  <section>
+    <h2>2. Capture one key</h2>
+    <p>Enter a physical label such as “Row 2, column 3 (W).” Release all keys, start capture, then press the key firmly and release it. Captures only consider travel of at least 0.35 mm.</p>
+    <label>Physical label <input id="label" maxlength="80" autocomplete="off"></label>
+    <button id="capture" disabled>Capture for 4 seconds</button>
+    <div>
+      <label>Observed identity <select id="candidate" disabled></select></label>
+      <button id="save" disabled>Add mapping</button>
+    </div>
+    <p id="observed">No capture yet.</p>
+    <pre id="packet"></pre>
+  </section>
+  <section>
+    <h2>3. Export the map</h2>
+    <p id="count">0 keys mapped.</p>
+    <table><thead><tr><th>Physical label</th><th>Report identity</th><th>Peak travel</th><th></th></tr></thead><tbody id="mappings"></tbody></table>
+    <button id="export" disabled>Export map as JSON</button>
+  </section>
+  <script src="../js/protocol/core.js"></script>
+  <script src="../js/protocol/codecs.js"></script>
+  <script src="../protocol.js"></script>
+  <script src="mapper.js"></script>
+</body>
+</html>
