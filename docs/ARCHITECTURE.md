@@ -42,6 +42,7 @@ The scripts are loaded in this exact order by both `index.html` and
 | `js/app/pages.js` | HTML for every page plus listeners attached after a page render |
 | `js/app/hall.js` | Distance inputs, Hall selection, live travel, and calibration |
 | `js/app/lighting.js` | Live RGB polling, smoothing, strip simulation, and color previews |
+| `js/app/dks.js` | HE30-native DKS draft model, four-anchor/range editor, validation, and bindings |
 | `js/app/editors.js` | Mapping modal and all Advanced-action editors |
 | `js/app/profiles.js` | Device connection, live profile switching, imports, sharing, and factory reset |
 | `app.js` | Apply/revert, teardown, permanent shell listeners, and startup |

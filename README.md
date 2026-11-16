@@ -65,33 +65,7 @@ Firefox and Safari do not currently support WebHID, but they can still be used w
 - Added new key map: MacOS's Siri and Launchpad keys, additional F13 to F24 keys for those nerds.
 - Maybe better UX/UI interface? (subjective)
 - Maybe one day, the manufacturer will end the suppport for this keyboard and shut the website down, but this project is deployed on GitHub, so maybe this would stay forever (unless the world is coming to and end or some god-level hacker vaporizes GitHub.
-- Miscs, blah blah blah
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- Miscs
 
 ## Let's be real, who wants to read AI generated stuff? If you are, then read the part below.
 
@@ -106,14 +80,13 @@ Firefox and Safari do not currently support WebHID, but they can still be used w
 - Main-key lighting, the small light-strip zone, and saved colors for all 36 physical keys
 - Live RGB framebuffer preview for all 36 keys, plus a live multi-segment light-strip preview synchronized from its onboard effect settings
 - Onboard profile switching on multi-profile models
+- Optional private MongoDB profile backup keyed by a server-side HMAC of the connected keyboard serial and protected by a separate passphrase
 - Live profile and layer tracking: onboard profile-key presses automatically refresh every workspace page
 - DKS, Mod-Tap, Toggle, Rappy Snappy, SOCD, combination keys, and macros
 - Staged edits, explicit write confirmation, byte-for-byte read-back verification, and an in-browser recovery backup
 - Local diagnostics and session-log export
 - Automatic return to the connection screen when a connected keyboard is unplugged
 - Browser keyboard-action suppression while hardware is connected, so Space, arrows, and remapped keys do not scroll or activate the page during testing
-
-Firmware update and bootloader flashing are intentionally not included.
 
 ## Capture-derived compatibility notes
 
@@ -134,8 +107,6 @@ Firmware update and bootloader flashing are intentionally not included.
 Based on AI Analysis, the original driver site https://epomaker.keybord.net.cn/ also supports 2 more models:
 | Epomaker GT60 | `19F5:FB79` | One profile                           |
 | Epomaker HE30 | `19F5:FB27` | One profile                           |
-
-Only normal keyboard-configuration interfaces are requested.
 
 Firmware-updater and bootloader device IDs are not included in the application.
 
@@ -170,6 +141,15 @@ http://localhost:4173/json_editor/
 ```
 
 JSON-only mode and demo mode do not require WebHID.
+
+## Optional MongoDB Cloud Backup
+
+GitHub Pages cannot run a database server or safely keep a MongoDB connection
+string. The optional cloud panel therefore talks to a separate Node.js API in
+[`server/`](server/README.md). Deploy that folder, configure its MongoDB and
+CORS environment variables, then set the `he30-cloud-api` meta tag in
+`index.html` to the API's HTTPS URL. Until that URL is configured, the cloud
+panel remains visible in setup mode and its upload/restore buttons stay disabled.
 
 ## Technical Compatibility Notes
 

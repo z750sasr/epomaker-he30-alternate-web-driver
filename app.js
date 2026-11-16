@@ -76,6 +76,10 @@ async function switchProfile(event) {
   if (!state.driver || state.pendingProfile == null) return;
   const profileIndex = state.pendingProfile;
   state.pendingProfile = null;
+  state.cloudPassphrase = "";
+  state.cloudBusy = false;
+  state.cloudStatus = "";
+  state.cloudError = false;
   await syncDeviceProfile(profileIndex, { activate: true, layer: 0, origin: "interface" });
 }
 
@@ -116,10 +120,6 @@ async function resetToLanding({ closeDevice = false, stopMonitor = true, message
   state.liveLightingTimer = 0;
   cancelLiveLightingAnimation({ clearDisplay: true });
   state.liveLightingColors.fill(null);
-  state.liveStripLight = null;
-  state.liveStripUpdatedAt = 0;
-  state.liveStripError = "";
-  state.liveStripFramebufferDetected = false;
   if (closeDevice && state.driver) {
     try { await state.driver.close(); } catch (_) { /* no-op */ }
   }
@@ -155,9 +155,38 @@ async function returnHome() {
 // ---------------------------------------------------------------------------
 // One-time application bootstrap
 // ---------------------------------------------------------------------------
+const UI_THEME_STORAGE_KEY = "he30-ui-theme";
+
+function savedUiTheme() {
+  try { return localStorage?.getItem?.(UI_THEME_STORAGE_KEY); } catch (_) { return null; }
+}
+
+function applyUiTheme(theme, { persist = true } = {}) {
+  const resolvedTheme = theme === "light" ? "light" : "dark";
+  if (document.documentElement) document.documentElement.dataset.theme = resolvedTheme;
+  const isLight = resolvedTheme === "light";
+  const toggle = $("#themeToggle");
+  if (toggle) {
+    toggle.setAttribute?.("aria-pressed", String(isLight));
+    toggle.setAttribute?.("aria-label", `Switch to ${isLight ? "dark" : "light"} mode`);
+    toggle.title = `Switch to ${isLight ? "dark" : "light"} mode`;
+  }
+  const themeColor = document.querySelector?.('meta[name="theme-color"]');
+  themeColor?.setAttribute?.("content", isLight ? "#ffffff" : "#07111f");
+  if (persist) {
+    try { localStorage?.setItem?.(UI_THEME_STORAGE_KEY, resolvedTheme); } catch (_) { /* Keep the in-memory theme. */ }
+  }
+}
+
+function toggleUiTheme() {
+  const current = document.documentElement?.dataset?.theme === "light" ? "light" : "dark";
+  applyUiTheme(current === "light" ? "dark" : "light");
+}
+
 // Unlike bindPageControls(), these elements are part of index.html and survive
 // every page render, so their listeners are attached exactly once.
 function bindStaticControls() {
+  $("#themeToggle")?.addEventListener("click", toggleUiTheme);
   $("#connectButton")?.addEventListener("click", connectKeyboard);
   $("#welcomeConnectButton")?.addEventListener("click", connectKeyboard);
   $("#openFileButton")?.addEventListener("click", () => $("#fileInput")?.click());
@@ -182,6 +211,7 @@ function bindStaticControls() {
     if (state.page === "lighting" && button.dataset.page !== "lighting" && (state.liveLightingActive || state.liveLightingBusy)) await stopLiveLighting();
     state.page = button.dataset.page;
     renderPage();
+    resetWorkspaceScroll();
   });
   $("#exportButton")?.addEventListener("click", exportProfile);
   $("#revertButton")?.addEventListener("click", revertStaged);
@@ -189,7 +219,7 @@ function bindStaticControls() {
   $("#confirmBackupCheck")?.addEventListener("change", (event) => { $("#confirmApplyButton").disabled = !event.target.checked; });
   $("#confirmApplyButton")?.addEventListener("click", applyToKeyboard);
   $("#confirmSwitchButton")?.addEventListener("click", switchProfile);
-  $("#mappingSearch")?.addEventListener("input", (event) => renderMappingGroups(event.target.value));
+  ["input", "search"].forEach((type) => $("#mappingSearch")?.addEventListener(type, (event) => renderMappingGroups(event.target.value)));
   $("#clearMappingButton")?.addEventListener("click", clearMapping);
   $("#mappingDialog")?.addEventListener("close", () => { state.mappingPickerTarget = null; state.mappingPickerScope = "all"; });
   $("#saveAdvancedButton")?.addEventListener("click", saveAdvanced);
@@ -213,6 +243,7 @@ function bindStaticControls() {
 }
 
 // Start only after every preceding application module has loaded.
+applyUiTheme(document.documentElement?.dataset?.theme === "light" || savedUiTheme() === "light" ? "light" : "dark", { persist: false });
 renderMiniKeyboard();
 bindStaticControls();
 if (APP_MODE === "live" && !API.HE30Driver.supported()) {

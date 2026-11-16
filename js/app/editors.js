@@ -103,8 +103,31 @@ function openMapping(index) {
   setTimeout(() => $("#mappingSearch").focus(), 30);
 }
 
+function mappingSearchFields(item, group) {
+  return [
+    item.name, item.short, item.macName, item.macShort, item.searchTerms,
+    group.title, `type ${item.type}`, `code ${item.code2}`, `hid ${item.code2}`,
+  ].filter(Boolean).map((value) => String(value).toLowerCase());
+}
+
+function mappingSearchScore(item, group, query) {
+  if (!query) return 0;
+  const directLabels = [item.name, item.short, item.macName, item.macShort].filter(Boolean).map((value) => String(value).toLowerCase());
+  if (directLabels.includes(query)) return 0;
+  if (directLabels.some((value) => value.startsWith(query))) return 1;
+  if (mappingSearchFields(item, group).some((value) => value.includes(query))) return 2;
+  return 3;
+}
+
+function mappingMatchesSearch(item, group, query) {
+  const terms = String(query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const fields = mappingSearchFields(item, group);
+  return terms.every((term) => fields.some((value) => value.includes(term)));
+}
+
 function renderMappingGroups(query) {
-  const normalized = query.trim().toLowerCase();
+  const normalized = String(query || "").trim().toLowerCase();
   const pickerControl = state.mappingPickerTarget ? $(`#${state.mappingPickerTarget}`) : null;
   const current = pickerControl ? mappingFromControl(pickerControl) : state.profile.userKeys[state.layer][state.mappingIndex] || {};
   const macMode = Number(state.profile.deviceSettings.systemMode) === 1;
@@ -112,11 +135,12 @@ function renderMappingGroups(query) {
     if (group.macOnly && !macMode) return "";
     const items = group.items.filter((item) => {
       if (state.mappingPickerScope === "basic" && (item.type !== 16 || item.code1 !== 0)) return false;
-      return !normalized || `${item.name} ${item.macName || ""} ${item.searchTerms || ""} ${group.title}`.toLowerCase().includes(normalized);
-    });
+      if (state.mappingPickerScope === "macro" && !MACRO_MAPPING_CHOICES.includes(item)) return false;
+      return mappingMatchesSearch(item, group, normalized);
+    }).sort((left, right) => mappingSearchScore(left, group, normalized) - mappingSearchScore(right, group, normalized) || left.name.localeCompare(right.name));
     if (!items.length) return "";
     return `<section class="mapping-group"><h3>${esc(group.title)}</h3><div class="mapping-options">${items.map((item) => `<button class="mapping-option${item.type === current.type && item.code1 === current.code1 && item.code2 === current.code2 ? " active" : ""}" type="button" data-map="${item.type},${item.code1},${item.code2}"><strong>${esc((macMode && item.macName) || item.name)}</strong><small>${item.type} · ${item.code1} · ${item.code2}</small></button>`).join("")}</div></section>`;
-  }).join("") || `<div class="empty-state"><strong>No mappings found</strong><p>Try a shorter search.</p></div>`;
+  }).join("") || `<div class="empty-state"><strong>No mappings found</strong><p>Search by a key label, symbol, alias, function, or HID code.</p></div>`;
   $$('[data-map]', $("#mappingGroups")).forEach((button) => button.addEventListener("click", () => {
     const [type, code1, code2] = button.dataset.map.split(",").map(Number);
     const preset = ALL_MAPPINGS.find((item) => item.type === type && item.code1 === code1 && item.code2 === code2);
@@ -170,7 +194,7 @@ function clearMapping() {
 // ---------------------------------------------------------------------------
 function mappingPickerField(id, selected, label, choices = ALL_MAPPINGS) {
   const current = selected || choices[0];
-  const scope = choices === BASIC_MAPPING_CHOICES ? "basic" : "all";
+  const scope = choices === BASIC_MAPPING_CHOICES ? "basic" : choices === MACRO_MAPPING_CHOICES ? "macro" : "all";
   return `<div class="field"><span>${esc(label)}</span><button class="mapping-picker-control" id="${id}" type="button" data-open-mapping-picker data-mapping-label="${esc(label)}" data-mapping-scope="${scope}" data-mapping-value="${current.type},${current.code1},${current.code2}"><strong>${esc(mappingLabel(current))}</strong><small>Browse the key-mapping library →</small></button></div>`;
 }
 
@@ -184,6 +208,18 @@ function setMappingControl(control, mapping) {
   control.dataset.mappingValue = `${mapping.type},${mapping.code1},${mapping.code2}`;
   const label = $("strong", control);
   if (label) label.textContent = mappingLabel(mapping);
+  const dksMatch = /^dksKey(\d+)$/.exec(control.id || "");
+  if (dksMatch && state.dksDraft?.rows[Number(dksMatch[1])]) {
+    const row = state.dksDraft.rows[Number(dksMatch[1])];
+    row.key = clone(mapping);
+    const card = control.closest("[data-dks-action-card]");
+    const summary = card ? $(".dks-row-summary", card) : null;
+    if (summary) summary.textContent = dksRowSummary(row);
+    card?.classList.toggle("assigned", dksOutputAssigned(row));
+    card?.classList.toggle("empty", !dksOutputAssigned(row));
+    card?.classList.toggle("invalid", dksOutputAssigned(row) !== dksTimingActive(row));
+    syncDksInlineValidation();
+  }
 }
 
 function openAdvancedMappingPicker(control) {
@@ -219,7 +255,7 @@ function advancedHostKeyboardHtml(layer, paired) {
   return `<div class="keyboard-grid advanced-host-keyboard" data-keyboard-mode="advanced-host">${HE30_LAYOUT.map((row) => `<div class="key-row">${row.map((keyItem) => {
     const index = keyItem.index;
     const position = state.advancedHostSelection.indexOf(index);
-    const mapped = mappingLabel(compiled.userKeys[layer][index]);
+    const mapped = mappingKeyboardLabel(compiled.userKeys[layer][index]);
     const advanced = [112, 144, 145, 146, 147, 148].includes(compiled.userKeys[layer][index]?.type);
     return `<button class="keycap advanced-host-key${position >= 0 ? ` selected host-${position + 1}` : ""}${advanced ? " advanced" : ""}" type="button" data-advanced-host-key="${index}" aria-pressed="${position >= 0}" style="--key-width:${keyWidth(keyItem)}px;--key-u:${keyUnit(keyItem)}" title="Use physical ${esc(keyItem.label)} as ${paired ? "a paired" : "the"} host"><span class="mapped primary-label">${esc(mapped)}</span><span class="physical secondary-label">Physical: ${esc(keyItem.label)}</span><i class="advanced-host-order" aria-hidden="true">${position >= 0 ? position + 1 : ""}</i></button>`;
   }).join("")}</div>`).join("")}</div>`;
@@ -243,6 +279,7 @@ function openAdvanced(type, editIndex = null) {
   state.advancedLayer = uiClamp(item.layer ?? 0, 0, API.LAYER_COUNT - 1);
   state.advancedHostSelection = paired ? [index1, index2] : [index1];
   state.advancedHostSlot = 0;
+  state.dksDraft = type === "dks" ? createDksDraft(item) : null;
   const meta = ADVANCED_META[type];
   $("#advancedTitle").textContent = `${editIndex == null ? "Add" : "Edit"} ${meta.name}`;
   $("#advancedError").textContent = "";
@@ -254,49 +291,19 @@ function openAdvanced(type, editIndex = null) {
 // ---------------------------------------------------------------------------
 // Type-specific Advanced form builders
 // ---------------------------------------------------------------------------
-function normalizeModifierOrder(order, modifiers = 0) {
-  const validBits = new Set(MODIFIER_CHOICES.map(([bit]) => bit));
-  const result = [];
-  (Array.isArray(order) ? order : []).map(Number).forEach((bit) => {
-    if (validBits.has(bit) && (modifiers & bit) && !result.includes(bit)) result.push(bit);
-  });
-  MODIFIER_CHOICES.forEach(([bit]) => { if ((modifiers & bit) && !result.includes(bit)) result.push(bit); });
-  return result;
-}
-
-function modifierSequenceHtml(order) {
-  if (!order.length) return `<div class="modifier-order-empty">Choose modifiers above in the order you want them displayed.</div>`;
-  return order.map((bit, index) => {
-    const name = MODIFIER_CHOICES.find(([value]) => value === bit)?.[1] || `Modifier ${bit}`;
-    return `<div class="modifier-order-item"><span><i>${index + 1}</i>${esc(name)}</span><div><button type="button" data-modifier-move="-1" data-modifier-bit="${bit}" aria-label="Move ${esc(name)} earlier"${index === 0 ? " disabled" : ""}>←</button><button type="button" data-modifier-move="1" data-modifier-bit="${bit}" aria-label="Move ${esc(name)} later"${index === order.length - 1 ? " disabled" : ""}>→</button><button type="button" data-modifier-remove="${bit}" aria-label="Remove ${esc(name)}">×</button></div></div>`;
-  }).join("");
-}
-
 function modifierPickerHtml(item) {
-  const modifiers = Number(item.modifiers) || 0;
-  const order = normalizeModifierOrder(item.modifierOrder, modifiers);
-  return `<div class="modifier-picker" data-modifier-picker><input id="comboModifierOrder" type="hidden" value="${order.join(",")}" /><div class="modifier-options">${MODIFIER_CHOICES.map(([bit, name]) => {
-    const position = order.indexOf(bit);
-    return `<button class="modifier-option${position >= 0 ? " selected" : ""}" type="button" data-modifier-option="${bit}" aria-pressed="${position >= 0}"><i>${position >= 0 ? position + 1 : "+"}</i><span>${esc(name)}</span></button>`;
-  }).join("")}</div><div class="modifier-order-heading"><strong>Selected order</strong><small>Use the arrows to reorder the chosen modifiers.</small></div><div class="modifier-order-list" id="comboModifierSequence">${modifierSequenceHtml(order)}</div><p>The selection order is preserved in this workspace and exported backups. The keyboard firmware encodes the active modifiers as one HID mask and sends them together.</p></div>`;
-}
-
-function dksStagePicker(id, label, value) {
-  const selected = uiClamp(value, 0, 4);
-  return `<div class="dks-stage-picker" data-dks-stage-picker><div><strong>${esc(label)}</strong><small>${selected ? `Stage ${selected}` : "Off"}</small></div><input id="${id}" type="hidden" value="${selected}" />${[[0, "Off"], [1, "1"], [2, "2"], [3, "3"], [4, "4"]].map(([stage, text]) => `<button type="button" data-dks-stage-choice="${stage}" class="${stage === selected ? "active" : ""}" aria-pressed="${stage === selected}">${text}</button>`).join("")}</div>`;
-}
-
-function dksActionEditor(entry, index) {
-  return `<article class="dks-action-card"><header><i>${index + 1}</i><div><strong>Output ${index + 1}</strong><small>Choose a key, then place its down/up transitions on the four travel stages.</small></div></header>${mappingPickerField(`dksKey${index}`, entry.key, `Output ${index + 1} key`)}<div class="dks-transition-groups"><section><h4>Pressing ↓</h4>${dksStagePicker(`dks${index}DownStart`, "Key down", entry.downStart)}${dksStagePicker(`dks${index}DownEnd`, "Key up", entry.downEnd)}</section><section><h4>Releasing ↑</h4>${dksStagePicker(`dks${index}UpStart`, "Key down", entry.upStart)}${dksStagePicker(`dks${index}UpEnd`, "Key up", entry.upEnd)}</section></div></article>`;
+  const modifiers = uiClamp(Number(item.modifiers ?? item.key1?.code1 ?? 0), 0, 255);
+  return `<div class="modifier-picker" data-modifier-picker><input id="comboModifierMask" type="hidden" value="${modifiers}" /><div class="modifier-options">${MODIFIER_CHOICES.map(([bit, name], index) => {
+    const active = Boolean(modifiers & bit);
+    return `<button class="modifier-option${active ? " selected" : ""}" type="button" data-modifier-option="${bit}" aria-pressed="${active}"><i>${active ? "✓" : index}</i><span>${esc(name)}</span></button>`;
+  }).join("")}</div><p>Modifiers always use HID mask bit order 0–7: Left Ctrl, Left Shift, Left Alt, Left GUI, Right Ctrl, Right Shift, Right Alt, Right GUI. The keyboard receives one 8-bit modifier mask, not a press order.</p></div>`;
 }
 
 function advancedFormHtml(type, item) {
   const host = advancedHostPickerHtml(type);
   const finish = (content) => content;
   if (type === "dks") {
-    const points = (item.dksPoint || [40, 160, 240, 80]).map((point) => uiClamp(point, 1, 255));
-    const dksKeys = item.dksKeys || [0, 1, 2, 3].map(() => ({ key: mappingFromPreset(BASIC_MAPPING_CHOICES[0]), downStart: 1, downEnd: 2, upStart: 2, upEnd: 1 }));
-    return finish(`${host}<div class="form-section dks-editor"><div class="dks-section-heading"><div><h3>Four travel stages</h3><p>Like Wootility DKS, each output can press or release at independently chosen points while the switch travels down and back up.</p></div><span class="chip">0.01–2.55 mm</span></div><div class="dks-travel-editor">${points.map((point, index) => `<div><i>${index + 1}</i>${rangeField(`Stage ${index + 1}`, `dksPoint${index}`, point, 1, 255, 1, "mm")}</div>`).join("")}</div><div class="dks-direction-rail" aria-hidden="true"><span>Pressing switch ↓</span><i></i><span>Releasing switch ↑</span></div><div class="dks-actions">${dksKeys.map(dksActionEditor).join("")}</div><div class="callout"><b>Transition model:</b> “Key down” holds an output; “Key up” releases it. Set a transition to Off when that half of the travel should not change the output.</div></div>`);
+    return finish(`${host}${dksEditorHtml()}`);
   }
   if (type === "mt") return finish(`${host}<div class="form-section"><h3>Tap and hold outputs</h3><div class="field-grid">${mappingPickerField("mtClickKey", item.mtClickKey, "Tap output")}${mappingPickerField("mtDownKey", item.mtDownKey, "Hold output")}<label class="field"><span>Hold threshold</span><input id="mtTime" type="number" min="10" max="2550" step="10" value="${item.mtTime || 200}" /><small>10–2550 ms, stored in 10 ms steps</small></label></div></div>`);
   if (type === "tgl") return finish(`${host}<div class="form-section"><h3>Toggle output</h3><div class="field-grid">${mappingPickerField("tglKey", item.tglKey, "Output key")}</div></div>`);
@@ -310,55 +317,71 @@ function advancedFormHtml(type, item) {
   if (type === "cb") {
     return finish(`${host}<div class="form-section"><h3>Combination</h3>${modifierPickerHtml(item)}<div class="field-grid combination-base-field">${mappingPickerField("comboBase", item.baseKey, "Base key", BASIC_MAPPING_CHOICES)}</div></div>`);
   }
-  const actions = item.actions?.length ? item.actions : [{ action: "keydown", code: 4, delay: 0 }, { action: "keyup", code: 4, delay: 50 }];
-  return finish(`${host}<div class="form-section"><h3>Playback</h3><div class="field-grid"><label class="field"><span>Repeat count</span><input id="macroRepeat" type="number" min="1" max="255" value="${item.macroRepeatCount || 1}" /></label></div></div><div class="form-section"><h3>Macro events</h3><div class="macro-rows" id="macroRows">${actions.map((action, index) => macroRow(action, index)).join("")}</div><button class="icon-action" id="addMacroRow" type="button" style="margin-top:10px">+ Add event</button><div class="callout">Delays are stored per event in milliseconds. Keep matched key-down and key-up events to avoid a stuck key.</div></div>`);
+  const actions = item.actions?.length ? item.actions : [{ action: "keydown", code: 4, delay: 0, kind: "key" }, { action: "keyup", code: 4, delay: 50, kind: "key" }];
+  return finish(`${host}<div class="form-section macro-editor"><div class="macro-heading"><div><h3>Macro timeline</h3><p>Build the exact sequence the host key will play. A keystroke adds a safe matching press and release; use a single event only for manual sequences.</p></div><span class="chip">ONBOARD PLAYBACK</span></div><div class="macro-toolbar"><label class="field macro-repeat-field"><span>Repeat timeline</span><input id="macroRepeat" type="number" min="1" max="255" value="${item.macroRepeatCount || 1}" /><small>1–255 times per host-key activation</small></label><div class="macro-summary" id="macroSummary" aria-live="polite"><span><b>${actions.length}</b> events</span><span><b>${actions.reduce((total, action) => total + uiClamp(action.delay, 0, 65535), 0)}</b> ms</span></div><div class="macro-add-actions"><button class="button primary compact" id="addMacroPair" type="button">+ Add keystroke</button><button class="button secondary compact" id="addMacroRow" type="button">+ Single event</button></div></div><div class="macro-column-head" aria-hidden="true"><span>Step</span><span>Output</span><span>State</span><span>Wait before</span><span>Arrange</span></div><div class="macro-rows" id="macroRows">${actions.map((action, index) => macroRow(action, index)).join("")}</div><div class="callout macro-safety-note"><b>Safe playback:</b> every Key down must have a later matching Key up. The editor checks this before staging so a macro cannot intentionally leave a key held.</div></div>`);
+}
+
+function macroMappingFromAction(action) {
+  const code = Number(action.code);
+  if (action.kind === "mouse") return MACRO_MAPPING_CHOICES.find((mapping) => mapping.type === 32 && mapping.code1 === code) || MACRO_MAPPING_CHOICES.find((mapping) => mapping.type === 32);
+  if (code >= 224 && code <= 231) return MACRO_MAPPING_CHOICES.find((mapping) => mapping.type === 16 && mapping.code1 === (1 << (code - 224)) && mapping.code2 === 0);
+  return MACRO_MAPPING_CHOICES.find((mapping) => mapping.type === 16 && mapping.code1 === 0 && mapping.code2 === code) || BASIC_MAPPING_CHOICES[0];
+}
+
+function macroCodeAndKind(mapping) {
+  if (mapping.type === 32) return { code: mapping.code1, kind: "mouse" };
+  if (mapping.type === 16 && mapping.code2 === 0 && mapping.code1 > 0 && (mapping.code1 & (mapping.code1 - 1)) === 0) {
+    return { code: 224 + Math.log2(mapping.code1), kind: "key" };
+  }
+  return { code: mapping.code2, kind: "key" };
 }
 
 function macroRow(action, index) {
-  const selected = BASIC_MAPPING_CHOICES.find((mapping) => mapping.code2 === Number(action.code)) || BASIC_MAPPING_CHOICES[0];
-  return `<div class="macro-row" data-macro-row data-macro-index="${index}">${mappingPickerField(`macroKey${index}`, selected, `Event ${index + 1}`, BASIC_MAPPING_CHOICES)}${selectField("Action", `macroAction${index}`, [["keydown", "Key down"], ["keyup", "Key up"]], action.action)}<label class="field"><span>Delay ms</span><input id="macroDelay${index}" type="number" min="0" max="65535" value="${action.delay || 0}" /></label><button class="icon-action delete" type="button" data-remove-macro aria-label="Remove event">×</button></div>`;
+  const selected = macroMappingFromAction(action);
+  return `<div class="macro-row" data-macro-row data-macro-index="${index}"><span class="macro-step"><i>STEP</i><b>${index + 1}</b></span>${mappingPickerField(`macroKey${index}`, selected, `Event ${index + 1} output`, MACRO_MAPPING_CHOICES)}${selectField("State", `macroAction${index}`, [["keydown", "Key down"], ["keyup", "Key up"]], action.action)}<label class="field macro-delay"><span>Wait before</span><div><input id="macroDelay${index}" type="number" min="0" max="65535" value="${action.delay || 0}" /><i>ms</i></div></label><div class="macro-row-actions"><button class="icon-action" type="button" data-move-macro="up" aria-label="Move event up" title="Move up">↑</button><button class="icon-action" type="button" data-move-macro="down" aria-label="Move event down" title="Move down">↓</button><button class="icon-action delete" type="button" data-remove-macro aria-label="Remove event" title="Remove">×</button></div></div>`;
 }
 
-function currentModifierOrder() {
-  return String($("#comboModifierOrder")?.value || "").split(",").filter(Boolean).map(Number).filter((bit, index, values) => MODIFIER_CHOICES.some(([value]) => value === bit) && values.indexOf(bit) === index);
-}
-
-function syncModifierPicker(order) {
-  const hidden = $("#comboModifierOrder");
-  if (!hidden) return;
-  hidden.value = order.join(",");
-  $$('[data-modifier-option]', $("[data-modifier-picker]")).forEach((button) => {
-    const position = order.indexOf(Number(button.dataset.modifierOption));
-    button.classList.toggle("selected", position >= 0);
-    button.setAttribute("aria-pressed", String(position >= 0));
-    const badge = $("i", button);
-    if (badge) badge.textContent = position >= 0 ? position + 1 : "+";
+function syncMacroTimeline() {
+  const rows = $$('[data-macro-row]', $("#macroRows"));
+  let duration = 0;
+  rows.forEach((row, index) => {
+    row.dataset.macroIndex = index;
+    const step = $(".macro-step b", row);
+    if (step) step.textContent = index + 1;
+    duration += uiClamp($("input[id^=macroDelay]", row)?.value, 0, 65535);
   });
-  const sequence = $("#comboModifierSequence");
-  if (sequence) sequence.innerHTML = modifierSequenceHtml(order);
+  const summary = $("#macroSummary");
+  if (summary) summary.innerHTML = `<span><b>${rows.length}</b> events</span><span><b>${duration}</b> ms</span>`;
+  $$('[data-move-macro="up"]', $("#macroRows")).forEach((button, index) => { button.disabled = index === 0; });
+  $$('[data-move-macro="down"]', $("#macroRows")).forEach((button, index) => { button.disabled = index === rows.length - 1; });
+}
+
+function currentModifierMask() {
+  return uiClamp(Number($("#comboModifierMask")?.value || 0), 0, 255);
+}
+
+function syncModifierPicker(modifiers) {
+  const hidden = $("#comboModifierMask");
+  if (!hidden) return;
+  hidden.value = String(uiClamp(modifiers, 0, 255));
+  $$('[data-modifier-option]', $("[data-modifier-picker]")).forEach((button, index) => {
+    const active = Boolean(modifiers & Number(button.dataset.modifierOption));
+    button.classList.toggle("selected", active);
+    button.setAttribute("aria-pressed", String(active));
+    const badge = $("i", button);
+    if (badge) badge.textContent = active ? "✓" : String(index);
+  });
 }
 
 function bindModifierPicker() {
   const picker = $("[data-modifier-picker]");
   if (!picker) return;
   picker.onclick = (event) => {
-    const order = currentModifierOrder();
     const option = event.target.closest("[data-modifier-option]");
-    const remove = event.target.closest("[data-modifier-remove]");
-    const move = event.target.closest("[data-modifier-move]");
-    if (option) {
-      const bit = Number(option.dataset.modifierOption);
-      const position = order.indexOf(bit);
-      if (position >= 0) order.splice(position, 1); else order.push(bit);
-    } else if (remove) {
-      const position = order.indexOf(Number(remove.dataset.modifierRemove));
-      if (position >= 0) order.splice(position, 1);
-    } else if (move) {
-      const position = order.indexOf(Number(move.dataset.modifierBit));
-      const next = position + Number(move.dataset.modifierMove);
-      if (position >= 0 && next >= 0 && next < order.length) [order[position], order[next]] = [order[next], order[position]];
-    } else return;
-    syncModifierPicker(order);
+    if (!option) return;
+    const bit = Number(option.dataset.modifierOption);
+    const modifiers = currentModifierMask();
+    syncModifierPicker(modifiers & bit ? modifiers & ~bit : modifiers | bit);
   };
 }
 
@@ -437,19 +460,6 @@ function syncPairTravelLimits() {
   if (note) note.textContent = `Pair limits use the shorter host-key switch travel: ${maximumTravel.toFixed(2)} mm.`;
 }
 
-function syncDksStagePicker(picker, stage) {
-  const value = uiClamp(stage, 0, 4);
-  const input = $("input[type=hidden]", picker);
-  if (input) input.value = value;
-  $$('[data-dks-stage-choice]', picker).forEach((button) => {
-    const active = Number(button.dataset.dksStageChoice) === value;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", String(active));
-  });
-  const status = $("small", picker);
-  if (status) status.textContent = value ? `Stage ${value}` : "Off";
-}
-
 // ---------------------------------------------------------------------------
 // Advanced modal interactions
 // ---------------------------------------------------------------------------
@@ -474,7 +484,7 @@ function bindAdvancedForm() {
     if (paired && slot === 0) state.advancedHostSlot = 1;
     syncAdvancedHostPicker();
   }; });
-  $$('[data-dks-stage-choice]').forEach((button) => { button.onclick = () => syncDksStagePicker(button.closest("[data-dks-stage-picker]"), Number(button.dataset.dksStageChoice)); });
+  if (state.advancedType === "dks") bindDksEditor();
   $("#pairIndependentRt")?.addEventListener("change", () => syncPairRtControls(true));
   $("#pairPress")?.addEventListener("input", () => syncPairRtControls(true));
   $('[data-range-for="pairPress"]')?.addEventListener("input", () => syncPairRtControls(true));
@@ -484,10 +494,24 @@ function bindAdvancedForm() {
   if (addMacro) addMacro.onclick = () => {
     const indexes = $$('[data-macro-row]', $("#macroRows")).map((row) => Number(row.dataset.macroIndex));
     const nextIndex = Math.max(-1, ...indexes) + 1;
-    $("#macroRows").insertAdjacentHTML("beforeend", macroRow({ action: "keydown", code: 4, delay: 0 }, nextIndex));
+    $("#macroRows").insertAdjacentHTML("beforeend", macroRow({ action: "keydown", code: 4, delay: 0, kind: "key" }, nextIndex));
     bindAdvancedForm();
   };
-  $$('[data-remove-macro]', $("#advancedFields")).forEach((button) => button.onclick = () => button.closest('[data-macro-row]').remove());
+  const addMacroPair = $("#addMacroPair");
+  if (addMacroPair) addMacroPair.onclick = () => {
+    const start = $$('[data-macro-row]', $("#macroRows")).length;
+    $("#macroRows").insertAdjacentHTML("beforeend", `${macroRow({ action: "keydown", code: 4, delay: 0, kind: "key" }, start)}${macroRow({ action: "keyup", code: 4, delay: 50, kind: "key" }, start + 1)}`);
+    bindAdvancedForm();
+  };
+  $$('[data-remove-macro]', $("#advancedFields")).forEach((button) => button.onclick = () => { button.closest('[data-macro-row]').remove(); syncMacroTimeline(); });
+  $$('[data-move-macro]', $("#advancedFields")).forEach((button) => button.onclick = () => {
+    const row = button.closest('[data-macro-row]');
+    if (button.dataset.moveMacro === "up" && row.previousElementSibling) row.parentElement.insertBefore(row, row.previousElementSibling);
+    if (button.dataset.moveMacro === "down" && row.nextElementSibling) row.parentElement.insertBefore(row.nextElementSibling, row);
+    syncMacroTimeline();
+  });
+  $$('input[id^="macroDelay"]', $("#macroRows")).forEach((input) => { input.oninput = syncMacroTimeline; });
+  syncMacroTimeline();
   bindModifierPicker();
 }
 
@@ -536,7 +560,18 @@ function saveAdvanced(event) {
   const existing = state.advancedEditIndex == null ? null : state.profile.advancedKeys[state.advancedEditIndex];
   const base = { type, layer, index1, baseMapping: existing && (existing.layer || 0) === layer && existing.index1 === index1 ? existing.baseMapping || baseMappingForHost(layer, index1) : baseMappingForHost(layer, index1) };
   let item = base;
-  if (type === "dks") item = { ...base, dksPoint: [0, 1, 2, 3].map((index) => Number($(`#dksPoint${index}`).value)), dksKeys: [0, 1, 2, 3].map((index) => ({ key: parseMappingSelect(`dksKey${index}`), downStart: Number($(`#dks${index}DownStart`).value), downEnd: Number($(`#dks${index}DownEnd`).value), upStart: Number($(`#dks${index}UpStart`).value), upEnd: Number($(`#dks${index}UpEnd`).value) })) };
+  if (type === "dks") {
+    const draft = state.dksDraft;
+    if (!draft) return showAdvancedError("The DKS editor state is unavailable. Reopen this action and try again.");
+    const dksKeys = draft.rows.map((row, index) => ({ ...clone(row), key: parseMappingSelect(`dksKey${index}`) }));
+    const activeRows = dksKeys.filter(dksTimingActive);
+    if (!activeRows.length) return showAdvancedError("Choose at least one DKS output position.");
+    if (activeRows.some((entry) => !dksOutputAssigned(entry))) return showAdvancedError("Choose an output key for every active DKS row.");
+    const validation = validateDksDraft({ ...draft, rows: dksKeys });
+    if (validation.errors.length) return showAdvancedError(validation.errors[0]);
+    const dksPoint = clone(draft.points);
+    item = { ...base, dksPoint, dksKeys };
+  }
   if (type === "mt") item = { ...base, mtClickKey: parseMappingSelect("mtClickKey"), mtDownKey: parseMappingSelect("mtDownKey"), mtTime: uiClamp($("#mtTime").value, 10, 2550) };
   if (type === "tgl") item = { ...base, tglKey: parseMappingSelect("tglKey") };
   if (type === "rs" || type === "socd") {
@@ -547,18 +582,25 @@ function saveAdvanced(event) {
     item = { ...base, index2, baseMapping2: existing && (existing.layer || 0) === layer && existing.index2 === index2 ? existing.baseMapping2 || baseMappingForHost(layer, index2) : baseMappingForHost(layer, index2), baseTravel1: existing && (existing.layer || 0) === layer && existing.index1 === index1 ? existing.baseTravel1 || clone(state.profile.travelKeys[index1]) : clone(state.profile.travelKeys[index1]), baseTravel2: existing && (existing.layer || 0) === layer && existing.index2 === index2 ? existing.baseTravel2 || clone(state.profile.travelKeys[index2]) : clone(state.profile.travelKeys[index2]), key1: parseMappingSelect("pairKey1"), key2: parseMappingSelect("pairKey2"), option: { actuation: Number($("#pairActuation").value), press, release, priority: type === "socd" ? Number($("#pairPriority").value) : 0 } };
   }
   if (type === "cb") {
-    const modifierOrder = currentModifierOrder();
-    const modifiers = modifierOrder.reduce((mask, bit) => mask | bit, 0);
-    if (!modifierOrder.length) return showAdvancedError("Choose at least one modifier.");
-    item = { ...base, modifiers, modifierOrder, baseKey: parseMappingSelect("comboBase") };
+    const modifiers = currentModifierMask();
+    if (!modifiers) return showAdvancedError("Choose at least one modifier.");
+    item = { ...base, modifiers, baseKey: parseMappingSelect("comboBase") };
   }
   if (type === "macro") {
     const actions = $$('[data-macro-row]', $("#macroRows")).map((row) => {
       const keyControl = $("[data-open-mapping-picker][id^=macroKey]", row);
-      const code = mappingFromControl(keyControl).code2;
-      return { action: $("select[id^=macroAction]", row).value, code, delay: uiClamp($("input[id^=macroDelay]", row).value, 0, 65535), kind: "key" };
+      const encoded = macroCodeAndKind(mappingFromControl(keyControl));
+      return { action: $("select[id^=macroAction]", row).value, ...encoded, delay: uiClamp($("input[id^=macroDelay]", row).value, 0, 65535) };
     });
     if (!actions.length) return showAdvancedError("Add at least one macro event.");
+    const held = new Map();
+    for (let index = 0; index < actions.length; index += 1) {
+      const action = actions[index], key = `${action.kind}:${action.code}`, count = held.get(key) || 0;
+      if (action.action === "keyup" && count === 0) return showAdvancedError(`Step ${index + 1} releases a key that is not held. Add or move its Key down event first.`);
+      held.set(key, action.action === "keydown" ? count + 1 : count - 1);
+    }
+    const stuck = [...held.entries()].find(([, count]) => count > 0);
+    if (stuck) return showAdvancedError("Every Key down needs a matching Key up later in the timeline.");
     item = { ...base, macroRepeatCount: uiClamp($("#macroRepeat").value, 1, 255), actions };
   }
   const displaced = [];

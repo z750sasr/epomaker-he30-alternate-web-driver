@@ -45,8 +45,18 @@
 .color-selection-summary small { color: #a7b9c9; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .color-selection-summary strong { overflow: hidden; color: var(--text); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 [data-keyboard-mode="color"] .keycap { border-color: color-mix(in srgb, var(--key-led) 72%, #36516a); background: linear-gradient(color-mix(in srgb, var(--key-led) 38%, #14273a), color-mix(in srgb, var(--key-led) 18%, #081522)); box-shadow: inset 0 -4px rgb(0 0 0 / 24%), 0 0 14px color-mix(in srgb, var(--key-led) 28%, transparent); }
+[data-keyboard-mode="color"] { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; 
+  /* Add padding around all 4 sides of the grid */
+  padding: 30px; 
+
+  /* Ensure padding expands outwards beyond the grid content width */
+    border: 1px solid var(--line);
+    border-radius: 15px;
+  border-color: rgb(38, 244, 227);}
+[data-keyboard-mode="color"].drag-selecting, [data-keyboard-mode="color"].drag-selecting .keycap { cursor: crosshair; }
 [data-keyboard-mode="color"] .keycap:hover { border-color: color-mix(in srgb, var(--key-led) 82%, white); box-shadow: inset 0 -4px rgb(0 0 0 / 24%), 0 0 22px color-mix(in srgb, var(--key-led) 42%, transparent); }
 [data-keyboard-mode="color"] .keycap.selected { outline: 2px solid var(--mint); outline-offset: 2px; }
+.color-selection-box { position: absolute; z-index: 8; border: 1px solid var(--mint); border-radius: 4px; background: rgb(102 247 194 / 13%); box-shadow: 0 0 0 1px rgb(102 247 194 / 10%), 0 0 18px rgb(102 247 194 / 10%); pointer-events: none; }
 .key-color-value { display: flex; align-items: center; gap: 5px; margin-top: 10px; color: #d4e0e9; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; font-weight: 750; }
 .key-color-value i { width: 8px; height: 8px; flex: 0 0 auto; border: 1px solid rgb(255 255 255 / 45%); border-radius: 50%; background: var(--swatch); box-shadow: 0 0 8px var(--swatch); }
 .color-legend { justify-content: space-between; flex-wrap: wrap; }
@@ -110,6 +120,16 @@
 .share-validation { padding: 10px 11px; border: 1px solid; border-radius: 9px; font-size: 11px; line-height: 1.5; }
 .share-validation.valid { border-color: rgb(102 247 194 / 28%); color: var(--mint); background: rgb(102 247 194 / 7%); }
 .share-validation.error { border-color: rgb(255 126 138 / 30%); color: #ffc3c9; background: rgb(255 126 138 / 7%); }
+.cloud-profile-grid { padding-top: 18px; }
+.cloud-device-key { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #07111d; }
+.cloud-device-key span { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.cloud-device-key strong { color: var(--mint); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 18px; letter-spacing: .12em; }
+.cloud-device-key small { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.cloud-actions { display: flex; gap: 8px; margin-top: auto; }
+.cloud-actions .button { flex: 1; }
+.cloud-validation { margin-top: 13px; }
+.cloud-privacy-note { margin-top: 13px; }
+.cloud-privacy-note b { color: var(--mint); }
 .share-targets { display: grid; gap: 12px; padding-top: 2px; }
 .share-targets strong, .share-targets small { display: block; }
 .share-targets strong { font-size: 13px; }

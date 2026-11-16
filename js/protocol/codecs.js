@@ -109,6 +109,27 @@ function dksStatusToBits(value) {
   return (status > 0 ? 1 : 0) | ((status > 1 ? 1 : 0) << 1) | ((status > 2 ? 1 : 0) << 2);
 }
 
+/** Encode the HE30's four constrained DKS range fields into one native word. */
+function encodeDksStatusWord(entry = {}) {
+  let downStart = Number(entry.downStart) || 0;
+  let downEnd = Number(entry.downEnd) || 0;
+  let upStart = Number(entry.upStart) || 0;
+  const upEnd = Number(entry.upEnd) || 0;
+  if (downStart === 4) {
+    downStart = 3;
+    downEnd = 3;
+    upStart = 2;
+  } else if (downStart === 3) {
+    downStart = 3;
+    downEnd = 2;
+  }
+  if (downEnd === 3) upStart = 2;
+  return (dksStatusToBits(downStart) & 7)
+    | ((dksStatusToBits(downEnd) & 7) << 3)
+    | ((dksStatusToBits(upStart) & 7) << 6)
+    | ((dksStatusToBits(upEnd) & 1) << 9);
+}
+
 function decodeDksStatuses(fields) {
   let downStart = 0;
   let downEnd = 0;
@@ -133,6 +154,19 @@ function decodeDksStatuses(fields) {
   return { downStart, downEnd, upStart, upEnd };
 }
 
+function decodeDksStatusWord(bits) {
+  const word = clamp(bits, 0, 0xffff);
+  return {
+    ...decodeDksStatuses({
+      action0: word & 7,
+      action1: (word >> 3) & 7,
+      action2: (word >> 6) & 7,
+      action3: (word >> 9) & 1,
+    }),
+    _statusBits: word,
+  };
+}
+
 function decodeDksBank(bytes) {
   const entries = [];
   for (let index = 0; index < 32; index += 1) {
@@ -142,12 +176,7 @@ function decodeDksBank(bytes) {
       const offset = start + 4 + action * 5;
       const key = makeMapping(bytes[offset], bytes[offset + 1], bytes[offset + 2]);
       const bits = readLittleEndian(bytes[offset + 3], bytes[offset + 4]);
-      const statuses = decodeDksStatuses({
-        action0: bits & 7,
-        action1: (bits >> 3) & 7,
-        action2: (bits >> 6) & 7,
-        action3: (bits >> 9) & 1,
-      });
+      const statuses = decodeDksStatusWord(bits);
       keys.push({ key, ...statuses });
     }
     entries.push({ dksPoint: bytes.slice(start, start + 4), dksKeys: keys });
@@ -160,30 +189,21 @@ function encodeDksBank(items) {
   items.slice(0, 32).forEach((item, index) => {
     const start = index * 24;
     const points = item.dksPoint || [10, 30, 30, 10];
-    for (let point = 0; point < 4; point += 1) bytes[start + point] = clamp(points[point] || 10, 1, 255);
+    for (let point = 0; point < 4; point += 1) {
+      const value = Number(points[point]);
+      bytes[start + point] = Number.isFinite(value) ? clamp(value, 0, 255) : [10, 30, 30, 10][point];
+    }
     (item.dksKeys || []).slice(0, 4).forEach((entry, action) => {
       const offset = start + 4 + action * 5;
       const key = entry.key || { type: 0, code1: 0, code2: 0 };
       bytes[offset] = key.type & 0xff;
       bytes[offset + 1] = key.code1 & 0xff;
       bytes[offset + 2] = key.code2 & 0xff;
-      let downStart = entry.downStart || 0;
-      let downEnd = entry.downEnd || 0;
-      let upStart = entry.upStart || 0;
-      const upEnd = entry.upEnd || 0;
-      if (downStart === 4) {
-        downStart = 3;
-        downEnd = 3;
-        upStart = 2;
-      } else if (downStart === 3) {
-        downStart = 3;
-        downEnd = 2;
-      }
-      if (downEnd === 3) upStart = 2;
-      const bits = (dksStatusToBits(downStart) & 7)
-        | ((dksStatusToBits(downEnd) & 7) << 3)
-        | ((dksStatusToBits(upStart) & 7) << 6)
-        | ((dksStatusToBits(upEnd) & 1) << 9);
+      // Read-back can contain undocumented bits. Preserve the exact native word
+      // unless this row's timing was deliberately changed in the editor.
+      const bits = Number.isInteger(entry._statusBits) && !entry._timingDirty
+        ? clamp(entry._statusBits, 0, 0xffff)
+        : encodeDksStatusWord(entry);
       const encoded = littleEndian(bits);
       bytes[offset + 3] = encoded[0];
       bytes[offset + 4] = encoded[1];
@@ -443,12 +463,18 @@ function compactProfileForShare(profile) {
     return mappings.slice(0, KEY_COUNT).map((mapping) => [Number(mapping.type), Number(mapping.code1), Number(mapping.code2)]);
   });
   if (!Array.isArray(profile.travelKeys) || profile.travelKeys.length < KEY_COUNT) throw new Error(`The profile does not contain ${KEY_COUNT} Hall records.`);
+  const advancedKeys = JSON.parse(JSON.stringify(profile.advancedKeys || [])).map((item) => {
+    if (item?.type !== "cb") return item;
+    const compact = { ...item, modifiers: clamp(item.modifiers ?? item.key1?.code1 ?? 0, 0, 255) };
+    delete compact.modifierOrder;
+    return compact;
+  });
   return {
     n: String(profile.name || `Keyboard Profile ${profileIndex + 1}`).slice(0, 200),
     i: profileIndex,
     k: keymaps,
     t: profile.travelKeys.slice(0, KEY_COUNT).map((record) => TRAVEL_SHARE_FIELDS.map((field) => field === "deadzone_status" ? Boolean(record[field]) : Number(record[field]))),
-    a: JSON.parse(JSON.stringify(profile.advancedKeys || [])),
+    a: advancedKeys,
     l: JSON.parse(JSON.stringify(profile.light || {})),
     s: JSON.parse(JSON.stringify(profile.logoLight || {})),
     c: Array.from(profile.colorKeys || []).slice(0, KEY_COUNT),
@@ -533,7 +559,12 @@ function expandProfileSharePayload(payload) {
     profileIndex,
     userKeys,
     travelKeys,
-    advancedKeys: JSON.parse(JSON.stringify(packed.a)),
+    advancedKeys: JSON.parse(JSON.stringify(packed.a)).map((item) => {
+      if (item?.type !== "cb") return item;
+      const action = { ...item, modifiers: clamp(item.modifiers ?? item.key1?.code1 ?? 0, 0, 255) };
+      delete action.modifierOrder;
+      return action;
+    }),
     light: JSON.parse(JSON.stringify(packed.l)),
     logoLight: JSON.parse(JSON.stringify(packed.s)),
     colorKeys: packed.c.map((color) => normalizeHexColor(color)),
