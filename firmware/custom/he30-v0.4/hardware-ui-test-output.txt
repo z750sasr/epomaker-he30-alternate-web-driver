@@ -1,0 +1,11 @@
+✔ v0.4 identity remains experimental and browser API decodes executed firmware fixtures (16.2845ms)
+✔ hardware API rejects bad parameters before IO and wrong signatures before control (1.214ms)
+✔ hardware page connects without a test, samples on request, records local mapping and exports observations (165.5107ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1261.8704

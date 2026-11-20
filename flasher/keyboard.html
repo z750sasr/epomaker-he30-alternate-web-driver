@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>HE30 Foundation Settings</title><link rel="stylesheet" href="style.css"><style>
+main{max-width:1180px}.status-grid,.fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.status-grid div{background:#10283a;border-radius:9px;padding:12px}.status-grid strong,.status-grid span{display:block}.status-grid span{color:#abc0d2;font-size:14px}.fields label{display:grid;gap:6px}.fields .check{display:flex;align-items:center;margin:0}.fields .wide{grid-column:1/-1}select,input{font:inherit;color:#e8f2fb;background:#10283a;border:1px solid #496276;border-radius:7px;padding:9px;min-width:0;max-width:100%}input[type=checkbox]{accent-color:#76e8ca}.keys{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:20px}.key{background:#10283a;color:inherit;border:1px solid #355369;border-radius:9px;text-align:left;min-height:100px;padding:10px}.key strong,.key span{display:block}.key span{font-size:12px;color:#b5c9d9}.key.learned{border-color:#4d9e8d}.key.pressed{background:#1d5149}.key.selected{outline:2px solid #76e8ca}.message{min-height:1.6em}#calibrationProgress{height:16px}#rawStatus{max-height:240px}.notes{color:#abc0d2;font-size:14px}.step{font-size:13px;font-weight:700;color:#76e8ca;text-transform:uppercase;letter-spacing:.08em}.file-inline{display:block;margin-top:12px}code{overflow-wrap:anywhere}@media(max-width:650px){.fields,.status-grid{grid-template-columns:1fr}.keys{grid-template-columns:repeat(3,minmax(0,1fr))}}
+</style></head><body><main>
+<header><a href="./">← Recovery & firmware</a><span class="badge">v0.5–v0.8 custom firmware</span></header>
+<h1>Foundation settings</h1>
+<p class="intro">Calibrate the 36 physical keys, set their bindings and actuation, then enable typing. v0.6 also controls the confirmed36-key LED chain and5-LED light bar.</p>
+<p class="warning">Experimental firmware. Positions are percentages of each key's learned sensor range, not measured millimeters. Keyboard input uses six-key rollover plus modifiers; this is not NKRO.</p>
+<section class="panel"><p class="step">1 · Connect</p><h2>Read the keyboard</h2>
+<p>Choose <strong>H3K05, H3K06, H3K07 or H3K08</strong>. Connection and status polling only read data. Calibration, applying settings, enabling typing and saving all require their own button.</p>
+<div class="buttons"><button id="connect">Connect custom firmware</button><button id="read" class="secondary" disabled>Read device settings</button><button id="disable" class="secondary" disabled>Disable typing</button><button id="retry" class="secondary" disabled>Retry scanner</button></div>
+<p id="message" class="message" role="status" aria-live="polite">Connect the foundation application to begin.</p>
+<div class="status-grid"><div><span>Typing</span><strong id="typingState">Disconnected</strong></div><div><span>Calibration</span><strong id="learnedState">—</strong></div><div><span>Device settings</span><strong id="savedState">—</strong></div></div>
+<p id="draftState" class="notes">No settings loaded.</p>
+</section>
+<section class="panel"><p class="step">2 · Sensor groups</p><h2>Confirmed group wiring</h2>
+<p>Your continuity measurements confirm Group 1 → PB10, Group 2 → PC13 and Group 3 → PC14. The defaults already use these connections. After calibration, check that pressing a physical key changes the matching card below. Alternate group order and settling are advanced options for troubleshooting.</p>
+<div class="fields"><label>Group 1 · F1–F6 / modifiers<select id="group1" disabled></select></label><label>Group 2 · number / Q row<select id="group2" disabled></select></label><label>Group 3 · A / Z row<select id="group3" disabled></select></label>
+<label>Settling loops<input id="settle" type="number" min="100" max="32000" step="100" disabled></label>
+<label class="check"><input id="verified" type="checkbox" disabled> Group wiring confirmed</label>
+<label class="check"><input id="startup" type="checkbox" disabled> Enable typing after apply/startup when calibration is valid</label></div>
+<div class="buttons"><button id="apply" disabled>Apply settings to RAM</button></div>
+<p class="notes">Applying a different group order invalidates calibration. Applying settings releases current inputs and requires the keys to be released before typing resumes. It does not save to flash.</p>
+</section>
+<section class="panel"><p class="step">3 · Calibrate</p><h2>Learn released and fully pressed readings</h2>
+<p>Apply any group changes first. Release all keys, begin calibration, and wait for the released readings. Then press every physical key fully, release it, and watch the learned count.</p>
+<p id="calibrationState" role="status" aria-live="polite">No calibration status yet.</p><progress id="calibrationProgress" max="36" value="0" aria-label="Keys with learned calibration"></progress>
+<div class="buttons"><button id="calibrate" disabled>Begin calibration</button><button id="finish" disabled>Finish calibration</button><button id="abort" class="secondary" disabled>Abort calibration</button><button id="enable" disabled>Enable typing</button></div>
+<p class="notes">Finish requires all 36 valid ranges and released keys. Calibration suppresses typing. After enabling or applying, release all keys to clear the input interlock.</p>
+<div id="keys" class="keys" aria-label="Physical sensor keys"></div>
+</section>
+<section class="panel"><p class="step">4 · Tune keys</p><h2 id="editorTitle">Key settings</h2>
+<p>Click a key card to edit it. Normal bindings and Fn bindings latch when the physical key actuates. Fn is momentary.</p>
+<div class="fields"><label>Normal binding<input id="normal" list="usageNames" placeholder="A or 0x04" disabled></label><label>Fn-layer binding<input id="fn" list="usageNames" placeholder="Transparent or 0xFE" disabled></label><label>Actuation · % of learned range<input id="actuation" type="number" min="1" max="99" step="0.1" disabled></label>
+<label>Release hysteresis · %<input id="hysteresis" type="number" min="0.1" max="50" step="0.1" disabled></label><label>RT press movement · %<input id="rtPress" type="number" min="0.5" max="100" step="0.1" disabled></label><label>RT release movement · %<input id="rtRelease" type="number" min="0.5" max="100" step="0.1" disabled></label>
+<label>Top dead zone · %<input id="top" type="number" min="0" max="40" step="1" disabled></label><label>Bottom dead zone · %<input id="bottom" type="number" min="0" max="40" step="1" disabled></label><div></div>
+<label class="check"><input id="rapid" type="checkbox" disabled> Enable Rapid Trigger for this key</label><label class="check"><input id="keyDisabled" type="checkbox" disabled> Disable this key's typing output</label></div>
+<datalist id="usageNames"></datalist>
+<div class="buttons"><button id="copyTuning" class="secondary" disabled>Copy this tuning to all keys</button><button id="applyKeys" disabled>Apply settings to RAM</button></div>
+<p class="notes">Copy tuning changes actuation, hysteresis, Rapid Trigger and dead zones. It preserves each key's normal/Fn bindings and disabled state. Changes stay in the page until Apply.</p>
+</section>
+<section id="lightingPanel" class="panel" hidden><p class="step">5 · Lighting</p><h2>Key LEDs and light bar</h2>
+<div id="powerPanel" hidden><h3>PA10 · RGB supply</h3>
+<div id="weakPowerControls" hidden>
+<p>Pin43 / PA10 reaches the LED supply circuit. Its enable polarity is still unknown. v0.7 starts with PA10 floating and RGB data paused. These buttons use only weak input pull resistors, then release the pin after ten seconds; they never select a strong output.</p>
+<div class="buttons"><button id="powerUp" class="secondary" disabled>Weak pull-up ·10 seconds</button><button id="powerDown" class="secondary" disabled>Weak pull-down ·10 seconds</button><button id="powerRelease" class="secondary" disabled>Release PA10 now</button></div>
+<p id="powerStatus" class="notes" aria-live="polite">No power-control status.</p>
+<p class="notes">During each test, measure PA10 and the first LED V+ relative to verified GND. Record which test raises LED V+. External resistors can overpower a weak pull, so no change does not disprove the wiring. Power tests are never saved. Set a nonzero Solid color before testing; bar lighting remains separately controlled.</p>
+</div>
+<div id="supplyPowerControls" hidden><p>v0.8 drives PA10 HIGH to enable the traced Q1/P-channel power circuit. Both LED data lines are held low first, then RGB waits10ms. Supply enable is automatic on boot; these buttons provide a session-only override.</p><div class="buttons"><button id="supplyOn" class="secondary" disabled>Enable RGB supply · PA10 HIGH</button><button id="supplyOff" class="secondary" disabled>Disable RGB supply · PA10 LOW</button></div><p class="notes">The MCU output is its own I/O voltage, not5V. Confirm LED V+ with your multimeter. If power is enabled but LEDs remain dark, check the supply voltage before changing waveform settings. Turning the supply off pauses RGB until enabled again or rebooted.</p></div>
+</div>
+<p>PB15 drives the36 key LEDs. PB5 drives the5-LED light bar. Select a physical key card above to edit its color or identify its LED. Per-key colors appear in Per-key mode.</p>
+<div class="fields">
+<label>Keyboard lighting<select id="lightMode" disabled><option value="0">Off</option><option value="1">Solid</option><option value="2">Per-key colors</option><option value="3">Reactive while keys are pressed</option></select></label>
+<label>Keyboard color<input id="lightColor" type="color" value="#00ffbf" disabled></label><label>Keyboard strength ·0–32<input id="lightLevel" type="number" min="0" max="32" value="8" disabled></label>
+<label>Selected key color<input id="keyColor" type="color" value="#00ffbf" disabled></label><label>Selected key strength ·0–32<input id="keyLevel" type="number" min="0" max="32" value="8" disabled></label><p id="lightSelected" class="notes">Select a physical key</p>
+<label class="check"><input id="barEnabled" type="checkbox" disabled> Enable the light bar</label><label>Light bar color<input id="barColor" type="color" value="#ff8000" disabled></label><label>Light bar strength ·0–32<input id="barLevel" type="number" min="0" max="32" value="8" disabled></label>
+<label>Color byte order<select id="lightOrder" disabled><option value="0">GRB · donor default</option><option value="1">RGB</option></select></label><label>Waveform rate<select id="lightRate" disabled><option value="0">Donor default</option><option value="1">Half rate</option></select></label><label>Light bar LED count<input id="barCount" type="number" min="0" max="64" value="5" disabled></label>
+</div>
+<div class="buttons"><button id="lightApply" disabled>Apply lighting to RAM</button><button id="lightIdentify" class="secondary" disabled>Identify selected key LED</button><button id="lightOff" class="secondary" disabled>Turn both chains off</button><button id="lightRetry" class="secondary" disabled>Retry RGB transfer</button><button id="lightDefaults" class="secondary" disabled>Reset lighting defaults</button></div>
+<p id="lightMessage" role="status" aria-live="polite">Connect H3K06 to read lighting settings.</p><p id="lightStatus" class="notes">No RGB status read.</p>
+<p class="notes">Output is limited to32/255 per color channel for initial testing. Identification temporarily shows one key in dim white for two seconds. Reactive mode uses calibrated key actuation. Transfer counters show completed MCU transfers, not LED acknowledgements. Serial protocol, timing and color order still need physical verification.</p>
+<div class="buttons"><button id="lightExport" class="secondary" disabled>Export lighting JSON</button><label>Import lighting draft<input id="lightImport" type="file" accept=".json,application/json" disabled></label></div>
+<details><summary>Confirmed LED chain order</summary><p id="lightChain" class="notes"></p><p class="notes">This order is separate from the Hall-sensor scan order. Serial LED numbers above start at1.</p></details>
+</section>
+<section class="panel"><p class="step">6 · Keep settings</p><h2>Save or back up a profile</h2>
+<div class="buttons"><button id="save" disabled>Save custom settings to keyboard</button><button id="reload" class="secondary" disabled>Reload saved custom settings</button><button id="defaults" class="secondary" disabled>Reset custom settings in RAM</button><button id="export" class="secondary" disabled>Export profile JSON</button></div>
+<label class="file-inline">Import a key profile for review<input id="import" type="file" accept=".json,application/json" disabled></label>
+<p class="notes">Save writes the custom journal only when requested, including lighting on v0.6. Key profile export includes mappings, tuning and calibration; lighting has its own JSON export above. Import changes a page draft; Apply sends it, then Save makes it persistent. A full firmware reflash clears the journal, so export both profiles first. Reset affects custom RAM settings and does not restore manufacturer firmware.</p>
+</section>
+<details class="panel"><summary>Raw status and evidence limits</summary><pre id="rawStatus">No status read.</pre><p class="notes">Status fields are read in sequential USB chunks and are not an atomic scan-wide snapshot. A running USB application does not by itself validate every physical mapping or calibrated distance.</p></details>
+<footer>Unofficial foundation firmware · <a href="../firmware/custom/he30-v0.5/API.json">Protocol contract</a> · <a href="hardware.html">v0.4 hardware diagnostics</a></footer>
+<script type="module" src="keyboard.mjs"></script></main></body></html>

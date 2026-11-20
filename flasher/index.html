@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>HE30 Recovery & Firmware</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+  <header><a href="../">← HE30 Control</a><span class="badge">EPOMAKER HE30 · FB4C</span></header>
+  <h1>Recovery & firmware</h1>
+  <p class="intro">Enter recovery, select a raw firmware image, and follow its update from start to reconnect.</p>
+  <div id="support" role="alert"></div>
+  <section class="panel"><div class="heading"><h2>1. Keyboard</h2><span id="mode" class="badge">Disconnected</span></div>
+    <p id="device" aria-live="polite">Connect the HE30 to get started. Close other keyboard configuration tabs first.</p>
+    <div class="buttons"><button id="connect">Connect keyboard</button><button id="authorize" hidden>Authorize recovery device</button><button id="recover" class="secondary" disabled>Connect & enter recovery</button></div>
+    <p class="hint">Recovery does not require selecting firmware. If several keyboards are authorized, Connect & enter recovery lets you choose one. Keyboard and media input interfaces are excluded automatically.</p>
+    <label class="check"><input id="donor" type="checkbox"> Include an experimental application using USB ID FD50</label>
+    <details><summary>Returning to normal keyboard mode</summary><p>Before an update, unplug the keyboard’s USB for three seconds, then reconnect it. Disconnect probe leads as well if attached. The standalone effect of the OEM finalize command is unverified, so this page uses the tested power-cycle procedure.</p><button id="rescan" class="secondary">Check connected devices</button></details>
+  </section>
+  <section class="panel"><h2>2. Firmware image</h2><label class="file">Choose a .bin file<input id="file" type="file" accept=".bin,application/octet-stream"></label>
+    <div id="image" aria-live="polite">No firmware selected.</div>
+    <div class="buttons"><button id="loadCustom" class="secondary">Load v0.7 PA10 power test</button><a href="keyboard.html">Keyboard & RGB setup →</a><a href="hardware.html">v0.4 mapping & RGB tests →</a><a href="startup.html">Startup diagnostics →</a></div>
+    <p class="warning">The owner measured USB5V but RGB V+ only0.13V and traced PA10/pin43 to the supply circuit. v0.7 tests weak pull-up/down for ten seconds, then returns PA10 to floating. RGB data is paused until a test. The circuit's enable level is not assumed. <a href="../firmware/custom/he30-v0.7/README.md">Power-test instructions</a></p>
+    <p class="warning">v0.6 uses your confirmed Hall wiring and LED routing/order:36 key LEDs on PB15 and5 bar LEDs on PB5. It retains calibration, input, Fn, tuning and saved settings, adding solid/per-key/reactive lighting and LED identification. Dim key lighting starts on boot; enable the bar in Keyboard setup. Physical protocol/timing/color behavior and recovery still need validation. <a href="../firmware/custom/he30-v0.6/README.md">Build and test notes</a></p>
+    <p class="hint">Before reflashing a calibrated custom build, export its key profile and lighting profile. A full-image flash clears the custom journal. <a href="../firmware/custom/he30-v0.5/Epomaker-HE30-EXPERIMENTAL-v0.5-Foundation.bin" download>Previous v0.5 without RGB</a></p>
+    <p class="hint">For the earlier manual RGB diagnostic page, <a href="../firmware/custom/he30-v0.4/Epomaker-HE30-EXPERIMENTAL-v0.4-Mapping-RGB.bin" download>download v0.4</a> and select it above. That page uses H3M04; it cannot control v0.5.</p>
+    <p class="hint">Previous v0.2 and v0.2b returned to recovery in hardware tests. v0.3 has now answered its dedicated status command. A loader acknowledgement alone still does not confirm application startup. <a href="../docs/failed-flash-2026-11-19.md">Previous investigation</a></p>
+    <p class="hint"><a href="../firmware/reference/Zuoya-HE30-FD50-V115-20250707.bin" download>Download extracted Zuoya V1.15 reference</a> · FD50 donor, unverified on Epomaker. Choose the downloaded file above to inspect it.</p>
+    <label id="experimentalLabel" class="check warning" hidden><input id="experimental" type="checkbox"> Use this experimental image on my Epomaker HE30. Its hardware compatibility is unverified.</label>
+    <p class="hint">Format and USB identity checks do not validate board wiring, calibration, bootloader boundaries or recovery. A configuration JSON is not a firmware backup.</p>
+  </section>
+  <section class="panel"><h2>3. Update</h2><p id="status" role="status" aria-live="polite">Select a firmware image and connect the keyboard.</p>
+    <progress id="progress" max="100" value="0" aria-label="Firmware update progress"></progress>
+    <div class="buttons"><button id="start" disabled>Review and flash</button><button id="cancel" class="secondary" disabled>Cancel pending update</button></div>
+    <p class="hint">The selected file stays available during the recovery transition. A browser permission prompt may require one additional click. Once erasing begins, keep USB connected.</p>
+  </section>
+  <section class="panel"><div class="heading"><h2>Session log</h2><button id="export" class="secondary">Save log</button></div><pre id="log" tabindex="0" aria-label="Session log"></pre></section>
+  <footer>Unofficial experimental tool · <a href="../docs/flashing.md">Protocol, limitations and recovery notes</a></footer>
+</main>
+<dialog id="review"><form method="dialog"><h2>Review this update</h2><div id="reviewDetails"></div><p>Flashing replaces the application and may require recalibration. An incompatible image can stop typing and USB configuration. The original Epomaker firmware has not been backed up by this page.</p><div class="buttons"><button value="cancel" class="secondary">Go back</button><button id="approve" value="flash">Flash this image</button></div></form></dialog>
+<script type="module" src="app.mjs"></script></body></html>

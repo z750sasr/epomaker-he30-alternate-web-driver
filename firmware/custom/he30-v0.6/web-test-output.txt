@@ -1,0 +1,38 @@
+✔ application→recovery flow: permission (49.482ms)
+✔ application→recovery flow: automatic (16.6031ms)
+✔ application→recovery flow: cancel (6.175ms)
+✔ application→recovery flow: startup (370.8116ms)
+✔ application→recovery flow: foundation (370.607ms)
+✔ application→recovery flow: rgb (489.5771ms)
+✔ v0.5 identity/hash and shared transport decode actual compiled firmware responses (32.6724ms)
+✔ v0.4 identity remains experimental and browser API decodes executed firmware fixtures (25.984ms)
+✔ hardware API rejects bad parameters before IO and wrong signatures before control (1.5693ms)
+✔ hardware page automatically captures, guides press/release mapping, saves and restores results (2493.9914ms)
+✔ foundation configuration has exact endian layout, masks and full round trip (5.2813ms)
+✔ foundation configuration rejects bad routing, ranges, flags and reserved data (2.3184ms)
+✔ foundation status decodes all36 raw/position slots and mask high bits (0.8905ms)
+✔ foundation request bounds, checksum and zero control payloads are exact (0.4117ms)
+✔ foundation client stages all bytes, commits CRC, reads back and serializes whole operations (9.7235ms)
+✔ foundation controls cannot touch stock firmware or pass failed attestation/acks (1.5713ms)
+✔ foundation JSON profiles are versioned, validated drafts with no IO (3.144ms)
+✔ browser connect only reads; invalid edits and profile import cannot write settings (13.785ms)
+✔ v0.6 compiled RGB fixtures, identity and owner physical order agree with browser codec (26.214ms)
+✔ RGB and keyboard transactions serialize on one queue; apply sends bounded batches and reads back (7.4397ms)
+✔ RGB invalid drafts, profiles and failed attestation cannot write hardware (1.9247ms)
+✔ RGB page connect is read-only, selected-key edits stay drafts and explicit Apply/identify work (2.2925ms)
+✔ image identity and format checks distinguish HE30, donor, ARM and bad input (11.6583ms)
+✔ recovery packet is the observed HE30 request; report padding follows descriptor (1.3288ms)
+✔ full OEM order, all bytes and final short aligned block are preserved (1.9218ms)
+✔ wrong target never receives erase; compare failure prevents finalization (0.7212ms)
+✔ missing replies stop commands; zero statuses pass but AA is not accepted as success (18.4104ms)
+✔ only final reboot may disconnect, including before sendReport resolves (1.3387ms)
+✔ raw diagnostics attest custom firmware and read all36 words without writes (1.9936ms)
+✔ v0.3 image is experimental despite FB4C and its startup replies decode actual instruction-model output (17.6519ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3067.1683

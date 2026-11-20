@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>HE30 v0.3 Startup Diagnostics</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+  <header><a href="./">← Recovery & firmware</a><span class="badge">H3B03 / H3M04</span></header>
+  <h1>Startup diagnostics</h1>
+  <p class="intro">Check whether the USB test firmware reached its diagnostic loop. Close other keyboard-driver tabs before connecting.</p>
+  <section class="panel"><h2>Connect the test application</h2>
+    <p>This page reads startup status from <strong>H3B03 or H3M04</strong> and requires its H3B1 signature. Use <a href="hardware.html">Mapping & RGB tests</a> for the v0.4 hardware probes. HE30 Upgrader cannot answer this diagnostic command.</p>
+    <div class="buttons"><button id="connect">Connect diagnostic firmware</button><button id="read" class="secondary" disabled>Read status again</button><button id="save" class="secondary" disabled>Save report</button></div>
+    <p id="status" role="status" aria-live="polite">Connect the v0.3 application after flashing.</p>
+  </section>
+  <section class="panel"><h2>Observed status</h2><p id="stage">No status read yet.</p><pre id="details">—</pre>
+    <p class="hint">The loop counter measures iterations, not milliseconds or polling rate. Repeated reads should increase it. This page sends only read commands; it does not change settings, enter recovery or flash.</p>
+  </section>
+  <section class="panel"><h2>If only HE30 Upgrader appears</h2><p>The application has not been observed. Save the flasher log and stop repeating the same image. The recorded RAM stage can be inspected later with the probe; USB alone cannot distinguish a loader rejection from a failure before USB starts.</p>
+    <p class="hint">v0.3 intentionally provides no typing, raw Hall scans, calibration or RGB. v0.4 adds explicit sensor/LED tests on its separate page. Both retain an unverified donor flash-writing recovery command. <a href="../firmware/custom/he30-v0.4/README.md">Current test procedure</a></p>
+  </section>
+</main><script type="module" src="startup.mjs"></script></body></html>

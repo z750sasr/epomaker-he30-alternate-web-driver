@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>HE30 Mapping & RGB Tests</title><link rel="stylesheet" href="style.css"><style>
+.samples{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px}.sample{background:#10283a;color:inherit;border:1px solid #355369;padding:9px;text-align:left;border-radius:8px;font-size:12px;font-weight:400;min-height:112px}.sample strong{display:block;font-size:20px}.sample span{display:block}.sample.winner{border-color:#76e8ca}.sample.selected{outline:2px solid #fff}.controls{display:flex;gap:16px;flex-wrap:wrap;align-items:end}.controls label{display:grid;gap:6px}select,input,textarea{font:inherit;color:#e8f2fb;background:#10283a;border:1px solid #496276;border-radius:7px;padding:8px}textarea{width:100%;resize:vertical}input[type=number]{width:95px}input[type=checkbox]{width:auto}#mapping{line-height:1.8} @media(max-width:600px){.samples{grid-template-columns:repeat(3,minmax(0,1fr))}.controls label{width:100%}}
+</style></head><body><main>
+  <header><a href="./">← Recovery & firmware</a><span class="badge">v0.4 · H3M04</span></header>
+  <h1>Mapping & RGB tests</h1>
+  <p class="intro">Find which sensor position changes for each physical key, then test the two proposed LED outputs. Close other keyboard-driver tabs first.</p>
+  <section class="panel"><h2>1. Connect the diagnostic firmware</h2>
+    <p>Choose <strong>H3M04</strong> and keep all keys released. After its signature check, connection automatically runs passive ADC, starts the three-bank test and takes a baseline. RGB tests remain manual.</p>
+    <div class="buttons"><button id="connect">Connect v0.4</button><button id="refresh" class="secondary" disabled>Read status</button><button id="save" class="secondary" disabled>Save results</button></div>
+    <p id="status" role="status" aria-live="polite">Flash v0.4, then connect H3M04 here.</p><pre id="details">No status yet.</pre>
+  </section>
+  <section class="panel"><h2>2. Find the sensor mapping</h2>
+    <p>Sampling, baseline collection, change detection and browser autosave start automatically after connecting. For physical key names, follow the prompt: press, hold briefly and release each named key. No assignment-button clicks are needed. Without key presses, the page can collect readings but cannot identify physical legends.</p>
+    <p id="guide" role="status" aria-live="polite">Connect the keyboard with all keys released to start automatically.</p>
+    <p id="autosave" class="hint">Captured results will save automatically in this browser.</p>
+    <div class="buttons"><button id="passive" disabled>Read passive ADC</button><button id="start" disabled>Restart automatic capture</button><button id="stop" class="secondary" disabled>Stop sampling</button><button id="baseline" class="secondary" disabled>Retake released baseline</button></div>
+    <p class="hint">The three-bank test drives PC13, PC14 and PB10 using the donor's active-low scheme. It does not send typing input or save calibration. If readings do not follow your keys, save the report so we can revise the pin hypothesis.</p>
+    <div id="samples" class="samples"></div>
+    <div class="controls" style="margin-top:20px"><label>Physical key<select id="physical"></select></label><button id="assign" class="secondary" disabled>Assign selected / strongest sample</button></div>
+    <p class="hint">The guide records a single clear sensor change after a stable press and release, then advances to the next key. The selector and assignment button remain available for manual corrections. Labels are local notes; they do not program keyboard assignments.</p>
+    <div id="mapping">No physical mappings recorded.</div>
+  </section>
+  <section class="panel"><h2>3. Test the LED output</h2>
+    <p>Stop sampling before testing RGB. Try a dim color on the first output, then the second. A successful transfer reports that the MCU sent data; it cannot confirm an LED received it.</p>
+    <div class="controls"><label>Output hypothesis<select id="path"><option value="1">PB15 · SPI2</option><option value="2">PB5 · SPI1 remapped</option></select></label>
+      <label>LED slot<input id="pixel" type="number" min="0" max="63" value="0"></label>
+      <label><span>Coverage</span><span><input id="all" type="checkbox" checked> All 64 test slots</span></label>
+      <label>Waveform rate<select id="rate"><option value="0">Donor rate</option><option value="1">Half donor rate</option></select></label>
+      <label>Color order<select id="order"><option value="GRB">GRB</option><option value="RGB">RGB</option></select></label>
+    </div>
+    <div class="buttons"><button id="red" disabled>Dim red</button><button id="green" disabled>Dim green</button><button id="blue" disabled>Dim blue</button><button id="off" class="secondary" disabled>Send black / off</button></div>
+    <p class="hint">Brightness is 12/255 per selected color; the firmware caps every component at 16. Both paths use the donor's 0x8/0xE serial waveform. If neither output lights, that does not identify an I²C controller or prove the LEDs are faulty. Send black before leaving the test.</p>
+    <label for="observation">What physically lit? Include key names, actual color, or “nothing”.</label><textarea id="observation" rows="2"></textarea>
+    <div class="buttons"><button id="record" class="secondary" disabled>Record LED observation</button></div><div id="observations">No LED observations recorded.</div>
+  </section>
+  <footer>Experimental diagnostics · <a href="../firmware/custom/he30-v0.4/README.md">Procedure and limits</a> · <a href="startup.html">Startup status</a></footer>
+</main><script type="module" src="hardware.mjs"></script></body></html>

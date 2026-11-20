@@ -1,0 +1,45 @@
+{
+  "provenance": "Status pasted by the owner after flashing v0.3; no independent device read or full-flash hash readout in this turn.",
+  "expected_image_sha256": "efaad04ebbed9a32d9d11545f182338e29a5ed6d41fa89c95dd4e8c0ca55103f",
+  "capture": {
+    "time": "2026-11-19T22:32:37.109Z",
+    "product": "H3B03",
+    "signature": "H3B1",
+    "format": 1,
+    "stage": 48,
+    "flags": 15,
+    "lastCommand": 85,
+    "loopCounter": 234808716,
+    "requests": 8,
+    "resetFlags": 402653184,
+    "clockControl": 50553987,
+    "clockConfig": 66570,
+    "usbControl": 221204537,
+    "coreClock": 144000000,
+    "cause": 0,
+    "faultPC": 0,
+    "machineStatus": 0,
+    "previousStage": 0
+  },
+  "observations": [
+    "H3B03/H3B1 status response reports stage 0x30, the diagnostic main loop.",
+    "SystemInit, clock-variable/delay setup, USB clock setup and USB enable returned far enough to reach the loop.",
+    "The loop has executed 234808716 iterations and the receive path has processed 8 requests.",
+    "No NMI/HardFault is recorded in this run.",
+    "Reported SystemCoreClock is 144000000; this is a software variable, not an independent frequency measurement."
+  ],
+  "inferences": [
+    "The loader can launch at least this custom application; universal rejection of custom firmware is excluded.",
+    "The donor-derived reset/runtime and basic USB path can operate on this target in the reduced build.",
+    "Skipped initialization/subsystems and other differences from v0.2 remain candidates for the earlier failure. No individual cause is isolated."
+  ],
+  "unverified": [
+    "Stock recovery request from the diagnostic application",
+    "Physical scan GPIO/ADC/channel routing",
+    "RGB wiring and transport",
+    "Calibration and saved-settings compatibility",
+    "Long-term stability or performance under full keyboard load",
+    "Independent readback of programmed image contents"
+  ],
+  "next_experiment": "Keep this USB baseline; add one explicitly controlled subsystem at a time with before/after status markers, starting with settings reads or an inert ADC-only probe before driving unknown scan outputs. No new image was built or flashed in this result-recording turn."
+}

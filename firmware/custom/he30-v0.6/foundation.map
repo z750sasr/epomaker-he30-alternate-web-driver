@@ -1,0 +1,184 @@
+
+Discarded input sections
+
+ .text          0x00000000        0x0 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .data          0x00000000        0x0 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .bss           0x00000000        0x0 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.memcpy   0x00000000       0x2c C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .comment       0x00000000       0x34 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .riscv.attributes
+                0x00000000       0x43 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+CODE             0x0001b000         0x00003000         xr
+RAMCODE          0x20007000         0x00000400         xrw
+*default*        0x00000000         0xffffffff
+
+Linker script and memory map
+
+LOAD C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+
+.text           0x0001b000     0x2d74
+ *(.entry)
+ .entry         0x0001b000      0x4ec C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001b000                firmware_main
+ *(.text*)
+ .text.bytes_zero
+                0x0001b4ec       0x18 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.bytes_copy
+                0x0001b504       0x24 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.equal    0x0001b528       0x30 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.time_init
+                0x0001b558       0x2c C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.crc_update
+                0x0001b584       0x44 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.calibrated
+                0x0001b5c8       0x24 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.usb_ready
+                0x0001b5ec       0x34 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.put32    0x0001b620       0x20 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.all_released
+                0x0001b640       0x88 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.adc_init
+                0x0001b6c8      0x174 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.record_crc
+                0x0001b83c       0x58 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.make_reply
+                0x0001b894       0xe8 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.lighting_defaults
+                0x0001b97c       0x60 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.lighting_valid
+                0x0001b9dc       0x8c C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.rgb_cleanup
+                0x0001ba68       0xa8 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.memset   0x0001bb10       0x20 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001bb10                memset
+ .text.crc32    0x0001bb30       0x2c C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001bb30                crc32
+ .text.config_defaults
+                0x0001bb5c      0x12c C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001bb5c                config_defaults
+ .text.config_valid
+                0x0001bc88      0x2c4 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001bc88                config_valid
+ .text.record_valid
+                0x0001bf4c       0xcc C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.newest_record
+                0x0001c018       0x70 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .text.compose_report
+                0x0001c088      0x100 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001c088                compose_report
+ .text.engine_step
+                0x0001c188      0x66c C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001c188                engine_step
+ .text.keyboard_service
+                0x0001c7f4      0x158 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001c7f4                keyboard_service
+ .text.load_saved
+                0x0001c94c       0xcc C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001c94c                load_saved
+ .text.save_settings
+                0x0001ca18      0x220 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001ca18                save_settings
+ .text.status_bytes
+                0x0001cc38      0x28c C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001cc38                status_bytes
+ .text.apply_staged
+                0x0001cec4      0x150 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001cec4                apply_staged
+ .text.rgb_service
+                0x0001d014      0x3e0 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001d014                rgb_service
+ .text.vendor_request
+                0x0001d3f4      0x938 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001d3f4                vendor_request
+ *(.rodata*)
+ .rodata.p.0    0x0001dd2c        0x9 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ *fill*         0x0001dd35        0x3 
+ .rodata.prefix.1
+                0x0001dd38        0x8 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .rodata.waves  0x0001dd40        0x4 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .rodata.normal
+                0x0001dd44       0x24 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+ .rodata.channels
+                0x0001dd68        0xc C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x0001dd74                        . = ALIGN (0x4)
+
+.layout         0x00000000       0xe8
+ *(.layout)
+ .layout        0x00000000       0xe8 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x00000000                verification_layout
+
+.ramcode        0x20007000      0x204 load address 0x0001dd74
+                0x20007000                        __ramcode_start = .
+ *(.ramcode*)
+ .ramcode       0x20007000      0x204 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                0x20007000                flash_writer
+                0x20007204                        . = ALIGN (0x4)
+                0x20007204                        __ramcode_end = .
+                0x0001dd74                        __ramcode_load = LOADADDR (.ramcode)
+
+.rela.dyn       0x20007204        0x0 load address 0x0001df78
+ .rela.entry    0x20007204        0x0 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+
+.data
+ *(.data*)
+ *(.sdata*)
+
+.bss
+ *(.bss*)
+ *(.sbss*)
+ *(COMMON)
+
+/DISCARD/
+ *(.comment)
+ *(.eh_frame*)
+ *(.riscv.attributes)
+                0x00000001                        ASSERT ((SIZEOF (.data) == 0x0), No implicit data initialization permitted)
+                0x00000001                        ASSERT ((SIZEOF (.bss) == 0x0), State must use reserved explicit SRAM)
+                0x00000001                        ASSERT ((SIZEOF (.ramcode) <= 0x400), RAM flash writer exceeds reservation)
+                0x00000001                        ASSERT (((LOADADDR (.ramcode) + SIZEOF (.ramcode)) <= 0x1e000), Code overlaps persistence pages)
+OUTPUT(foundation.elf elf32-littleriscv)
+
+.debug_info     0x00000000     0x2aa7
+ .debug_info    0x00000000     0x2aa7 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+
+.debug_abbrev   0x00000000      0x57f
+ .debug_abbrev  0x00000000      0x57f C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+
+.debug_loclists
+                0x00000000     0x1eb8
+ .debug_loclists
+                0x00000000     0x1eb8 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+
+.debug_aranges  0x00000000      0x120
+ .debug_aranges
+                0x00000000      0x120 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+
+.debug_rnglists
+                0x00000000      0x5a7
+ .debug_rnglists
+                0x00000000      0x5a7 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+
+.debug_line     0x00000000     0x6d37
+ .debug_line    0x00000000     0x6d37 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+
+.debug_str      0x00000000      0x808
+ .debug_str     0x00000000      0x808 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                                0x887 (size before relaxing)
+
+.debug_line_str
+                0x00000000       0x68
+ .debug_line_str
+                0x00000000       0x68 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+                                 0xc5 (size before relaxing)
+
+.note.GNU-stack
+                0x00000000        0x0
+ .note.GNU-stack
+                0x00000000        0x0 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o
+
+.debug_frame    0x00000000      0x488
+ .debug_frame   0x00000000      0x488 C:\Users\FATDOG~1\AppData\Local\Temp\cc1WkNeg.o

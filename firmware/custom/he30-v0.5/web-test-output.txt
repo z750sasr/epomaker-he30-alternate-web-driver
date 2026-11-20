@@ -1,0 +1,33 @@
+✔ application→recovery flow: permission (66.3368ms)
+✔ application→recovery flow: automatic (18.0575ms)
+✔ application→recovery flow: cancel (9.7117ms)
+✔ application→recovery flow: startup (374.8876ms)
+✔ application→recovery flow: foundation (423.1938ms)
+✔ v0.5 identity/hash and shared transport decode actual compiled firmware responses (54.7309ms)
+✔ v0.4 identity remains experimental and browser API decodes executed firmware fixtures (33.7316ms)
+✔ hardware API rejects bad parameters before IO and wrong signatures before control (4.5473ms)
+✔ hardware page automatically captures, guides press/release mapping, saves and restores results (2518.524ms)
+✔ foundation configuration has exact endian layout, masks and full round trip (5.4116ms)
+✔ foundation configuration rejects bad routing, ranges, flags and reserved data (1.8304ms)
+✔ foundation status decodes all36 raw/position slots and mask high bits (0.5016ms)
+✔ foundation request bounds, checksum and zero control payloads are exact (0.392ms)
+✔ foundation client stages all bytes, commits CRC, reads back and serializes whole operations (19.2043ms)
+✔ foundation controls cannot touch stock firmware or pass failed attestation/acks (2.3222ms)
+✔ foundation JSON profiles are versioned, validated drafts with no IO (2.7848ms)
+✔ browser connect only reads; invalid edits and profile import cannot write settings (13.7738ms)
+✔ image identity and format checks distinguish HE30, donor, ARM and bad input (11.0999ms)
+✔ recovery packet is the observed HE30 request; report padding follows descriptor (2.6832ms)
+✔ full OEM order, all bytes and final short aligned block are preserved (3.058ms)
+✔ wrong target never receives erase; compare failure prevents finalization (0.6742ms)
+✔ missing replies stop commands; zero statuses pass but AA is not accepted as success (16.8707ms)
+✔ only final reboot may disconnect, including before sendReport resolves (1.2375ms)
+✔ raw diagnostics attest custom firmware and read all36 words without writes (1.2838ms)
+✔ v0.3 image is experimental despite FB4C and its startup replies decode actual instruction-model output (18.347ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3144.1208

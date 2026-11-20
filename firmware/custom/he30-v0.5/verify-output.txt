@@ -1,0 +1,27 @@
+PASS Confirmed group defaults; no typing before calibration; config ABI
+PASS Real startup reaches ordered36-sensor frames; native USB starts first; no RGB or flash writes
+PASS All3 ADC failure paths terminate, stop typing and deassert banks
+PASS 32-frame baseline, both sensor polarities, finish-release guard and typing
+PASS Simultaneous input, momentary Fn and latched outputs, modifiers, duplicate sources,6KRO recovery
+PASS Rapid Trigger releases/retriggers from relative movement; full release restores initial threshold
+PASS Busy-safe zero releases, reconnect/suspend release interlocks, SET_IDLE and configuration0
+PASS Staging completeness, CRC, validation and read bounds; changed bank order invalidates calibration
+PASS Journal append, page rotation, startup calibration/typing restore and CRC fallback
+PASS Interrupted writes/rotation preserve latest committed record; flash writer bounds reject outside pages
+{
+  "sha256": "1aba065dac2e5617caaa134530ef0856b3aaa2ec1d7a1058012713d4fcb933fe",
+  "checks": [
+    "Confirmed group defaults; no typing before calibration; config ABI",
+    "Real startup reaches ordered36-sensor frames; native USB starts first; no RGB or flash writes",
+    "All3 ADC failure paths terminate, stop typing and deassert banks",
+    "32-frame baseline, both sensor polarities, finish-release guard and typing",
+    "Simultaneous input, momentary Fn and latched outputs, modifiers, duplicate sources,6KRO recovery",
+    "Rapid Trigger releases/retriggers from relative movement; full release restores initial threshold",
+    "Busy-safe zero releases, reconnect/suspend release interlocks, SET_IDLE and configuration0",
+    "Staging completeness, CRC, validation and read bounds; changed bank order invalidates calibration",
+    "Journal append, page rotation, startup calibration/typing restore and CRC fallback",
+    "Interrupted writes/rotation preserve latest committed record; flash writer bounds reject outside pages"
+  ],
+  "hardware_tested": false,
+  "limitations": "Compiled RV32IM execution against bounded peripheral models; native USB/clock/reset calls stubbed. Does not validate physical polarity, settling, ADC responses, USB IRQ timing, flash electrical behavior, recovery reset writer or RGB. No connected-device access."
+}

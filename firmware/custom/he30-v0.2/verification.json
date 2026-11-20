@@ -1,0 +1,16 @@
+{
+  "sha256": "e918651f5a81bd487bf61566d94a12e4cbc8a93a6e44ac13ddd5d962825f5e70",
+  "changed_bytes": 195,
+  "hook_cases": 4771,
+  "max_hook_instructions": 690,
+  "checks": [
+    "Byte-exact source and output identity",
+    "Unchanged interrupt vectors",
+    "Dispatch points at actual hook",
+    "Every byte returned across all valid offsets/lengths",
+    "Invalid ranges fail without raw reads",
+    "Writes limited to response fields",
+    "Callee-saved registers and stack preserved"
+  ],
+  "hardware_tested": false
+}

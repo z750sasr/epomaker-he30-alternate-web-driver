@@ -13,6 +13,7 @@ A simple web-based configuration tool for supported Epomaker HE30-family Hall-ef
 
 Use it to change key mappings, Hall-effect settings, lighting, profiles, macros, and other keyboard options directly from your browser. Nothing needs to be installed, and your keyboard data stays on your computer.
 
+# 20th Nov 26: custom firmware development in progress! jajajajaja
 # 16th Nov 2026: This project has not been updated for 2 months, read my excuse below and I have some hopeful news for you guys
 - I am still using this keyboard daily, just got 25k Red ratings on CS2 (dying game haha). I have no intention stop development of this project.
 - Right now I am shifting development towards the Everglide AE64 Pro magnetic keyboard - yes I own both of them, play games using the HE30, typing using the Everglide AE64 Pro. Checkout [**Everglide AE64 Pro webdriver GitHub page**](https://github.com/tuk3kCS/everglide-ae64-pro-webdriver)
@@ -89,6 +90,10 @@ Firefox and Safari do not currently support WebHID, but they can still be used w
 - Browser keyboard-action suppression while hardware is connected, so Space, arrows, and remapped keys do not scroll or activate the page during testing
 
 ## Capture-derived compatibility notes
+
+The separate [Recovery & firmware page](flasher/) supports the verified HE30 recovery-entry request and an experimental OEM-style firmware update sequence. It retains the selected image across USB re-enumeration, supports recovery-device authorization without refreshing, and saves logs. Read [flashing notes](docs/flashing.md) before use. Full live flashing and recovery after an incompatible image remain unvalidated; profile JSON is not a firmware/calibration backup.
+
+The current diagnostic build is [v0.7 PA10 power test](firmware/custom/he30-v0.7/README.md), with a separate [Keyboard & RGB setup page](flasher/keyboard.html). On v0.6 the owner measured USB5V but RGB VCC0.13V, then traced PA10/pin43 through components to that supply. v0.7 leaves PA10 floating at boot and offers ten-second weak input pull-up/down tests to establish the control behavior; RGB data waits for a test. This is not a confirmed LED fix or a permanent enable-level assumption. It retains the earlier key/calibration/tuning/settings features. Export key/lighting profiles before a full-image reflash, which clears the journal. [v0.6 RGB foundation](firmware/custom/he30-v0.6/README.md), [v0.5 without RGB](firmware/custom/he30-v0.5/README.md) and [v0.4 hardware diagnostics](firmware/custom/he30-v0.4/README.md) remain separately available.
 
 - The original driver exposes travel resolution only for device types `101`, `102`, `103`, and `105`. Type `104` keeps its stored precision bits but does not expose an editor in either the original interface or this app.
 - The available resolution steps are `0.01 mm`, `0.005 mm`, and `0.001 mm` for types `102`, `103`, and `105`; type `101` omits `0.001 mm`.

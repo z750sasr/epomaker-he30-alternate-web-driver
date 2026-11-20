@@ -1,0 +1,28 @@
+{
+  "source_updater": "HE30_FIRMWARE_DKS_20250707.exe",
+  "source_sha256": "179c25395b57eaa11311c86f9446aa720a1f5de8369a5c7cab08e43f62470f2a",
+  "resource": "BIN/134/2052",
+  "firmware": "Zuoya-HE30-FD50-V115-20250707.bin",
+  "bytes": 155056,
+  "sha256": "535cf2b0d2ff5f6e696da48659bbb249a2d7dd74df243eb5ee69baa2efe368d5",
+  "usb_id": "19F5:FD50",
+  "bcdDevice": "0x0115",
+  "descriptor_file_offset": "0x122C4",
+  "architecture_hint": "RISC-V JAL/NOP",
+  "execution_alias_word_0x38": "0x5000",
+  "strings": [
+    {
+      "offset": "0x11c88",
+      "text": "HALL_HS_USB_KB"
+    },
+    {
+      "offset": "0x11c98",
+      "text": "Jul  7 2025"
+    },
+    {
+      "offset": "0x11ca4",
+      "text": "21:10:29"
+    }
+  ],
+  "analysis_scope": "Static PE resource extraction only. Updater not executed; no target firmware written. Not established as an Epomaker factory image."
+}
