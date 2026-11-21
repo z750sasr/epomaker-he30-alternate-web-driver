@@ -1,0 +1,48 @@
+✔ application→recovery flow: permission (51.657ms)
+✔ application→recovery flow: automatic (19.0623ms)
+✔ application→recovery flow: cancel (17.9487ms)
+✔ application→recovery flow: startup (399.7576ms)
+✔ application→recovery flow: foundation (420.2561ms)
+✔ application→recovery flow: rgb (435.6934ms)
+✔ application→recovery flow: pro (487.2049ms)
+✔ standalone recovery button: composite (6.0509ms)
+✔ standalone recovery button: multiple (8.9672ms)
+✔ standalone recovery button: cancel (1.9422ms)
+✔ standalone recovery button: already-recovery (1.9755ms)
+✔ standalone recovery button: unsupported (2.1134ms)
+✔ v0.5 identity/hash and shared transport decode actual compiled firmware responses (36.4993ms)
+✔ v0.4 identity remains experimental and browser API decodes executed firmware fixtures (23.1586ms)
+✔ hardware API rejects bad parameters before IO and wrong signatures before control (3.3301ms)
+✔ hardware page automatically captures, guides press/release mapping, saves and restores results (2501.4564ms)
+✔ foundation configuration has exact endian layout, masks and full round trip (5.3475ms)
+✔ foundation configuration rejects bad routing, ranges, flags and reserved data (2.5383ms)
+✔ foundation status decodes all36 raw/position slots and mask high bits (0.5852ms)
+✔ foundation request bounds, checksum and zero control payloads are exact (0.3713ms)
+✔ foundation client stages all bytes, commits CRC, reads back and serializes whole operations (7.695ms)
+✔ foundation controls cannot touch stock firmware or pass failed attestation/acks (1.5342ms)
+✔ foundation JSON profiles are versioned, validated drafts with no IO (1.5539ms)
+✔ browser connect only reads; invalid edits and profile import cannot write settings (35.0593ms)
+✔ v0.6 compiled RGB fixtures, identity and owner physical order agree with browser codec (24.2532ms)
+✔ RGB and keyboard transactions serialize on one queue; apply sends bounded batches and reads back (16.9208ms)
+✔ RGB invalid drafts, profiles and failed attestation cannot write hardware (2.9069ms)
+✔ RGB page connect is read-only, selected-key edits stay drafts and explicit Apply/identify work (4.2202ms)
+﹣ historical v0.7 power diagnostics require the archived v0.7 build (3.3041ms) # SKIP
+✔ image identity and format checks distinguish HE30, donor, ARM and bad input (8.5976ms)
+✔ recovery packet is the observed HE30 request; report padding follows descriptor (1.5552ms)
+✔ connection discovery ignores composite input interfaces and keeps distinct matching keyboards ambiguous (0.4181ms)
+✔ full OEM order, all bytes and final short aligned block are preserved (1.2848ms)
+✔ wrong target never receives erase; compare failure prevents finalization (0.5408ms)
+✔ missing replies stop commands; zero statuses pass but AA is not accepted as success (26.8841ms)
+✔ only final reboot may disconnect, including before sendReport resolves (2.0082ms)
+✔ raw diagnostics attest custom firmware and read all36 words without writes (3.4755ms)
+✔ v0.3 image is experimental despite FB4C and its startup replies decode actual instruction-model output (21.5686ms)
+✔ H3K09 firmware identity and WebHID clients match compiled status and profile bytes (34.6036ms)
+✔ advanced payloads keep the three depth words and reject ambiguous pairs before sending (0.8624ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 3069.0959

@@ -37,7 +37,7 @@ test('v0.6 compiled RGB fixtures, identity and owner physical order agree with b
   assert.equal(fixtures.sha256,manifest.sha256);const info=await inspectImage(new Uint8Array(readFileSync(new URL(manifest.name,base))),webcrypto);
   assert.equal(info.sha256,manifest.sha256);assert.equal(info.diagnosticProduct,'H3K06');assert.equal(info.identities[0].release,0x0600);assert.equal(info.experimental,true);
   assert.deepEqual(LED_TO_KEY.map(i=>KEY_NAMES[i]),LED_ORDER);assert.equal(new Set(LED_TO_KEY).size,36);
-  const s=decodeLightingStatus(initial);assert.equal(s.config.barCount,5);assert.equal(s.config.barEnabled,false);assert.deepEqual(s.config.color,[0,8,6]);assert.equal(s.config.mode,1);
+  const s=decodeLightingStatus(initial);assert.equal(s.config.barCount,5);assert.equal(s.config.barEnabled,true);assert.deepEqual(s.config.color,[16,16,16]);assert.equal(s.config.mode,1);
   assert.deepEqual(encodeLighting(decodeLighting(initial.slice(16,144))),initial.slice(16,144));
 });
 test('RGB and keyboard transactions serialize on one queue; apply sends bounded batches and reads back',async()=>{

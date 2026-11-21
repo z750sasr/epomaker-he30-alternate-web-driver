@@ -11,7 +11,7 @@ const integer=(v,min,max,label)=>{if(!Number.isInteger(v)||v<min||v>max)throw ne
 const array=(v,n,label)=>{if(!Array.isArray(v)||v.length!==n)throw new Error(`${label} must contain ${n} entries.`);return v;};
 export const hasBit=(lo,hi,index)=>index<32?!!((lo>>>index)&1):!!((hi>>>(index-32))&1);
 export function crc32(bytes){let crc=0xffffffff;for(const byte of bytes){crc^=byte;for(let i=0;i<8;i++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}return(crc^0xffffffff)>>>0;}
-export function validUsage(value,fnLayer=false){return Number.isInteger(value)&&(value===0||(value>=4&&value<=0xa4)||(value>=0xe0&&value<=0xe7)||value===0xff||(fnLayer&&value===0xfe));}
+export function validUsage(value,fnLayer=false){return Number.isInteger(value)&&(value===0||(value>=4&&value<=0xa4)||(value>=0xe0&&value<=0xe7)||value===0xff||value===0xfd||(fnLayer&&value===0xfe));}
 export function validateConfig(config){
   if(!config||config.version!==1)throw new Error('Choose a version1 foundation configuration.');
   const groupOutputs=array(config.groupOutputs,3,'Group outputs').map((v,i)=>integer(v,0,2,`Group ${i+1} output`));
@@ -80,7 +80,7 @@ function checkReply(response,length,offset){
   if(n!==length||(response[5]|response[6]<<8)!==offset)throw new Error('Foundation reply does not match the request.');
   return response.slice(8,8+n);
 }
-function checkDevice(transport){if(transport?.device?.vendorId!==0x19f5||transport.device.productId!==0xfb4c||!['H3K05','H3K06','H3K07','H3K08'].includes(transport.device.productName))throw new Error('Select H3K05, H3K06 or H3K07 foundation firmware; stock HE30 and diagnostic builds use different protocols.');}
+function checkDevice(transport){if(transport?.device?.vendorId!==0x19f5||transport.device.productId!==0xfb4c||!['H3K05','H3K06','H3K07','H3K08','H3K09'].includes(transport.device.productName))throw new Error('Select H3K05, H3K06 or H3K07 foundation firmware; stock HE30 and diagnostic builds use different protocols.');}
 export class FoundationClient {
   constructor(transport){checkDevice(transport);this.transport=transport;this.queue=Promise.resolve();}
   transaction(action){const pending=this.queue.then(action);this.queue=pending.catch(()=>{});return pending;}

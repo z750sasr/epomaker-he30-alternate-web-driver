@@ -1,0 +1,497 @@
+{
+  "source": "Everglide AE64 Pro Webdriver c3c600e4b733375177bb4bcd5e5799755c30be55",
+  "switches": [
+    {
+      "name": "Magnetic Jade",
+      "brand": "GATERON",
+      "travel": 3430,
+      "coefficient": 22800
+    },
+    {
+      "name": "Magnetic Jade Pro",
+      "brand": "GATERON",
+      "travel": 3390,
+      "coefficient": 20000
+    },
+    {
+      "name": "Magnetic Jade Gaming",
+      "brand": "GATERON",
+      "travel": 3400,
+      "coefficient": 19000
+    },
+    {
+      "name": "Magnetic Jade Air",
+      "brand": "GATERON",
+      "travel": 3430,
+      "coefficient": 19600
+    },
+    {
+      "name": "Yujingzi",
+      "brand": "GATERON",
+      "travel": 3420,
+      "coefficient": 20350
+    },
+    {
+      "name": "Magnetic Green Dragon",
+      "brand": "GATERON",
+      "travel": 3350,
+      "coefficient": 21300
+    },
+    {
+      "name": "Apollo",
+      "brand": "GATERON",
+      "travel": 3130,
+      "coefficient": 24500
+    },
+    {
+      "name": "Magnetic Jade Max",
+      "brand": "GATERON",
+      "travel": 3410,
+      "coefficient": 19500
+    },
+    {
+      "name": "Magnetic Jade POM",
+      "brand": "GATERON",
+      "travel": 3300,
+      "coefficient": 20480
+    },
+    {
+      "name": "Magnetic Spark",
+      "brand": "GATERON",
+      "travel": 3150,
+      "coefficient": 26800
+    },
+    {
+      "name": "Magnetic Purple Dragon",
+      "brand": "GATERON",
+      "travel": 3335,
+      "coefficient": 20300
+    },
+    {
+      "name": "Magnetic Red Dragon (Lubed)",
+      "brand": "GATERON",
+      "travel": 3380,
+      "coefficient": 20044
+    },
+    {
+      "name": "Star Trail",
+      "brand": "GATERON",
+      "travel": 3945,
+      "coefficient": 15000
+    },
+    {
+      "name": "Magnetic Gold Dragon",
+      "brand": "GATERON",
+      "travel": 3340,
+      "coefficient": 21600
+    },
+    {
+      "name": "Snow Blade (Closed Bottom)",
+      "brand": "GATERON",
+      "travel": 3430,
+      "coefficient": 22250
+    },
+    {
+      "name": "Qilin",
+      "brand": "GATERON",
+      "travel": 3440,
+      "coefficient": 19100
+    },
+    {
+      "name": "Magnetic Jade Sakura",
+      "brand": "GATERON",
+      "travel": 3390,
+      "coefficient": 22000
+    },
+    {
+      "name": "Grey Jade Pro",
+      "brand": "GATERON",
+      "travel": 3385,
+      "coefficient": 23300
+    },
+    {
+      "name": "Xuanwu (Fully Lubed)",
+      "brand": "GATERON",
+      "travel": 3365,
+      "coefficient": 20800
+    },
+    {
+      "name": "KS-37B Dual-Rail Magnetic White",
+      "brand": "GATERON",
+      "travel": 4015,
+      "coefficient": 13300
+    },
+    {
+      "name": "KS-20 Dual-Rail Magnetic Orange",
+      "brand": "GATERON",
+      "travel": 4005,
+      "coefficient": 15200
+    },
+    {
+      "name": "Magnetic Yellow",
+      "brand": "GATERON",
+      "travel": 3970,
+      "coefficient": 15300
+    },
+    {
+      "name": "Magnetic Black",
+      "brand": "GATERON",
+      "travel": 3400,
+      "coefficient": 17600
+    },
+    {
+      "name": "KS-20 Magnetic Orange",
+      "brand": "GATERON",
+      "travel": 3935,
+      "coefficient": 19700
+    },
+    {
+      "name": "Magnetic Green",
+      "brand": "GATERON",
+      "travel": 3895,
+      "coefficient": 17200
+    },
+    {
+      "name": "Magnetic Genty Silent",
+      "brand": "GATERON",
+      "travel": 3615,
+      "coefficient": 16800
+    },
+    {
+      "name": "Pink Jade Pro",
+      "brand": "GATERON",
+      "travel": 3415,
+      "coefficient": 23000
+    },
+    {
+      "name": "Pink Jade",
+      "brand": "GATERON",
+      "travel": 3355,
+      "coefficient": 21300
+    },
+    {
+      "name": "Magnetic Jade Emerald",
+      "brand": "GATERON",
+      "travel": 3355,
+      "coefficient": 22200
+    },
+    {
+      "name": "Jade Blade",
+      "brand": "GATERON",
+      "travel": 3475,
+      "coefficient": 22200
+    },
+    {
+      "name": "King (KOM)",
+      "brand": "TTC",
+      "travel": 3420,
+      "coefficient": 20500
+    },
+    {
+      "name": "RGB King",
+      "brand": "TTC",
+      "travel": 3390,
+      "coefficient": 20100
+    },
+    {
+      "name": "POM King",
+      "brand": "TTC",
+      "travel": 3390,
+      "coefficient": 21400
+    },
+    {
+      "name": "Zodiac Snake Green",
+      "brand": "TTC",
+      "travel": 3420,
+      "coefficient": 20600
+    },
+    {
+      "name": "Zodiac Snake White",
+      "brand": "TTC",
+      "travel": 3410,
+      "coefficient": 20800
+    },
+    {
+      "name": "Honey King",
+      "brand": "TTC",
+      "travel": 3390,
+      "coefficient": 20500
+    },
+    {
+      "name": "RGB Purple Heart",
+      "brand": "TTC",
+      "travel": 3420,
+      "coefficient": 21000
+    },
+    {
+      "name": "RGB Sacred Heart",
+      "brand": "TTC",
+      "travel": 3450,
+      "coefficient": 19800
+    },
+    {
+      "name": "Helios",
+      "brand": "TTC",
+      "travel": 3420,
+      "coefficient": 21000
+    },
+    {
+      "name": "Uranus",
+      "brand": "TTC",
+      "travel": 3460,
+      "coefficient": 20900
+    },
+    {
+      "name": "Uranus Esports",
+      "brand": "TTC",
+      "travel": 3450,
+      "coefficient": 20100
+    },
+    {
+      "name": "Uranus SE",
+      "brand": "TTC",
+      "travel": 3440,
+      "coefficient": 18352
+    },
+    {
+      "name": "Commander King",
+      "brand": "TTC",
+      "travel": 3480,
+      "coefficient": 20500
+    },
+    {
+      "name": "Commander King Pro",
+      "brand": "TTC",
+      "travel": 3440,
+      "coefficient": 21000
+    },
+    {
+      "name": "HiFi Snow",
+      "brand": "TTC",
+      "travel": 3510,
+      "coefficient": 20000
+    },
+    {
+      "name": "Dragon Lord",
+      "brand": "TTC",
+      "travel": 3470,
+      "coefficient": 19100
+    },
+    {
+      "name": "Elf King",
+      "brand": "TTC",
+      "travel": 3470,
+      "coefficient": 19500
+    },
+    {
+      "name": "Tai'e Sword",
+      "brand": "TTC",
+      "travel": 3470,
+      "coefficient": 19700
+    },
+    {
+      "name": "KTEK Magnetic",
+      "brand": "TTC",
+      "travel": 3420,
+      "coefficient": 16672
+    },
+    {
+      "name": "WS Babao Alpha",
+      "brand": "WuqueStudio",
+      "travel": 3500,
+      "coefficient": 22000
+    },
+    {
+      "name": "WS Babao Pink Lotus",
+      "brand": "WuqueStudio",
+      "travel": 3500,
+      "coefficient": 20200
+    },
+    {
+      "name": "AULA Ice Emperor",
+      "brand": "other",
+      "travel": 3360,
+      "coefficient": 20500
+    },
+    {
+      "name": "Owlab Ti HE",
+      "brand": "other",
+      "travel": 3340,
+      "coefficient": 20200
+    },
+    {
+      "name": "Latenpow Dengshen Pro",
+      "brand": "other",
+      "travel": 3360,
+      "coefficient": 21300
+    },
+    {
+      "name": "UR Ice Extreme",
+      "brand": "other",
+      "travel": 3310,
+      "coefficient": 20500
+    },
+    {
+      "name": "Koi",
+      "brand": "other",
+      "travel": 3340,
+      "coefficient": 21500
+    },
+    {
+      "name": "Wukong 21mm spring?",
+      "brand": "Everglide",
+      "travel": 3390,
+      "coefficient": 20100
+    },
+    {
+      "name": "LEOBOG Pink Emperor",
+      "brand": "other",
+      "travel": 3450,
+      "coefficient": 21600
+    },
+    {
+      "name": "LEOBOG/AULA Xingyi",
+      "brand": "other",
+      "travel": 3380,
+      "coefficient": 20000
+    },
+    {
+      "name": "Skyline",
+      "brand": "Everglide",
+      "travel": 3550,
+      "coefficient": 18600
+    },
+    {
+      "name": "Kailh Magnetic God",
+      "brand": "other",
+      "travel": 3470,
+      "coefficient": 21000
+    },
+    {
+      "name": "OKT Azure Pro",
+      "brand": "other",
+      "travel": 3610,
+      "coefficient": 18100
+    },
+    {
+      "name": "OKT Purple Star",
+      "brand": "other",
+      "travel": 3550,
+      "coefficient": 18600
+    },
+    {
+      "name": "Outemu Chixiao",
+      "brand": "other",
+      "travel": 3540,
+      "coefficient": 19900
+    },
+    {
+      "name": "Polar Pro+",
+      "brand": "Unionwell / Greetech",
+      "travel": 3650,
+      "coefficient": 17300
+    },
+    {
+      "name": "Polar Pro",
+      "brand": "Unionwell / Greetech",
+      "travel": 3585,
+      "coefficient": 18500
+    },
+    {
+      "name": "Polar RGB",
+      "brand": "Unionwell / Greetech",
+      "travel": 3580,
+      "coefficient": 19000
+    },
+    {
+      "name": "Polar Blazing Bloom",
+      "brand": "Unionwell / Greetech",
+      "travel": 3645,
+      "coefficient": 16950
+    },
+    {
+      "name": "Polar Primordial Unity",
+      "brand": "Unionwell / Greetech",
+      "travel": 3655,
+      "coefficient": 19200
+    },
+    {
+      "name": "Polar Ink Jade",
+      "brand": "Unionwell / Greetech",
+      "travel": 3605,
+      "coefficient": 18900
+    },
+    {
+      "name": "Polar Sakura Clear",
+      "brand": "Unionwell / Greetech",
+      "travel": 3625,
+      "coefficient": 22200
+    },
+    {
+      "name": "Siren",
+      "brand": "Everglide",
+      "travel": 3793,
+      "coefficient": 17536
+    },
+    {
+      "name": "Skyline V3",
+      "brand": "Everglide",
+      "travel": 3500,
+      "coefficient": 17536
+    },
+    {
+      "name": "Ice Shine",
+      "brand": "Unionwell / Greetech",
+      "travel": 3200,
+      "coefficient": 25728
+    },
+    {
+      "name": "Snow Shine",
+      "brand": "Unionwell / Greetech",
+      "travel": 3200,
+      "coefficient": 25728
+    },
+    {
+      "name": "Pink Lotus",
+      "brand": "WuqueStudio",
+      "travel": 3443,
+      "coefficient": 21888
+    },
+    {
+      "name": "Ocean Whisperer",
+      "brand": "WuqueStudio",
+      "travel": 3450,
+      "coefficient": 21888
+    },
+    {
+      "name": "Wukong 16mm spring?",
+      "brand": "Everglide",
+      "travel": 3400,
+      "coefficient": 17664
+    },
+    {
+      "name": "Yaoguang HE",
+      "brand": "Unionwell / Greetech",
+      "travel": 3200,
+      "coefficient": 18432
+    },
+    {
+      "name": "Heart of the Ocean",
+      "brand": "WuqueStudio",
+      "travel": 3555,
+      "coefficient": 24576
+    },
+    {
+      "name": "Cullinan",
+      "brand": "WuqueStudio",
+      "travel": 3534,
+      "coefficient": 24576
+    },
+    {
+      "name": "Everglide Cullinan",
+      "brand": "Everglide",
+      "travel": 3600,
+      "coefficient": 19456
+    }
+  ]
+}

@@ -28,25 +28,25 @@ class Device extends EventTarget {
       const fixtures = JSON.parse(readFileSync(new URL('../firmware/custom/he30-v0.3/status-fixtures.json', import.meta.url), 'utf8')).fixtures;
       const match = fixtures.find(f => f.request === Buffer.from(data).toString('hex'));
       assert.ok(match); b.set(Buffer.from(match.response, 'hex'));
-    } else if (data[0] === 0x55 && ['H3K05','H3K06','H3K07'].includes(this.productName) && [0xd0,0xd1].includes(data[1])) {
+    } else if (data[0] === 0x55 && ['H3K05','H3K06','H3K09'].includes(this.productName) && [0xd0,0xd1].includes(data[1])) {
       const fixtures = JSON.parse(readFileSync(new URL(`../firmware/custom/he30-v0.${Number(this.productName.slice(-2))}/protocol-fixtures.json`, import.meta.url),'utf8')).fixtures;
       const match = fixtures.find(f=>f.phase==='default'&&f.request===Buffer.from(data).toString('hex'));
       assert.ok(match);b.set(Buffer.from(match.response,'hex'));
-    } else if (data[0] === 0x55) { b[0] = 0xaa; b[1] = 3; b[8] = ['H3B03','H3K05','H3K06','H3K07'].includes(this.productName) ? 0 : 9; b[9] = this.productName.startsWith('H3K') ? Number(this.productName.slice(-2)) : this.productName === 'H3B03' ? 3 : 1; }
+    } else if (data[0] === 0x55) { b[0] = 0xaa; b[1] = 3; b[8] = ['H3B03','H3K05','H3K06','H3K09'].includes(this.productName) ? 0 : 9; b[9] = this.productName.startsWith('H3K') ? Number(this.productName.slice(-2)) : this.productName === 'H3B03' ? 3 : 1; }
     const e = new Event('inputreport'); e.reportId = reportId; e.data = new DataView(b.buffer); this.dispatchEvent(e);
   }
 }
 const tick = () => new Promise(r => setImmediate(r));
 async function until(check) { for (let i = 0; i < 100; i++) { if (check()) return; await tick(); } throw new Error('Simulated UI did not reach expected state.'); }
 
-for (const scenario of ['permission', 'automatic', 'cancel', 'startup','foundation','rgb','power']) test(`application→recovery flow: ${scenario}`, async () => {
+for (const scenario of ['permission', 'automatic', 'cancel', 'startup','foundation','rgb','pro']) test(`application→recovery flow: ${scenario}`, async () => {
   const nodes = new Map();
   const document = { getElementById(id) { if (!nodes.has(id)) nodes.set(id, new Element()); return nodes.get(id); }, createElement() { return new Element(); } };
   const hid = new EventTarget(); hid.devices = [];
   hid.getDevices = async () => hid.devices;
   hid.requestDevice = async () => hid.devices;
   const normal = new Device(0xfb4c, hid), boot = new Device(0xaf22, hid);
-  hid.boot = boot; hid.automatic = ['automatic', 'startup','foundation','rgb','power'].includes(scenario);
+  hid.boot = boot; hid.automatic = ['automatic', 'startup','foundation','rgb','pro'].includes(scenario);
   hid.devices = [normal];
   const savedGlobals = { document: globalThis.document, window: globalThis.window, indexedDB: globalThis.indexedDB, navigator: Object.getOwnPropertyDescriptor(globalThis, 'navigator'), setTimeout: globalThis.setTimeout,fetch:globalThis.fetch };
   const timers = [];
@@ -65,16 +65,16 @@ for (const scenario of ['permission', 'automatic', 'cancel', 'startup','foundati
     if (scenario === 'startup') bytes = new Uint8Array(readFileSync(new URL('../firmware/custom/he30-v0.3/Epomaker-HE30-EXPERIMENTAL-v0.3-USB-startup.bin', import.meta.url)));
     if(scenario==='foundation')bytes=new Uint8Array(readFileSync(new URL('../firmware/custom/he30-v0.5/Epomaker-HE30-EXPERIMENTAL-v0.5-Foundation.bin',import.meta.url)));
     if(scenario==='rgb')bytes=new Uint8Array(readFileSync(new URL('../firmware/custom/he30-v0.6/Epomaker-HE30-EXPERIMENTAL-v0.6-RGB.bin',import.meta.url)));
-    if(scenario==='power'){
-      const manifest=JSON.parse(readFileSync(new URL('../firmware/custom/he30-v0.7/manifest.json',import.meta.url),'utf8'));
-      bytes=new Uint8Array(readFileSync(new URL(`../firmware/custom/he30-v0.7/${manifest.name}`,import.meta.url)));
-      globalThis.fetch=async url=>{assert.ok(String(url).startsWith('../firmware/custom/he30-v0.7/'));return new Response(readFileSync(new URL(url,import.meta.url)));};
-      await nodes.get('loadCustom').onclick();assert.ok(nodes.get('status').textContent.includes('v0.7 PA10 power test loaded'));
+    if(scenario==='pro'){
+      const manifest=JSON.parse(readFileSync(new URL('../firmware/custom/he30-v0.9/manifest.json',import.meta.url),'utf8'));
+      bytes=new Uint8Array(readFileSync(new URL(`../firmware/custom/he30-v0.9/${manifest.name}`,import.meta.url)));
+      globalThis.fetch=async url=>{assert.ok(String(url).startsWith('../firmware/custom/he30-v0.9/'));return new Response(readFileSync(new URL(url,import.meta.url)));};
+      await nodes.get('loadCustom').onclick();assert.ok(nodes.get('status').textContent.includes('v0.9 HE30 Pro loaded'));
     }else{
       nodes.get('file').files = [{ name: 'simulated.bin', arrayBuffer: async () => bytes.buffer }];
       await nodes.get('file').onchange();
     }
-    if (['startup','foundation','rgb','power'].includes(scenario)) {
+    if (['startup','foundation','rgb','pro'].includes(scenario)) {
       assert.equal(nodes.get('start').disabled, true, 'FB4C test image still requires experimental review');
       nodes.get('experimental').checked = true; nodes.get('experimental').onchange();
     }
@@ -110,12 +110,12 @@ for (const scenario of ['permission', 'automatic', 'cancel', 'startup','foundati
       assert.deepEqual(diagnostic.sent.map(b => [b[0], b[1]]), [[0x55,3],[0x55,0xdc],[0x55,0xdc]]);
       assert.ok(!nodes.get('status').textContent.includes('recalibrate'));
     }
-    if(['foundation','rgb','power'].includes(scenario)){
+    if(['foundation','rgb','pro'].includes(scenario)){
       await until(()=>!nodes.get('connect').disabled);
       const disconnected=new Event('disconnect');disconnected.device=boot;hid.dispatchEvent(disconnected);
-      const keyboard=new Device(0xfb4c,hid);keyboard.productName=scenario==='power'?'H3K07':scenario==='rgb'?'H3K06':'H3K05';hid.devices=[keyboard];
+      const keyboard=new Device(0xfb4c,hid);keyboard.productName=scenario==='pro'?'H3K09':scenario==='rgb'?'H3K06':'H3K05';hid.devices=[keyboard];
       const connected=new Event('connect');connected.device=keyboard;hid.dispatchEvent(connected);
-      await until(()=>nodes.get('status').textContent.includes(scenario==='power'?'v0.7 PA10 power test USB, H3K1 and H3L1 are responding':scenario==='rgb'?'v0.6 foundation USB, H3K1 and H3L1 are responding':'v0.5 foundation USB and H3K1 are responding'));
+      await until(()=>nodes.get('status').textContent.includes(scenario==='pro'?'H3K09 is responding':scenario==='rgb'?'v0.6 foundation USB, H3K1 and H3L1 are responding':'v0.5 foundation USB and H3K1 are responding'));
       assert.equal(nodes.get('progress').value,100);assert.equal(keyboard.sent.length,scenario==='foundation'?6:10);
       assert.ok(keyboard.sent.every(b=>b[0]===0x55&&(b[1]===3||[0xd0,0xd1].includes(b[1])&&b[2]===0)),'Post-flash check cannot calibrate/enable/save');
     }

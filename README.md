@@ -13,6 +13,10 @@ A simple web-based configuration tool for supported Epomaker HE30-family Hall-ef
 
 Use it to change key mappings, Hall-effect settings, lighting, profiles, macros, and other keyboard options directly from your browser. Nothing needs to be installed, and your keyboard data stays on your computer.
 
+## HE30 Pro firmware and driver
+
+The local [HE30 Pro workspace](pro/) configures the v0.9 application. It uses the AE64 Reloaded navigation and provides four onboard profiles, Main/Fn1/Fn2, per-key Hall tuning, advanced actions, an optional HID gamepad, and RGB for the keyboard and lightbar. Load its image from [Recovery & firmware](flasher/). The new hardware paths still need physical validation. See the [v0.9 build and validation notes](firmware/custom/he30-v0.9/README.md).
+
 # 20th Nov 26: custom firmware development in progress! jajajajaja
 # 16th Nov 2026: This project has not been updated for 2 months, read my excuse below and I have some hopeful news for you guys
 - I am still using this keyboard daily, just got 25k Red ratings on CS2 (dying game haha). I have no intention stop development of this project.
