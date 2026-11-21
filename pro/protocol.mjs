@@ -2,7 +2,8 @@ import {FoundationClient,decodeConfig,encodeConfig,KEY_NAMES,parseUsage,usageLab
 import {HIDTransport} from '../flasher/protocol.mjs';
 import {LightingClient,decodeLighting,encodeLighting} from '../flasher/lighting-protocol.mjs';
 
-export const MODEL='H3K09';
+export const MODEL='H3K10';
+export const PRO_PRODUCTS=['H3K09',MODEL];
 export const RATES=[125,250,500,1000,2000,4000,8000];
 export const ACTIONS=['Disabled','SOCD','Rappy Snappy','Dynamic Keystroke','Mod Tap','Toggle','Key Combination','Macro','Multi-Point Trigger','End Key'];
 export const GAMEPAD=['Unassigned','Left stick left','Left stick right','Left stick up','Left stick down','Right stick left','Right stick right','Right stick up','Right stick down','Left trigger','Right trigger',...Array.from({length:16},(_,i)=>'Button '+(i+1))];
@@ -31,7 +32,7 @@ export function actionBytes(action){
   return Uint8Array.of(kind,key,other,mode,...usage,...pack16(...depth));
 }
 export function decodeProfile(data){
-  if(data.byteLength!==976)throw new Error('Profile length differs from H3K09.');
+  if(data.byteLength!==976)throw new Error('Profile length differs from the HE30 Pro format.');
   return {
     lighting:decodeLighting(data.slice(504,632)),
     fn2:[...data.slice(632,668)],gamepad:[...data.slice(668,704)],
@@ -53,7 +54,7 @@ function packet(command,op,offset,length,data){
 }
 export class ProDevice{
   constructor(transport){
-    if(transport.device.productName!==MODEL)throw new Error('Choose the Epomaker HE30 running H3K09.');
+    if(!PRO_PRODUCTS.includes(transport.device.productName))throw new Error('Choose the Epomaker HE30 running H3K09 or H3K10.');
     this.transport=transport;
     this.foundation=new FoundationClient(transport);
     this.lighting=new LightingClient(this.foundation);

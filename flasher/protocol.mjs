@@ -77,7 +77,7 @@ export async function inspectImage(bytes, cryptoProvider = globalThis.crypto) {
     if (!identities.some(x => x.vid === vid && x.pid === pid && x.release === release)) identities.push({ vid, pid, release, offset: i });
   }
   const exactIdentity = identities.length === 1 && identities[0].pid === APP_PID;
-  const diagnosticProduct = ['H3D02', 'H3B03', 'H3M04', 'H3K05', 'H3K06', 'H3K07', 'H3K08', 'H3K09'].find(name => {
+  const diagnosticProduct = ['H3D02', 'H3B03', 'H3M04', 'H3K05', 'H3K06', 'H3K07', 'H3K08', 'H3K09', 'H3K10'].find(name => {
     const descriptor = [12, 3, ...Array.from(name).flatMap(c => [c.charCodeAt(0), 0])];
     return bytes.some((_, i) => descriptor.every((v, j) => bytes[i + j] === v));
   }) || null;

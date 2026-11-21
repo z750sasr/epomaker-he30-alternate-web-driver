@@ -41,19 +41,19 @@ export function lightingPacket(operation,data=new Uint8Array(),offset=0,length=d
 }
 export class LightingClient{
   constructor(foundation){this.foundation=foundation;this.transport=foundation.transport;this.check();}
-  check(){const d=this.transport.device;if(d.vendorId!==0x19f5||d.productId!==0xfb4c||!['H3K06','H3K07','H3K08','H3K09'].includes(d.productName))throw new Error('RGB controls require v0.6 H3K06, v0.7 H3K07 or v0.8 H3K08.');}
+  check(){const d=this.transport.device;if(d.vendorId!==0x19f5||d.productId!==0xfb4c||!['H3K06','H3K07','H3K08','H3K09','H3K10'].includes(d.productName))throw new Error('RGB controls require v0.6 H3K06, v0.7 H3K07 or v0.8 H3K08.');}
   async request(op,data=new Uint8Array(),offset=0,length=data.length){
     this.check();const response=await this.transport.request(lightingPacket(op,data,offset,length),{kind:'lighting'});
     if(!(response instanceof Uint8Array)||response.length!==64||response[0]!==0xaa||response[1]!==0xd1||response[7]||response[4]>56||response.slice(8+response[4]).some(Boolean)||response[3]!==response.slice(4,8+response[4]).reduce((a,b)=>(a+b)&255,0))throw new Error('Malformed RGB reply.');
     if(response[2])throw new Error(`RGB command rejected (${response[2]}).`);
     if(response[4]!==(!op?length:0)||(response[5]|response[6]<<8)!==(!op?offset:0))throw new Error('RGB reply does not match the request.');return response.slice(8,8+response[4]);
   }
-  async attest(){const b=await this.request(0,new Uint8Array(),0,8);if(![0x48,0x33,0x4c,0x31,{H3K06:1,H3K07:2,H3K08:3,H3K09:4}[this.transport.device.productName]].every((v,i)=>b[i]===v))throw new Error('H3L1 signature missing. No RGB control was sent.');}
+  async attest(){const b=await this.request(0,new Uint8Array(),0,8);if(![0x48,0x33,0x4c,0x31,{H3K06:1,H3K07:2,H3K08:3,H3K09:4,H3K10:4}[this.transport.device.productName]].every((v,i)=>b[i]===v))throw new Error('H3L1 signature missing. No RGB control was sent.');}
   async read(){const bytes=new Uint8Array(160);for(let off=0;off<160;off+=56)bytes.set(await this.request(0,new Uint8Array(),off,Math.min(56,160-off)),off);return decodeLightingStatus(bytes);}
   readStatus(){return this.foundation.transaction(async()=>{await this.attest();return this.read();});}
   apply(config){
     this.check();
-    const pro=this.transport.device.productName==='H3K09';
+    const pro=['H3K09','H3K10'].includes(this.transport.device.productName);
     const bytes=encodeLighting(config);
     if(!pro&&config.mode>3)throw new Error('This effect requires HE30 Pro firmware.');
     if(pro&&config.barCount>5)throw new Error('The HE30 Pro bar has five LEDs.');

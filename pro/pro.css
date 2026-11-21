@@ -32,3 +32,9 @@
 [data-edition=reloaded] .workspace{min-height:100svh}
 [data-edition=reloaded] #workspace .work-area{min-height:100%}
 @media(max-width:800px){.pro-content{padding:.85rem}.pro-key{padding:.28rem}.pro-key small{font-size:.55rem}.pro-row{gap:.23rem}}
+#welcome[hidden]{display:none}
+#welcome .welcome-actions a{display:inline-flex;align-items:center;text-decoration:none}
+#welcome .hero-keyboard .pro-board{max-width:min(710px,90vw);margin:auto}
+#welcome .hero-keyboard .pro-key:disabled{opacity:1;cursor:default}
+.binding-field{display:grid;gap:.45rem;align-items:start}
+.binding-field .button{justify-self:start}

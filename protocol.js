@@ -57,7 +57,7 @@ class HE30Driver {
   }
 
   async open() {
-    if (this.device.productName === "H3K09") throw new Error("Open pro/ to configure HE30 Pro firmware.");
+    if (["H3K09", "H3K10"].includes(this.device.productName)) throw new Error("Open pro/ to configure HE30 Pro firmware.");
     if (["H3K05", "H3K06", "H3K07", "H3K08"].includes(this.device.productName)) throw new Error("Use flasher/keyboard.html for custom keyboard setup. Its calibration/settings protocol differs from the stock firmware.");
     if (["H3D02", "H3B03", "H3M04"].includes(this.device.productName)) throw new Error(`This is experimental diagnostic firmware. Use flasher/${this.device.productName === "H3M04" ? "hardware" : this.device.productName === "H3B03" ? "startup" : "diagnostics"}.html; the stock Hall/settings codec is incompatible.`);
     if (!this.device.opened) await this.device.open();

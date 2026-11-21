@@ -61,7 +61,7 @@ export function decodeStatus(bytes){
   if(!(bytes instanceof Uint8Array)||bytes.length!==STATUS_BYTES||![0x48,0x33,0x4b,0x31,1].every((v,i)=>bytes[i]===v)||bytes[201]!==36)throw new Error('H3K1 foundation status was not found or has an invalid format.');
   const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),lo=view.getUint32(16,true),hi=view.getUint32(20,true),pLo=view.getUint32(176,true),pHi=view.getUint32(180,true);
   if(hi&~15||pHi&~15)throw new Error('Status has invalid key-mask bits.');
-  return{signature:'H3K1',typingEnabled:!!bytes[5],calibrationPhase:bytes[6],adcError:bytes[7],frames:view.getUint32(8,true),savedSequence:view.getUint32(12,true),calibrated:KEY_NAMES.map((_,i)=>hasBit(lo,hi,i)),groupOutputs:Array.from(bytes.slice(24,27)),configFlags:bytes[27],dirty:!!bytes[28],storeStatus:bytes[29],releaseInterlock:!!bytes[30],usbReady:!!bytes[31],raw:KEY_NAMES.map((_,i)=>view.getUint16(32+i*2,true)),positions:KEY_NAMES.map((_,i)=>view.getUint16(104+i*2,true)),pressed:KEY_NAMES.map((_,i)=>hasBit(pLo,pHi,i)),fnHeld:!!bytes[184],rollover:!!bytes[185],restFrames:bytes[186],acceptedReports:view.getUint32(188,true),report:Array.from(bytes.slice(192,200)),missingKeys:bytes[200],keyCount:bytes[201],savedValid:!!bytes[202],configCRC:view.getUint32(204,true)};
+  return{signature:'H3K1',typingEnabled:!!bytes[5],calibrationPhase:bytes[6],adcError:bytes[7],frames:view.getUint32(8,true),savedSequence:view.getUint32(12,true),calibrated:KEY_NAMES.map((_,i)=>hasBit(lo,hi,i)),groupOutputs:Array.from(bytes.slice(24,27)),configFlags:bytes[27],dirty:!!bytes[28],storeStatus:bytes[29],releaseInterlock:!!bytes[30],usbReady:!!bytes[31],raw:KEY_NAMES.map((_,i)=>view.getUint16(32+i*2,true)),positions:KEY_NAMES.map((_,i)=>view.getUint16(104+i*2,true)),pressed:KEY_NAMES.map((_,i)=>hasBit(pLo,pHi,i)),fnHeld:!!bytes[184],rollover:!!bytes[185],restFrames:bytes[186],acceptedReports:view.getUint32(188,true),report:Array.from(bytes.slice(192,200)),missingKeys:bytes[200],keyCount:bytes[201],savedValid:!!bytes[202],startupBaseline:bytes[203],configCRC:view.getUint32(204,true)};
 }
 export function encodeRequest(operation,{length=0,offset=0,data=new Uint8Array()}={}){
   integer(operation,0,12,'Operation');integer(length,0,56,'Request length');integer(offset,0,65535,'Request offset');
@@ -80,7 +80,7 @@ function checkReply(response,length,offset){
   if(n!==length||(response[5]|response[6]<<8)!==offset)throw new Error('Foundation reply does not match the request.');
   return response.slice(8,8+n);
 }
-function checkDevice(transport){if(transport?.device?.vendorId!==0x19f5||transport.device.productId!==0xfb4c||!['H3K05','H3K06','H3K07','H3K08','H3K09'].includes(transport.device.productName))throw new Error('Select H3K05, H3K06 or H3K07 foundation firmware; stock HE30 and diagnostic builds use different protocols.');}
+function checkDevice(transport){if(transport?.device?.vendorId!==0x19f5||transport.device.productId!==0xfb4c||!['H3K05','H3K06','H3K07','H3K08','H3K09','H3K10'].includes(transport.device.productName))throw new Error('Select H3K05, H3K06 or H3K07 foundation firmware; stock HE30 and diagnostic builds use different protocols.');}
 export class FoundationClient {
   constructor(transport){checkDevice(transport);this.transport=transport;this.queue=Promise.resolve();}
   transaction(action){const pending=this.queue.then(action);this.queue=pending.catch(()=>{});return pending;}

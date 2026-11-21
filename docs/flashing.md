@@ -1,6 +1,6 @@
 # HE30 recovery and firmware page
 
-**Current v0.9 application:** use **Load v0.9 HE30 Pro**, then open [HE30 Pro](../pro/) after H3K09 reconnects. The full image clears old settings pages. Export old key and lighting profiles first, and restore them from My Profiles after updating. The four-profile library, advanced keys, DMA scanner and gamepad are documented in the [v0.9 notes](../firmware/custom/he30-v0.9/README.md). The prior v0.7 weak PA10 test was a diagnostic candidate. The owner later confirmed RGB using updated v0.6, which starts PA9 and PA10 high.
+Use **Load v0.10 HE30 Pro** for the [current experimental firmware](../firmware/custom/he30-v0.10/README.md). After H3K10 reconnects, open [HE30 Pro](../pro/). Leave all keys released at startup so the firmware can learn the idle positions. A full image clears onboard settings. Export profiles you want to keep and restore them from **My Profiles** after updating.
 
 **Latest build (November20,2026):** [v0.6 RGB foundation](../firmware/custom/he30-v0.6/README.md) supersedes the v0.5-current notes below. The load button now selects H3K06/0600. Confirmed hardware:PB15 to36 key LEDs in `wiring.json` order, PB5 to5 bar LEDs. New nonblocking SPI/DMA lighting includes solid/per-key/reactive keys, independent bar, LED identification and persisted colors. Dim key lighting starts on boot, bar defaults off. `/flasher/keyboard.html` accepts H3K05/H3K06 and shows RGB controls only for H3K06.30 browser tests, compiled-instruction/model checks and smoke pass; no v0.6 physical result or flash in development. Export key and lighting profiles before reflashing:the full image clears journal pages. Electrical protocol/timing/colors remain unverified despite confirmed wiring.
 
@@ -17,10 +17,10 @@ Open `flasher/` on HTTPS or localhost in desktop Chrome/Edge. This page is separ
 1. Connect the Epomaker HE30 (`19F5:FB4C`) or its recovery interface (`19F5:AF22`). The optional FD50 application filter is for an Epomaker already running an experimental Zuoya-derived image.
 2. Select an extracted raw `.bin`. The page displays its size, SHA-256, image convention and embedded USB identity. `.exe` updaters are not firmware payloads and are rejected.
 3. For a donor/unrecognized image, explicitly select the experimental-image option. Review the exact file/hash and target, then choose Flash this image.
-4. In normal mode the page requests recovery and retains the image. An already-authorized recovery device proceeds automatically. Otherwise click Authorize recovery device when prompted; no refresh or file reselection is needed.
+4. In normal mode the page requests recovery and retains the image. The approved flash can continue automatically after the application disconnects and an authorized AF22 updater appears. If Chrome asks for access, select **Authorize recovery device** within one minute to continue. If either USB event is missing or the wait expires, review the retained image again with AF22 selected.
 5. The page erases, writes, requests comparison, finalizes, and waits for application enumeration. It reports identity/version confirmation separately from device comparison. Test typing and physical calibration afterward.
 
-Enter recovery only sends the observed boot-entry command and never erases. To leave standalone recovery, unplug USB for three seconds and reconnect. Remove probe connections as well for a complete power cycle. A standalone `0x84` recovery-exit behavior has not been established, so the page does not offer that shortcut.
+**Enter recovery only** sends the observed boot-entry command without starting an update. The HE30 lab capture recorded one 64-byte output report on the FB4C configuration interface, followed by the FB4C disconnect and AF22 enumeration. The browser keeps watching for AF22 if the USB reset interrupts the report transfer. To leave standalone recovery, unplug USB for three seconds and reconnect. Remove probe connections as well for a complete power cycle.
 
 ## OEM sequence and sources
 

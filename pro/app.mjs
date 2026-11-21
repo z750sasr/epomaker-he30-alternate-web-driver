@@ -1,3 +1,5 @@
+import {openAdvancedKeyPicker} from './key-picker.mjs';
+import {beginRecovery} from '../flasher/recovery.mjs';
 import {ProDevice,ACTIONS,GAMEPAD,RATES,ZUOYA,KEY_NAMES,bindingCode,bindingLabel,encodeConfig,encodeLighting} from './protocol.mjs';
 import {USAGE_NAMES,importProfile} from '../flasher/keyboard-protocol.mjs';
 import {importLighting} from '../flasher/lighting-protocol.mjs';
@@ -13,9 +15,9 @@ const rows=[
 const codeFor=name=>bindingCode(name==='Caps'?'Caps Lock':name==='LShift'?'Left Shift':name==='Ctrl'?'Left Ctrl':name==='Alt'?'Left Alt':name,0);
 const blankAction=()=>({kind:0,key:0,other:1,mode:0,usage:[0,0,0,0],depth:[250,650,900]});
 const defaults=()=>({
-  version:1,groupOutputs:[2,0,1],settleLoops:16000,bankVerified:true,startupTyping:false,
+  version:1,groupOutputs:[2,0,1],settleLoops:16000,bankVerified:true,startupTyping:true,
   calibrated:Array(36).fill(false),released:Array(36).fill(0),pressed:Array(36).fill(0),
-  keys:KEY_NAMES.map((name,i)=>({normalUsage:codeFor(name),fnUsage:i<6?64+i:254,actuation:500,hysteresis:50,rtPress:40,rtRelease:40,rapidTrigger:false,topDeadzone:0,bottomDeadzone:0,disabled:false}))
+  keys:KEY_NAMES.map(name=>({normalUsage:codeFor(name),fnUsage:254,actuation:500,hysteresis:50,rtPress:40,rtRelease:40,rapidTrigger:false,topDeadzone:0,bottomDeadzone:0,disabled:false}))
 });
 const defaultProfile=()=>({name:'Profile',fn2:Array(36).fill(254),gamepad:Array(36).fill(0),travel:Array(36).fill(4000),coefficient:Array(36).fill(0),
   actions:Array.from({length:8},blankAction),lighting:{version:1,mode:1,order:0,rate:0,barCount:5,barEnabled:true,color:[16,16,16],barColor:[16,16,16],palette:Array.from({length:36},()=>[0,0,0])}});
@@ -23,6 +25,7 @@ const offline=Array.from({length:4},(_,i)=>({config:defaults(),profile:{...defau
 let client=null,config=offline[0].config,profile=offline[0].profile;
 let info={active:0,rate:3,scanMode:0,gamepad:false,names:offline.map(p=>p.profile.name)};
 let status=null,rgb=null,slot=0,layer=0,key=0,page='performance',view='quick',busy=false,dirty=false,generation=0,pollPending=false;
+let autoSaveTimer, recoveryPending=false;
 let catalog=[{name:'Linear / custom',brand:'Endpoint calibration',travel:4000,coefficient:0},...ZUOYA];
 const esc=text=>String(text).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const color=(values,scale=1)=>'#'+values.map(value=>Math.round(value*scale).toString(16).padStart(2,'0')).join('');
@@ -31,6 +34,8 @@ const select=(id,label,options,selected)=>'<label>'+label+'<select id="'+id+'">'
 const field=(id,label,value,min,max,step=1)=>'<label>'+label+'<input type="number" id="'+id+'" value="'+value+'" min="'+min+'" max="'+max+'" step="'+step+'"></label>';
 const check=(id,text,value)=>'<label class="check"><input id="'+id+'" type="checkbox" '+(value?'checked':'')+'>'+text+'</label>';
 const textField=(id,label,value,list='')=>'<label>'+label+'<input id="'+id+'" '+(list?'list="'+list+'"':'')+' value="'+esc(value)+'"></label>';
+const bindingField=(id,label,value)=>'<div class="binding-field">'+textField(id,label,value,'keyCodes')+
+  '<button type="button" class="button ghost" data-picker="'+id+'">Choose key</button></div>';
 const btn=(label,action,disabled=false)=>'<button type="button" class="button ghost" data-action="'+action+'" '+(disabled?'disabled':'')+'>'+label+'</button>';
 const commands=(...items)=>'<div class="commands">'+items.join('')+'</div>';
 const grid=(...items)=>'<div class="pro-grid">'+items.join('')+'</div>';
@@ -63,7 +68,7 @@ async function run(task){
   finally{busy=false;document.body.classList.remove('working');render();}
 }
 function mark(text='Changes applied. Save changes to keep them after unplugging.'){
-  dirty=true;message(client?text:'Offline workspace updated.');
+  dirty=true;message(client?text:'Offline workspace updated.');queueAutoSave();
 }
 function selectedUsage(idx){
   return layer===2?profile.fn2[idx]:layer===1?config.keys[idx].fnUsage:config.keys[idx].normalUsage;
@@ -97,7 +102,7 @@ function paintBoard(){
   const cal=byId('calState');
   if(cal){
     const n=status?.calibrated.filter(Boolean).length||0;
-    cal.textContent=status?.adcError?'ADC error '+status.adcError:status?.calibrationPhase===1?'Keep all keys released while baseline readings are collected.':status?.calibrationPhase===2?'Fully press and release each key. '+n+' of 36 measured.':n+' of 36 keys calibrated.';
+    cal.textContent=status?.adcError?'ADC error '+status.adcError:status?.calibrationPhase===1?'Keep all keys released while baseline readings are collected.':status?.calibrationPhase===2?'Fully press and release each key. '+n+' of 36 measured.':status?.startupBaseline===1?'Release all keys. Waiting for stable idle readings.':status?.startupBaseline===2?'Startup baseline active. Calibrate to measure full key travel.':n+' of 36 keys calibrated.';
     byId('calProgress').value=n;
     byId('finish').disabled=!client||n!==36||status?.calibrationPhase!==2;
   }
@@ -117,7 +122,7 @@ const headings={
   profiles:['My Profiles','Four onboard slots, each with its own keymap, tuning, actions, gamepad bindings and lighting.'],
   overview:['Device Overview','See the active profile and firmware capabilities.'],
   diagnostics:['Diagnostics','Monitor complete scan frames and inspect sensor readings.'],
-  firmware:['Firmware','Load the H3K09 firmware using the HE30 recovery page.']
+  firmware:['Firmware','Load HE30 Pro firmware using the HE30 recovery page.']
 };
 function tuning(rapid){
   const k=config.keys[key],travel=profile.travel[key]/1000;
@@ -132,7 +137,7 @@ function renderEditor(which){
     '<div class="commands">'+btn('Begin calibration','begin',!client||!!status?.calibrationPhase)+'<button id="finish" class="button ghost" data-action="finish" disabled>Finish calibration</button>'+btn('Abort','abort',!client||!status?.calibrationPhase)+
     btn(status?.typingEnabled?'Disable typing':'Enable typing',status?.typingEnabled?'disable':'enable',!client||!!status?.calibrationPhase)+'</div><p>With all keys released, begin calibration. Then fully press and release every physical key.</p>';
   if(which==='actuation'||which==='rapid')return tuning(which==='rapid');
-  if(which==='keymap')return '<h2>'+esc(KEY_NAMES[key])+'</h2>'+grid(select('layer','Layer',['Main','Fn1','Fn2'],layer),textField('binding','Binding',bindingLabel(selectedUsage(key)),'keyCodes'))+commands(btn('Apply binding','bind'))+
+  if(which==='keymap')return '<h2>'+esc(KEY_NAMES[key])+'</h2>'+grid(select('layer','Layer',['Main','Fn1','Fn2'],layer),bindingField('binding','Binding',bindingLabel(selectedUsage(key))))+commands(btn('Apply binding','bind'))+
     '<p>Bind a Main-layer key to Fn1 or Fn2 to momentarily activate that layer. Transparent falls back to Main.</p>';
   if(which==='switches'){
     const chosen=catalog.findIndex(x=>x.coefficient===profile.coefficient[key]&&x.travel===profile.travel[key]);
@@ -159,7 +164,7 @@ function renderEditor(which){
     return '<h2>'+esc(ACTIONS[a.kind])+'</h2>'+grid(select('actionSlot','Rule slot',profile.actions.map((item,i)=>(i+1)+' · '+ACTIONS[item.kind]),slot),
       select('actionKind','Action',ACTIONS,a.kind),select('hostKey','Physical key',KEY_NAMES,a.key),
       select('otherKey','Other key',KEY_NAMES,a.other),select('pairMode','Pair policy',['Neutral / no hysteresis','Key A / retain priority','Key B','Last pressed'],a.mode),
-      ...a.usage.map((u,i)=>textField('output'+i,['Output 1','Output 2','Output 3','Output 4'][i],bindingLabel(u),'keyCodes')),
+      ...a.usage.map((u,i)=>bindingField('output'+i,['Output 1','Output 2','Output 3','Output 4'][i],bindingLabel(u))),
       ...a.depth.map((d,i)=>field('depth'+i,['Depth 1 or time','Depth 2','Depth 3'][i],d,0,1000)))+
       '<p>Depth uses 0–1000 of travel. Mod Tap, Macro and End Key use the first field in milliseconds. DKS outputs run in shallow press, deep press, deep release, shallow release order.</p>'+commands(btn('Apply rule','rule'));
   }
@@ -171,9 +176,9 @@ function renderEditor(which){
       grid(textField('profileName','Current profile name',profile.name))+commands(btn('Rename profile','renameProfile'),btn('Export current profile','exportProfile'))+
       '<label>Restore profile or earlier HE30 settings<input type="file" id="restoreProfile" accept="application/json,.json"></label>');
   if(which==='firmware')return '<h2>Firmware & recovery</h2><p>The recovery page checks the firmware hash and tracks the USB transition.</p>'+
-    '<a href="../flasher/" class="button ghost linked-button">Open flasher</a>';
+    commands(btn('Enter recovery','recovery',!client||recoveryPending),'<a href="../flasher/" class="button ghost linked-button">Open flasher</a>');
   if(which==='diagnostics')return '<h2>Scan diagnostics</h2><p id="scanStats">Awaiting a scan measurement</p><p id="travelReading"></p><pre id="rawData"></pre>';
-  return '<h2>Epomaker HE30</h2><p>'+(client?'H3K09 connected':'Offline workspace')+' · 36 Hall sensors · 4 onboard profiles · 3 layers</p>'+
+  return '<h2>Epomaker HE30</h2><p>'+(client?client.transport.device.productName+' connected':'Offline workspace')+' · 36 Hall sensors · 4 onboard profiles · 3 layers</p>'+
     '<p>Current profile '+esc(profile.name)+'. USB gamepad '+(info.gamepadAttached?'enabled':'disabled')+'.</p><p id="scanStats"></p>'+commands(btn('Calibration','quick'));
 }
 function render(){
@@ -186,9 +191,13 @@ function render(){
   }));
   byId('activeProfile').disabled=busy||!!status?.calibrationPhase;
   byId('save').disabled=!client||busy||!dirty||!!status?.calibrationPhase;
-  byId('connect').textContent=client?'Disconnect':'Connect';
+  byId('connect').textContent=client?'Disconnect':'Connect keyboard';
+  byId('revert').disabled=!client||busy||!status?.savedValid||!dirty||recoveryPending||!!status?.calibrationPhase;
+  byId('autoApplyToggle').disabled=!client||recoveryPending;
+  byId('connectionStatus').textContent=client?'Connected':'Offline';
+  byId('dirtyStatus').textContent=dirty?'Changes pending save':'No pending changes';
   byId('connect').disabled=busy||liveOnly;
-  byId('connectionLabel').textContent=client?'H3K09 connected':'Offline workspace';
+  byId('connectionLabel').textContent=client?client.transport.device.productName+' connected':'Offline workspace';
   document.querySelectorAll('[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page&&(!el.dataset.view||el.dataset.view===view)));
   renderBoard();
 }
@@ -261,8 +270,61 @@ const actions={
   async control(op,text){
     if(!client)return;
     await client.foundation.control(op);await refresh();message(text);
+    if(dirty&&!status?.calibrationPhase)queueAutoSave();
   }
 };
+async function saveChanges(){
+  if(!client||recoveryPending||!dirty)return;
+  await client.foundation.control(8);
+  await refresh();
+  message('All four profile slots and device settings saved.');
+}
+function queueAutoSave(){
+  clearTimeout(autoSaveTimer);
+  if(client&&dirty&&byId('autoApplyToggle').checked&&!recoveryPending){
+    autoSaveTimer=setTimeout(()=>{
+      if(busy){queueAutoSave();return;}
+      if(!status?.calibrationPhase)run(saveChanges);
+    },2500);
+  }
+}
+async function recover(){
+  const active=client;
+  if(!active||recoveryPending)return;
+  recoveryPending=true;
+  clearTimeout(autoSaveTimer);
+  const attempt={};
+  try{
+    await active.foundation.transaction(()=>beginRecovery(navigator.hid,active.transport,attempt,message));
+    if(client===active)await active.transport.close().catch(()=>{});
+    client=null;generation++;status=rgb=null;
+    location.assign('../flasher/');
+  }finally{recoveryPending=false;}
+}
+function showWorkspace(){
+  byId('welcome').hidden=true;
+  byId('workspace').classList.remove('hidden');
+  render();
+}
+function showWelcome(){
+  byId('welcome').hidden=false;
+  byId('workspace').classList.add('hidden');
+  byId('initializeDevice').hidden=true;
+  byId('welcomeContent').hidden=false;
+}
+function openPicker(inputId){
+  const input=byId(inputId);
+  if(!input)return;
+  const allowLayers=inputId==='binding';
+  const codes=[...USAGE_NAMES.keys()].filter(code=>code>=4&&code<=0xa4);
+  const groups=[{id:'basic',label:'Keyboard',codes},{id:'modifiers',label:'Modifiers',codes:[224,225,226,227,228,229,230,231]}];
+  if(allowLayers)groups.push({id:'layers',label:'Layers',codes:[255,253,...(layer?[254]:[])]});
+  let current=0;
+  try{current=bindingCode(input.value,allowLayers?layer:0);}catch{}
+  openAdvancedKeyPicker({title:'Choose key value',eyebrow:'Key picker',context:KEY_NAMES[key],
+    description:allowLayers?'Select a binding for the selected layer.':'Select an output for this rule.',
+    groups,current,allowClear:true,onSelect:code=>{input.value=bindingLabel(code);},onClear:()=>{input.value='None';}});
+}
 function downloadProfile(){
   const blob=new Blob([JSON.stringify({format:'he30-pro-profile-v1',config,profile},null,2)],{type:'application/json'});
   const link=document.createElement('a');
@@ -325,18 +387,26 @@ const actionMap={
   rapid:()=>actions.tune(false,true),rapidAll:()=>actions.tune(true,true),
   switch:()=>actions.switch(false),switchAll:()=>actions.switch(true),rule:actions.rule,rgb:actions.rgb,gamepad:actions.gamepad,
   device:actions.device,renameProfile:actions.renameProfile,exportProfile:downloadProfile,identify:()=>client?.lighting.identify(key),
-  begin:()=>actions.control(4,'Calibration started.'),finish:()=>actions.control(5,'Calibration finished. Enable typing, then save.'),
+  begin:()=>actions.control(4,'Calibration started.'),finish:()=>actions.control(5,'Calibration finished. Save changes to keep the measured endpoints.'),
   abort:()=>actions.control(11,'Calibration stopped.'),enable:()=>actions.control(6,'Typing enabled. Release all keys, then save.'),
   disable:()=>actions.control(7,'Typing disabled.'),retry:()=>actions.control(10,'Scanner restarted. Check live depth and scan rate.'),
-  quick:()=>{page='performance';view='quick';},settings:()=>{page='settings';view='settings';}
+  recovery:recover,quick:()=>{page='performance';view='quick';},settings:()=>{page='settings';view='settings';}
 };
 document.addEventListener('click',e=>{
   const el=e.target.closest('button');if(!el||busy||el.disabled)return;
   if(el.dataset.page){page=el.dataset.page;view=el.dataset.view||'quick';render();}
   if(el.dataset.key!==undefined){key=Number(el.dataset.key);render();}
+  if(el.dataset.picker)openPicker(el.dataset.picker);
   if(el.dataset.action)run(actionMap[el.dataset.action]);
 });
-byId('backHomeButton').onclick=()=>{page='performance';view='quick';render();};
+byId('backHomeButton').onclick=showWelcome;
+byId('tryWorkspace').onclick=showWorkspace;
+byId('startInitialization').onclick=()=>{
+  if(client){showWorkspace();return;}
+  byId('welcomeContent').hidden=true;
+  byId('initializeDevice').hidden=false;
+};
+byId('cancelInitialization').onclick=showWelcome;
 byId('toggleSidebar').onclick=()=>{const node=document.documentElement;node.dataset.sidebar=node.dataset.sidebar==='compact'?'':'compact';};
 byId('sidebarThemeSelect').onchange=e=>{document.documentElement.dataset.theme=e.target.value;};
 byId('rename').onclick=()=>{page='settings';view='profiles';render();byId('profileName').focus();};
@@ -354,27 +424,37 @@ byId('activeProfile').onchange=()=>run(async()=>{
   else{info.active=next;({config,profile}=offline[next]);}
   rgb=null;
 });
-byId('connect').onclick=()=>run(async()=>{
-  if(client){const old=client;client=null;generation++;await old.transport.close();status=rgb=null;message('Keyboard disconnected.');return;}
+const connectKeyboard=()=>run(async()=>{
+  if(client){clearTimeout(autoSaveTimer);const old=client;client=null;generation++;await old.transport.close();status=rgb=null;message('Keyboard disconnected.');return;}
   const next=await ProDevice.connect();if(!next)return;
   client=next;generation++;
-  try{await refresh();message('Connected to H3K09.');}
+  try{await refresh();showWorkspace();message('Connected to '+next.transport.device.productName+'.');}
   catch(err){client=null;await next.transport.close().catch(()=>{});throw err;}
 });
-byId('save').onclick=()=>run(async()=>{
-  if(!client)return;
-  await client.foundation.control(8);await refresh();
-  message('All four profile slots and device settings saved.');
+byId('connect').onclick=connectKeyboard;
+byId('heroConnect').onclick=()=>{
+  connectKeyboard().then(()=>{
+    if(!client)byId('initializeStatus').textContent=byId('status').textContent;
+  });
+};
+byId('save').onclick=()=>run(saveChanges);
+byId('revert').onclick=()=>run(async()=>{
+  clearTimeout(autoSaveTimer);
+  await client.foundation.control(12);
+  await refresh();rgb=null;
+  message('Saved settings restored.');
 });
+byId('autoApplyToggle').onchange=queueAutoSave;
 navigator.hid?.addEventListener('disconnect',event=>{
   if(event.device!==client?.transport.device)return;
+  clearTimeout(autoSaveTimer);
   client.transport.disconnected();client=null;generation++;status=rgb=null;
-  message('Keyboard disconnected. Reconnect H3K09 to read saved settings.');render();
+  message('Keyboard disconnected. Reconnect HE30 Pro to read saved settings.');render();
 });
 window.addEventListener('pagehide',()=>client?.transport.close().catch(()=>{}));
 async function poll(){
   const active=client,stamp=generation;
-  if(active&&!busy&&!pollPending){
+  if(active&&!busy&&!pollPending&&!recoveryPending){
     pollPending=true;
     try{
       const next=await active.foundation.readStatus();
@@ -401,4 +481,10 @@ for(const label of [...USAGE_NAMES.values(),'Fn1','Fn2']){
   const option=document.createElement('option');option.value=label;byId('keyCodes').append(option);
 }
 fetch('switches.json').then(r=>{if(!r.ok)throw new Error();return r.json();}).then(data=>{catalog.push(...data.switches);if(page==='performance'&&view==='switches')render();}).catch(()=>{});
-render();poll();
+render();
+byId('heroKeyboard').innerHTML=byId('board').innerHTML;
+byId('heroKeyboard').querySelectorAll('button').forEach(button=>{
+  button.tabIndex=-1;button.disabled=true;
+});
+if(!navigator.hid)byId('heroConnect').disabled=true;
+poll();

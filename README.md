@@ -15,7 +15,9 @@ Use it to change key mappings, Hall-effect settings, lighting, profiles, macros,
 
 ## HE30 Pro firmware and driver
 
-The local [HE30 Pro workspace](pro/) configures the v0.9 application. It uses the AE64 Reloaded navigation and provides four onboard profiles, Main/Fn1/Fn2, per-key Hall tuning, advanced actions, an optional HID gamepad, and RGB for the keyboard and lightbar. Load its image from [Recovery & firmware](flasher/). The new hardware paths still need physical validation. See the [v0.9 build and validation notes](firmware/custom/he30-v0.9/README.md).
+The [HE30 Pro workspace](pro/) uses the AE64 Pro welcome flow, navigation, keyboard editor and key picker. It provides four onboard profiles, Main/Fn1/Fn2, per-key Hall tuning, advanced actions, an optional HID gamepad, and lighting for the keyboard and lightbar. [HE30 Pro v0.10](firmware/custom/he30-v0.10/README.md) enables typing with the 36-key factory layout after capturing a released baseline at startup. Load the image from [Recovery & firmware](flasher/).
+
+GitHub Pages publishes the repository root from `main`. The workspace, stock driver and flasher use relative paths so they also run under the GitHub Pages project URL.
 
 # 20th Nov 26: custom firmware development in progress! jajajajaja
 # 16th Nov 2026: This project has not been updated for 2 months, read my excuse below and I have some hopeful news for you guys

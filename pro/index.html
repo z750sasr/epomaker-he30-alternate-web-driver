@@ -10,7 +10,35 @@
 <link rel="stylesheet" href="pro.css">
 </head>
 <body>
-<section class="workspace" id="workspace" aria-label="HE30 Pro configuration">
+  <main id="welcome">
+    <div class="welcome-content" id="welcomeContent">
+      <a class="button ghost small welcome-legacy" id="legacyModeLink" href="../">Stock driver</a>
+      <span class="welcome-brand" aria-hidden="true">HE</span>
+      <h1>Welcome to HE30 Pro</h1>
+      <p>Configure your Epomaker HE30 in one place. Remap keys, tune actuation and Rapid Trigger, and customize lighting and gamepad controls.</p>
+      <div class="welcome-actions">
+        <button id="tryWorkspace" class="button ghost" type="button">Try the workspace</button>
+        <button id="startInitialization" class="button primary" type="button">Initialize a device</button>
+        <a class="button ghost" href="../flasher/">Flash or recover firmware</a>
+      </div>
+      <div id="heroKeyboard" class="hero-keyboard" aria-hidden="true"></div>
+    </div>
+    <section id="initializeDevice" class="initialize-device" aria-labelledby="initializeTitle" hidden>
+      <button id="cancelInitialization" class="button ghost" type="button">Cancel and exit</button>
+      <ol class="initialize-steps" aria-label="Setup progress">
+        <li aria-current="step">Setup</li><li>Connect</li><li>Configure</li>
+      </ol>
+      <h1 id="initializeTitle" tabindex="-1">Plug your Epomaker HE30 into your computer</h1>
+      <p>Use a USB data cable. Choose your Epomaker HE30 when the browser asks which device to connect.</p>
+      <svg class="initialize-usb" viewBox="0 0 200 124" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round" aria-hidden="true">
+        <rect x="12" y="23" width="176" height="56" rx="8"/><path d="M24 39h152M24 53h152M24 67h152M100 80v24m-9 0h18v13H91z"/>
+      </svg>
+      <button id="heroConnect" class="button primary" type="button">Connect keyboard</button>
+      <p id="initializeStatus" role="status" class="initialize-status">Use Chrome or Edge on localhost or HTTPS for WebHID.</p>
+    </section>
+  </main>
+
+<section class="workspace hidden" id="workspace" aria-label="HE30 Pro configuration">
     <div id="sideNav" class="reloaded-navigation">
       <nav class="tool-rail" aria-label="Workspace tools">
         <button id="backHomeButton" class="rail-brand" type="button" aria-label="Welcome" title="Welcome">HE</button>
@@ -53,10 +81,18 @@
  <div class="work-chrome">
   <header class="work-header">
    <div class="profile-toolbar"><select id="activeProfile" aria-label="Onboard profile"></select><button class="button ghost small" id="rename">Rename</button></div>
-   <div class="header-actions"><button class="button ghost" id="connect">Connect</button><button class="button primary" id="save" disabled>Save changes</button></div>
+   <div class="header-actions">
+    <div class="work-actions">
+     <label class="auto-apply-control"><span><b>Auto apply</b></span><input class="toggle" id="autoApplyToggle" type="checkbox" aria-label="Auto apply"></label>
+     <button class="button ghost" id="revert" type="button" disabled>Revert</button>
+     <button class="button primary" id="save" type="button" disabled>Apply changes</button>
+    </div>
+    <button class="button primary" id="connect" type="button">Connect keyboard</button>
+   </div>
   </header>
+  <div class="status-strip"><span><i id="connectionDot"></i><b id="connectionStatus">Offline</b></span><span id="dirtyStatus">No pending changes</span></div>
   <div class="pro-content">
-   <p id="status" role="status">Connect H3K09 or explore the offline workspace.</p>
+   <p id="status" role="status">Connect HE30 Pro or explore the offline workspace.</p>
    <div id="pageTitle"></div>
    <div id="board" class="panel"></div>
    <section id="editor" class="panel"></section>
@@ -65,6 +101,19 @@
  </div>
 </div>
 </section>
+  <dialog class="app-dialog advanced-key-picker-dialog" id="advancedKeyPickerDialog" aria-labelledby="advancedKeyPickerTitle">
+    <form method="dialog">
+      <div class="dialog-heading-row">
+        <div class="dialog-copy">
+          <p class="eyebrow" id="advancedKeyPickerEyebrow">SHARED ADVANCED KEY PICKER</p>
+          <h2 id="advancedKeyPickerTitle">Choose key value</h2>
+        </div>
+        <button class="dialog-close-button" type="submit" value="close" aria-label="Close advanced key-value picker">×</button>
+      </div>
+      <div id="advancedKeyPickerBody"></div>
+      <div class="dialog-actions"><button class="button ghost" type="submit" value="close">Cancel</button></div>
+    </form>
+  </dialog>
 <script type="module" src="app.mjs"></script>
 </body>
 </html>

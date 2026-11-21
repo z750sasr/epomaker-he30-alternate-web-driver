@@ -16,11 +16,14 @@ class Device extends EventTarget {
     this.sent.push(new Uint8Array(data));
     if (data[0] === 0x5f) {
       this.hid.devices = [];
-      const e = new Event('disconnect'); e.device = this; this.hid.dispatchEvent(e);
+      if (!this.omitRecoveryDisconnect) {
+        const e = new Event('disconnect'); e.device = this; this.hid.dispatchEvent(e);
+      }
       if (this.hid.automatic) setImmediate(() => {
         this.hid.devices = [this.hid.boot];
         const connected = new Event('connect'); connected.device = this.hid.boot; this.hid.dispatchEvent(connected);
       });
+      if(this.recoveryTransferError)throw new Error('Transfer interrupted by reset');
       return;
     }
     const b = new Uint8Array(this.productId === 0xaf22 ? 512 : 64);
@@ -28,26 +31,28 @@ class Device extends EventTarget {
       const fixtures = JSON.parse(readFileSync(new URL('../firmware/custom/he30-v0.3/status-fixtures.json', import.meta.url), 'utf8')).fixtures;
       const match = fixtures.find(f => f.request === Buffer.from(data).toString('hex'));
       assert.ok(match); b.set(Buffer.from(match.response, 'hex'));
-    } else if (data[0] === 0x55 && ['H3K05','H3K06','H3K09'].includes(this.productName) && [0xd0,0xd1].includes(data[1])) {
+    } else if (data[0] === 0x55 && ['H3K05','H3K06','H3K09','H3K10'].includes(this.productName) && [0xd0,0xd1].includes(data[1])) {
       const fixtures = JSON.parse(readFileSync(new URL(`../firmware/custom/he30-v0.${Number(this.productName.slice(-2))}/protocol-fixtures.json`, import.meta.url),'utf8')).fixtures;
       const match = fixtures.find(f=>f.phase==='default'&&f.request===Buffer.from(data).toString('hex'));
       assert.ok(match);b.set(Buffer.from(match.response,'hex'));
-    } else if (data[0] === 0x55) { b[0] = 0xaa; b[1] = 3; b[8] = ['H3B03','H3K05','H3K06','H3K09'].includes(this.productName) ? 0 : 9; b[9] = this.productName.startsWith('H3K') ? Number(this.productName.slice(-2)) : this.productName === 'H3B03' ? 3 : 1; }
+    } else if (data[0] === 0x55) { b[0] = 0xaa; b[1] = 3; b[8] = ['H3B03','H3K05','H3K06','H3K09','H3K10'].includes(this.productName) ? 0 : 9; b[9] = this.productName.startsWith('H3K') ? Number.parseInt(this.productName.slice(-2),16) : this.productName === 'H3B03' ? 3 : 1; }
     const e = new Event('inputreport'); e.reportId = reportId; e.data = new DataView(b.buffer); this.dispatchEvent(e);
   }
 }
 const tick = () => new Promise(r => setImmediate(r));
 async function until(check) { for (let i = 0; i < 100; i++) { if (check()) return; await tick(); } throw new Error('Simulated UI did not reach expected state.'); }
 
-for (const scenario of ['permission', 'automatic', 'cancel', 'startup','foundation','rgb','pro']) test(`application→recovery flow: ${scenario}`, async () => {
+for (const scenario of ['permission', 'automatic', 'cancel', 'startup','foundation','rgb','pro','reset-during-transfer','missing-disconnect']) test(`application→recovery flow: ${scenario}`, async () => {
   const nodes = new Map();
   const document = { getElementById(id) { if (!nodes.has(id)) nodes.set(id, new Element()); return nodes.get(id); }, createElement() { return new Element(); } };
   const hid = new EventTarget(); hid.devices = [];
   hid.getDevices = async () => hid.devices;
   hid.requestDevice = async () => hid.devices;
   const normal = new Device(0xfb4c, hid), boot = new Device(0xaf22, hid);
-  hid.boot = boot; hid.automatic = ['automatic', 'startup','foundation','rgb','pro'].includes(scenario);
+  hid.boot = boot; hid.automatic = ['automatic', 'startup','foundation','rgb','pro','reset-during-transfer','missing-disconnect'].includes(scenario);
   hid.devices = [normal];
+  normal.recoveryTransferError=scenario==='reset-during-transfer';
+  normal.omitRecoveryDisconnect = scenario === 'missing-disconnect';
   const savedGlobals = { document: globalThis.document, window: globalThis.window, indexedDB: globalThis.indexedDB, navigator: Object.getOwnPropertyDescriptor(globalThis, 'navigator'), setTimeout: globalThis.setTimeout,fetch:globalThis.fetch };
   const timers = [];
   globalThis.document = document;
@@ -66,10 +71,10 @@ for (const scenario of ['permission', 'automatic', 'cancel', 'startup','foundati
     if(scenario==='foundation')bytes=new Uint8Array(readFileSync(new URL('../firmware/custom/he30-v0.5/Epomaker-HE30-EXPERIMENTAL-v0.5-Foundation.bin',import.meta.url)));
     if(scenario==='rgb')bytes=new Uint8Array(readFileSync(new URL('../firmware/custom/he30-v0.6/Epomaker-HE30-EXPERIMENTAL-v0.6-RGB.bin',import.meta.url)));
     if(scenario==='pro'){
-      const manifest=JSON.parse(readFileSync(new URL('../firmware/custom/he30-v0.9/manifest.json',import.meta.url),'utf8'));
-      bytes=new Uint8Array(readFileSync(new URL(`../firmware/custom/he30-v0.9/${manifest.name}`,import.meta.url)));
-      globalThis.fetch=async url=>{assert.ok(String(url).startsWith('../firmware/custom/he30-v0.9/'));return new Response(readFileSync(new URL(url,import.meta.url)));};
-      await nodes.get('loadCustom').onclick();assert.ok(nodes.get('status').textContent.includes('v0.9 HE30 Pro loaded'));
+      const manifest=JSON.parse(readFileSync(new URL('../firmware/custom/he30-v0.10/manifest.json',import.meta.url),'utf8'));
+      bytes=new Uint8Array(readFileSync(new URL(`../firmware/custom/he30-v0.10/${manifest.name}`,import.meta.url)));
+      globalThis.fetch=async url=>{assert.ok(String(url).startsWith('../firmware/custom/he30-v0.10/'));return new Response(readFileSync(new URL(url,import.meta.url)));};
+      await nodes.get('loadCustom').onclick();assert.ok(nodes.get('status').textContent.includes('v0.10 HE30 Pro loaded'));
     }else{
       nodes.get('file').files = [{ name: 'simulated.bin', arrayBuffer: async () => bytes.buffer }];
       await nodes.get('file').onchange();
@@ -85,6 +90,12 @@ for (const scenario of ['permission', 'automatic', 'cancel', 'startup','foundati
     nodes.get('review').returnValue = 'flash'; nodes.get('review').dispatchEvent(new Event('close'));
     await until(() => normal.sent.some(x => x[0] === 0x5f));
     await tick();
+    if (scenario === 'missing-disconnect') {
+      await until(() => nodes.get('status').textContent.includes('disconnect was not reported'));
+      assert.equal(boot.sent.length, 0);
+      assert.equal(nodes.get('start').disabled, false, 'Review is available for the now-selected updater');
+      return;
+    }
     if (!hid.automatic) {
       assert.equal(boot.sent.length, 0, 'No permission, so no boot writes');
       if (scenario === 'cancel') nodes.get('cancel').onclick();
@@ -113,9 +124,9 @@ for (const scenario of ['permission', 'automatic', 'cancel', 'startup','foundati
     if(['foundation','rgb','pro'].includes(scenario)){
       await until(()=>!nodes.get('connect').disabled);
       const disconnected=new Event('disconnect');disconnected.device=boot;hid.dispatchEvent(disconnected);
-      const keyboard=new Device(0xfb4c,hid);keyboard.productName=scenario==='pro'?'H3K09':scenario==='rgb'?'H3K06':'H3K05';hid.devices=[keyboard];
+      const keyboard=new Device(0xfb4c,hid);keyboard.productName=scenario==='pro'?'H3K10':scenario==='rgb'?'H3K06':'H3K05';hid.devices=[keyboard];
       const connected=new Event('connect');connected.device=keyboard;hid.dispatchEvent(connected);
-      await until(()=>nodes.get('status').textContent.includes(scenario==='pro'?'H3K09 is responding':scenario==='rgb'?'v0.6 foundation USB, H3K1 and H3L1 are responding':'v0.5 foundation USB and H3K1 are responding'));
+      await until(()=>nodes.get('status').textContent.includes(scenario==='pro'?'H3K10 is responding':scenario==='rgb'?'v0.6 foundation USB, H3K1 and H3L1 are responding':'v0.5 foundation USB and H3K1 are responding'));
       assert.equal(nodes.get('progress').value,100);assert.equal(keyboard.sent.length,scenario==='foundation'?6:10);
       assert.ok(keyboard.sent.every(b=>b[0]===0x55&&(b[1]===3||[0xd0,0xd1].includes(b[1])&&b[2]===0)),'Post-flash check cannot calibrate/enable/save');
     }
@@ -152,8 +163,9 @@ for(const scenario of ['composite','multiple','cancel','already-recovery','unsup
     await nodes.get('recover').onclick();
     if(scenario==='cancel'){assert.equal(config.sent.length,0);assert.ok(nodes.get('status').textContent.includes('no recovery command was sent'));assert.equal(nodes.get('recover').disabled,false);return;}
     assert.equal(config.sent.filter(p=>p[0]===0x5f).length,1);assert.equal(input.sent.length,0);assert.equal(other.sent.length,0);
+    assert.equal(nodes.get('authorize').hidden,false,'Standalone entry exposes updater authorization');
     assert.ok(![...config.sent,...boot.sent].some(p=>[0x80,0x81,0x82,0x83,0x84].includes(p[0])),'Standalone recovery must never erase/write/finalize');
-    if(scenario==='multiple')assert.deepEqual(choices[0],{filters:[{vendorId:0x19f5,productId:0xfb4c,usagePage:1,usage:0}]});
+    if(scenario==='multiple')assert.deepEqual(choices[0],{filters:[{vendorId:0x19f5,productId:0xfb4c}]});
   }finally{
     await tick();
     timers.forEach(clearTimeout);globalThis.setTimeout=saved.setTimeout;globalThis.document=saved.document;globalThis.window=saved.window;globalThis.indexedDB=saved.indexedDB;
