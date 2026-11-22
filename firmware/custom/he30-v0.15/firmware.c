@@ -180,7 +180,17 @@ __attribute__((used)) void *memcpy(void *d,const void *p,u32 n){bytes_copy(d,p,n
 static int equal(const void*a,const void*b,u32 n){const u8*x=a,*y=b;while(n--)if(*x++!=*y++)return 0;return 1;}
 static u32 abs32(i32 x){return x<0?(u32)-x:(u32)x;}
 static u32 ticks(void){return MM32(0xe000f008u);}
+#ifdef HE30_GAMEPAD_CLOCK_FIX
+__attribute__((section(".extra"),noinline)) static void time_resume(u32 count){
+ MM32(0xe000f000)=0;MM32(0xe000f004)=0;
+ MM32(0xe000f008)=count;MM32(0xe000f00c)=0;
+ MM32(0xe000f010)=~0u;MM32(0xe000f014)=~0u;
+ MM32(0xe000f000)=5;
+}
+__attribute__((noinline)) static void time_init(void){time_resume(0);}
+#else
 static void time_init(void){MM32(0xe000f000)=0;MM32(0xe000f004)=0;MM32(0xe000f008)=0;MM32(0xe000f00c)=0;MM32(0xe000f010)=~0u;MM32(0xe000f014)=~0u;MM32(0xe000f000)=5;}
+#endif
 static void delay(u32 n){__asm__ volatile("1: addi %0,%0,-1\n bnez %0,1b":"+r"(n)::"memory");}
 __attribute__((noinline)) static u32 crc_update(u32 c,const void *p,u32 n){const u8*b=p;while(n--){c^=*b++;for(u32 j=0;j<8;j++)c=(c>>1)^(0xedb88320u&-(c&1));}return c;}
 u32 crc32(const void *p,u32 n){return~crc_update(~0u,p,n);}

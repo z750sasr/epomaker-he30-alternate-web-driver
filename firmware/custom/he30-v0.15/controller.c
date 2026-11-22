@@ -26,6 +26,20 @@ static void gp_queue_usb(void){
  if(G->usb_switch!=3)G->usb_switch=S->library.gamepad!=(MM8(0x20000104)==3);
 }
 
+#ifdef HE30_GAMEPAD_CLOCK_FIX
+__attribute__((section(".slow"),noinline)) static void gp_usb_reset(u32 enabled){
+ /* The donor uses SysTick for a one-shot reset delay and exits with it off.
+  * Keep the scanner, lighting and USB transition on the same timebase. */
+ MM32(0xe000f000)=0;
+ const u32 count=ticks();
+ MM32(0xe000f008)=0;MM32(0xe000f00c)=0;
+ ((void(*)(u32))0x5412)(enabled);
+ time_resume(count);
+}
+#else
+#define gp_usb_reset ((void(*)(u32))0x5412)
+#endif
+
 __attribute__((used,noinline)) static void gp_usb_service(void){
  if(!G->usb_switch||S->vendor_pending)return;
  const u32 now=ticks();
@@ -33,13 +47,18 @@ __attribute__((used,noinline)) static void gp_usb_service(void){
  if((i32)(now-G->usb_deadline)<0)return;
  if(G->usb_switch==2){
   all_released();keyboard_service();
-  ((void(*)(u32))0x5412)(0);
-  G->usb_deadline=now+250*TICKS_MS;G->usb_switch=3;
+  gp_usb_reset(0);
+#ifdef HE30_GAMEPAD_CLOCK_FIX
+  G->usb_deadline=ticks()+250*TICKS_MS;
+#else
+  G->usb_deadline=now+250*TICKS_MS;
+#endif
+  G->usb_switch=3;
   S->was_usb=S->have_last=0;
  }else{
   usb_gamepad_setup(S->library.gamepad);
   MM8(0x20000269)=0;MM8(0x20000266)=0;MM8(0x20000273)=0;
-  ((void(*)(u32))0x5412)(1);
+  gp_usb_reset(1);
   G->usb_switch=0;
   all_released();
  }

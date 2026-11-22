@@ -1,5 +1,5 @@
 // v0.6 RGB extension. It shares the foundation client's transaction queue.
-import {FN_RGB_PRODUCTS,DESKTOP_PRODUCTS,MEDIA_MODEL} from './keyboard-protocol.mjs';
+import {FN_RGB_PRODUCTS,DESKTOP_PRODUCTS,MEDIA_PRODUCTS} from './keyboard-protocol.mjs';
 export const LED_ORDER=['Esc','F1','F2','F3','F4','F5','F6','6','5','4','3','2','1','Grave','Tab','Q','W','E','R','T','G','F','D','S','A','Caps','LShift','Z','X','C','V','B','Space','Alt','Fn','Ctrl'];
 export const LED_TO_KEY=[23,0,1,2,3,4,5,12,18,19,21,20,22,6,13,14,15,16,17,35,24,30,31,33,32,34,25,26,27,28,29,11,7,9,8,10];
 const byte=(v,max,label)=>{if(!Number.isInteger(v)||v<0||v>max)throw new Error(`${label} must be an integer from0 to${max}.`);return v;};
@@ -98,16 +98,16 @@ export function lightingPacket(operation,data=new Uint8Array(),offset=0,length=d
 }
 export class LightingClient{
   constructor(foundation){this.foundation=foundation;this.transport=foundation.transport;this.check();}
-  get supportsBrightness(){return ['H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25','H3K26'].includes(this.transport.device.productName);}
+  get supportsBrightness(){return ['H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25','H3K26','H3K27'].includes(this.transport.device.productName);}
   get supportsFnLighting(){return FN_RGB_PRODUCTS.includes(this.transport.device.productName);}
-  get supportsPreferences(){return this.transport.device.productName===MEDIA_MODEL;}
+  get supportsPreferences(){return MEDIA_PRODUCTS.includes(this.transport.device.productName);}
   checkBrightness(config){
     if(!this.supportsBrightness&&((config.keyBrightness??100)!==100||(config.barBrightness??100)!==100))
       throw new Error('Install HE30 Pro v0.13 to save independent RGB brightness.');
     if(!DESKTOP_PRODUCTS.includes(this.transport.device.productName)&&(config.barMode||config.barRainbow||config.barReverse||(config.pointerSpeed??1)!==1))
       throw new Error('Lightbar animations and pointer speed require HE30 Pro v0.25.');
   }
-  check(){const d=this.transport.device;if(d.vendorId!==0x19f5||d.productId!==0xfb4c||!['H3K06','H3K07','H3K08','H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25','H3K26'].includes(d.productName))throw new Error('RGB controls require HE30 custom firmware v0.6 or later.');}
+  check(){const d=this.transport.device;if(d.vendorId!==0x19f5||d.productId!==0xfb4c||!['H3K06','H3K07','H3K08','H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25','H3K26','H3K27'].includes(d.productName))throw new Error('RGB controls require HE30 custom firmware v0.6 or later.');}
   async request(op,data=new Uint8Array(),offset=0,length=data.length){
     this.check();
     if(op>=9&&!this.supportsFnLighting)throw new Error('Fn lighting requires HE30 Pro v0.22.');
@@ -118,7 +118,7 @@ export class LightingClient{
     const read=op===0||op===9||op===11;
     if(response[4]!==(read?length:0)||(response[5]|response[6]<<8)!==(read?offset:0))throw new Error('RGB reply does not match the request.');return response.slice(8,8+response[4]);
   }
-  async attest(){const b=await this.request(0,new Uint8Array(),0,8);if(![0x48,0x33,0x4c,0x31,{H3K06:1,H3K07:2,H3K08:3,H3K09:4,H3K10:4,H3K11:4,H3K12:4,H3K13:4,H3K14:4,H3K15:4,H3K16:4,H3K17:4,H3K18:4,H3K19:4,H3K20:4,H3K21:4,H3K22:4,H3K23:4,H3K24:4,H3K25:4,H3K26:4}[this.transport.device.productName]].every((v,i)=>b[i]===v))throw new Error('H3L1 signature missing. No RGB control was sent.');}
+  async attest(){const b=await this.request(0,new Uint8Array(),0,8);if(![0x48,0x33,0x4c,0x31,{H3K06:1,H3K07:2,H3K08:3,H3K09:4,H3K10:4,H3K11:4,H3K12:4,H3K13:4,H3K14:4,H3K15:4,H3K16:4,H3K17:4,H3K18:4,H3K19:4,H3K20:4,H3K21:4,H3K22:4,H3K23:4,H3K24:4,H3K25:4,H3K26:4,H3K27:4}[this.transport.device.productName]].every((v,i)=>b[i]===v))throw new Error('H3L1 signature missing. No RGB control was sent.');}
   async read(){const bytes=new Uint8Array(160);for(let off=0;off<160;off+=56)bytes.set(await this.request(0,new Uint8Array(),off,Math.min(56,160-off)),off);return decodeLightingStatus(bytes);}
   readStatus(){return this.foundation.transaction(async()=>{await this.attest();return this.read();});}
   readPreferences(profile){
@@ -161,7 +161,7 @@ export class LightingClient{
   apply(config){
     this.check();
     this.checkBrightness(config);
-    const pro=['H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25','H3K26'].includes(this.transport.device.productName);
+    const pro=['H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25','H3K26','H3K27'].includes(this.transport.device.productName);
     const bytes=encodeLighting(config);
     if(!pro&&config.mode>3)throw new Error('This effect requires HE30 Pro firmware.');
     if(pro&&config.barCount>5)throw new Error('The HE30 Pro bar has five LEDs.');

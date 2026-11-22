@@ -1,4 +1,4 @@
-import {FoundationClient,decodeConfig,encodeConfig,KEY_NAMES,parseUsage,usageLabel,crc32,isProfileUsage,isDesktopUsage,isMediaUsage,DESKTOP_PRODUCTS,DESKTOP_USAGES,MEDIA_MODEL,MEDIA_USAGES,PROFILE_KEY_MODEL,NKRO_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,FN_RGB_PRODUCTS,supportsProfileKeys} from '../flasher/keyboard-protocol.mjs';
+import {FoundationClient,decodeConfig,encodeConfig,KEY_NAMES,parseUsage,usageLabel,crc32,isProfileUsage,isDesktopUsage,isMediaUsage,DESKTOP_PRODUCTS,DESKTOP_USAGES,MEDIA_PRODUCTS,MEDIA_USAGES,PROFILE_KEY_MODEL,NKRO_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,FN_RGB_PRODUCTS,supportsProfileKeys} from '../flasher/keyboard-protocol.mjs';
 import {HIDTransport,connectionCandidates} from '../flasher/protocol.mjs';
 import {LightingClient,decodeLighting,encodeLighting} from '../flasher/lighting-protocol.mjs';
 import {GAMEPAD_BYTES,encodeGamepad,decodeGamepad} from './gamepad.mjs';
@@ -70,7 +70,7 @@ export class ProDevice{
     this.lighting=new LightingClient(this.foundation);
     this.supportsProfileKeys=supportsProfileKeys(transport.device.productName);
     this.supportsDesktopKeys=DESKTOP_PRODUCTS.includes(transport.device.productName);
-    this.supportsMedia=transport.device.productName===MEDIA_MODEL;
+    this.supportsMedia=MEDIA_PRODUCTS.includes(transport.device.productName);
     this.supportsGamepad=['H3K11','H3K12','H3K13','H3K14',MODEL,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,...FN_RGB_PRODUCTS].includes(transport.device.productName);
   }
   static async connect(authorizedProduct){

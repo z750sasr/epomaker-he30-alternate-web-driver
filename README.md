@@ -15,7 +15,7 @@ Use it to change key mappings, Hall-effect settings, lighting, profiles, macros,
 
 ## HE30 Pro firmware and driver
 
-The [HE30 Pro workspace](pro/) configures four onboard profiles, Main/Fn1/Fn2, Hall tuning, advanced actions and RGB for the keyboard and lightbar. [HE30 Pro v0.26](firmware/custom/he30-v0.26/README.md) seeds the captured profiles, corrects USB routing, and adds media keys, animation speed, and RGB sleep. Load it from [Recovery & firmware](flasher/). Open [Gamepad Mode](pro/?page=gamepad) to enable the Xbox-compatible controller and assign physical keys.
+The [HE30 Pro workspace](pro/) configures four onboard profiles, Main/Fn1/Fn2, Hall tuning, advanced actions and RGB for the keyboard and lightbar. [HE30 Pro v0.27](firmware/custom/he30-v0.27/README.md) fixes the USB reconnect when switching Xbox mode and uses the factory profiles from v0.26. Load it from [Recovery & firmware](flasher/). Open [Gamepad Mode](pro/?page=gamepad) to enable the Xbox-compatible controller and assign physical keys.
 
 The [v0.20 test build](firmware/custom/he30-v0.20/README.md) adds onboard profile shortcuts and finer dead zones while retaining the v0.19 Save path. The updated Pro workspace also works with v0.19 for Advanced Keys, Remap, selection and distance display. See the [Zuoya V115 settings analysis](docs/zuoya-v115-stability.md) for the comparison with its scanner.
 

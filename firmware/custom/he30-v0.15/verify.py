@@ -92,6 +92,7 @@ class CPU:
         self.flash_buffer_busy=FLASH_RESIDENT_SAVE
         self.sent=[];self.adc_samples={};self.busy=0;self.fail=None;self.adc_ready=False;self.conversions=[];self.first_rank_sample=None
         self.native_test_ranges=()
+        self.native_usb_borrows_timer=False
         self.latch={0x40010800:0,0x40011000:0x6000,0x40010c00:0x400};self.unlock=0;self.mode_unlock=0;self.page_buffer={};self.erases=[];self.programs=[];self.cut=None;self.dma_frames=[]
     def field(self,name,value=None,size=1):
         a=S+layout[name]
@@ -224,6 +225,13 @@ class CPU:
             if stop and stop(self,pc):return step
             if pc in [0x795e,0x15e7e,0x52c0,0x5412,0x5506,0x67b0]:
                 self.calls.append(pc)
+                if pc==0x5412 and self.native_usb_borrows_timer:
+                    # The donor's one-shot delay replaces the compare value
+                    # and clears the timer enable bit before returning.
+                    self.put(0xe000f010,180,4)
+                    self.put(0xe000f014,0,4)
+                    self.put(0xe000f008,180,4)
+                    self.put(0xe000f000,0x30,4)
                 if pc==0x5506:
                     ep,p,n,copy=self.r[10:14]
                     packets={(1,8),(2,64),(3,20)}
