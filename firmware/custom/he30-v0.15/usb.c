@@ -15,13 +15,32 @@
 #ifdef HE30_DESKTOP_KEYS
 #define USB_BASE_CONFIG_BYTES 91
 #define USB_GAMEPAD_CONFIG_BYTES 131
+#ifdef HE30_USB_LIGHTING_FIX
+#define USB_MOUSE_REPORT_BYTES 79
+#define USB_XINPUT_INTERFACE 2
+#define USB_MOUSE_PACKET_BYTES 5
+#else
 #define USB_MOUSE_REPORT_BYTES 52
 #define USB_XINPUT_INTERFACE 3
+#define USB_MOUSE_PACKET_BYTES 4
+#endif
 static const u8 mouse_descriptor[USB_MOUSE_REPORT_BYTES]={
- 5,1,9,2,0xa1,1,9,1,0xa1,0,5,9,0x19,1,0x29,5,0x15,0,0x25,1,0x95,5,0x75,1,0x81,2,
+ 5,1,9,2,0xa1,1,
+#ifdef HE30_USB_LIGHTING_FIX
+ 0x85,1,
+#endif
+ 9,1,0xa1,0,5,9,0x19,1,0x29,5,0x15,0,0x25,1,0x95,5,0x75,1,0x81,2,
  0x95,1,0x75,3,0x81,1,5,1,9,0x30,9,0x31,9,0x38,0x15,0x81,0x25,0x7f,0x75,8,0x95,3,0x81,6,0xc0,0xc0
+#ifdef HE30_USB_LIGHTING_FIX
+ ,5,0x0c,9,1,0xa1,1,0x85,2,0x15,0,0x26,0xff,3,0x19,0,0x2a,0xff,3,
+  0x75,16,0x95,1,0x81,0,0xc0
+#endif
 };
+#ifdef HE30_USB_LIGHTING_FIX
+__attribute__((section(".slow_data")))
+#else
 __attribute__((section(".extra_data")))
+#endif
 #else
 #define USB_BASE_CONFIG_BYTES 66
 #define USB_GAMEPAD_CONFIG_BYTES 106
@@ -44,7 +63,7 @@ static const u8 usb_xinput_configuration[USB_GAMEPAD_CONFIG_BYTES]={
  9,0x21,0x10,1,0,1,0x22,32,0,
  7,5,0x82,3,64,0,1,
  7,5,4,3,64,0,1,
-#ifdef HE30_DESKTOP_KEYS
+#if defined(HE30_DESKTOP_KEYS) && !defined(HE30_USB_LIGHTING_FIX)
  /* Mouse interface 2 uses only EP4 IN, independent of the vendor OUT. */
  9,4,2,0,1,3,0,0,0,
  9,0x21,0x11,1,0,1,0x22,USB_MOUSE_REPORT_BYTES,0,
@@ -55,7 +74,22 @@ static const u8 usb_xinput_configuration[USB_GAMEPAD_CONFIG_BYTES]={
  17,0x21,0,1,1,0x25,0x83,20,0,0,0,0,0x13,3,8,0,0,
  7,5,0x83,3,32,0,1,
  7,5,3,3,32,0,1
+#ifdef HE30_USB_LIGHTING_FIX
+ ,9,4,3,0,1,3,0,0,0,
+ 9,0x21,0x11,1,0,1,0x22,USB_MOUSE_REPORT_BYTES,0,
+ 7,5,0x84,3,USB_MOUSE_PACKET_BYTES,0,4
+#endif
 };
+#ifdef HE30_USB_LIGHTING_FIX
+/* Keep XInput at interface 2, as in the last working controller layout. */
+__attribute__((section(".slow_data"))) static const u8 usb_mouse_configuration[USB_BASE_CONFIG_BYTES]={
+ 9,2,91,0,3,1,0,0x80,250,
+ 9,4,0,0,1,3,1,1,0,9,0x21,0x11,1,0,1,0x22,49,0,7,5,0x81,3,KEYBOARD_REPORT_BYTES,0,1,
+ 9,4,1,0,2,3,0,0,0,9,0x21,0x10,1,0,1,0x22,32,0,7,5,0x82,3,64,0,1,7,5,4,3,64,0,1,
+ 9,4,2,0,1,3,0,0,0,9,0x21,0x11,1,0,1,0x22,USB_MOUSE_REPORT_BYTES,0,
+ 7,5,0x84,3,USB_MOUSE_PACKET_BYTES,0,4
+};
+#endif
 __attribute__((section(".spare_data"))) static const u8 usb_ms_string[18]={
  18,3,'M',0,'S',0,'F',0,'T',0,'1',0,'0',0,'0',0,0x20,0
 };
@@ -73,29 +107,48 @@ static void usb_gamepad_setup(u8 enabled){
  MM8(USB_CONFIG_RAM+4)=enabled?3:2;
 }
 
-__attribute__((used,section(".early"),noinline)) int usb_gamepad_control(void){
+#ifdef HE30_USB_LIGHTING_FIX
+__attribute__((section(".slow")))
+#else
+__attribute__((section(".early")))
+#endif
+__attribute__((used,noinline)) int usb_gamepad_control(void){
  const u8 type=MM8(USB_SETUP_TYPE),request=MM8(USB_SETUP_REQUEST);
  const u16 value=MM16(USB_SETUP_VALUE),index=MM16(USB_SETUP_INDEX);
  const u8 enabled=MM8(USB_CONFIG_RAM+4)==3;
  const u8 *descriptor;
  u16 length;
  u8 descriptor_type=0;
+#ifdef HE30_USB_LIGHTING_FIX
+ const u8 mouse_index=2+enabled;
+#else
+ const u8 mouse_index=2;
+#endif
  if(enabled&&type==0x80&&request==6&&value==0x0100&&index==0){
   /* Windows caches OS descriptor support by VID, PID and USB revision. */
   descriptor=(const u8 *)0x172c4;
   length=18;descriptor_type=1;
  }
 #ifdef HE30_DESKTOP_KEYS
- else if(index==2&&type==0x81&&request==6&&value==0x2200){
+ else if(index==mouse_index&&type==0x81&&request==6&&value==0x2200){
   descriptor=mouse_descriptor;length=sizeof(mouse_descriptor);
- }else if(index==2&&type==0x81&&request==6&&value==0x2100){
-  descriptor=usb_xinput_configuration+75;length=9;
- }else if(index==2&&type==0x21&&request==10&&MM16(USB_SETUP_LENGTH)==0){
+ }else if(index==mouse_index&&type==0x81&&request==6&&value==0x2100){
+#ifdef HE30_USB_LIGHTING_FIX
+  descriptor=enabled?usb_xinput_configuration+115:usb_mouse_configuration+75;
+#else
+  descriptor=usb_xinput_configuration+75;
+#endif
+  length=9;
+ }else if(index==mouse_index&&type==0x21&&request==10&&MM16(USB_SETUP_LENGTH)==0){
   return 1;
  }
 #endif
  else if(type==0x80&&request==6&&(value==0x0200||value==0x0700)&&index==0){
+#ifdef HE30_USB_LIGHTING_FIX
+  descriptor=enabled?usb_xinput_configuration:usb_mouse_configuration;
+#else
   descriptor=usb_xinput_configuration;
+#endif
   length=enabled?USB_GAMEPAD_CONFIG_BYTES:USB_BASE_CONFIG_BYTES;
   descriptor_type=value>>8;
  }else if(enabled&&type==0x80&&request==6&&value==0x03ee&&(index==0||index==0x0409)){
@@ -112,7 +165,11 @@ __attribute__((used,section(".early"),noinline)) int usb_gamepad_control(void){
  }else if(descriptor_type){
   if(count>1)MM8(USB_EP0_BUFFER+1)=descriptor_type;
   if(count>2)MM8(USB_EP0_BUFFER+2)=enabled?USB_GAMEPAD_CONFIG_BYTES:USB_BASE_CONFIG_BYTES;
+#ifdef HE30_USB_LIGHTING_FIX
+  if(count>4)MM8(USB_EP0_BUFFER+4)=3+enabled;
+#else
   if(count>4)MM8(USB_EP0_BUFFER+4)=USB_XINPUT_INTERFACE+enabled;
+#endif
  }
  /* The native common path subtracts the first packet and advances subsequent
   * GET_DESCRIPTOR packets using this pointer. Both OS replies fit in one. */

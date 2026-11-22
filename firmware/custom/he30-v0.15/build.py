@@ -1,7 +1,7 @@
 """Build the functional foundation against a pinned, working native USB base.
 No connected-device access. Code and storage regions have explicit bounds.
 """
-import argparse,hashlib,json,os,struct,subprocess
+import argparse,hashlib,json,os,struct,subprocess,zlib
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
 BASE='firmware/custom/he30-v0.3/Epomaker-HE30-EXPERIMENTAL-v0.3-USB-startup.bin'
@@ -23,8 +23,49 @@ def read_base(path=None):
   return (repo/BASE).read_bytes()
  return subprocess.check_output(['git','show',f'{BASE_REVISION}:{BASE}'],cwd=repo)
 
-def build(toolchain, output=HERE, diagnostics=False, base=None, lock_fix=False, user_mode_save=False, flash_resident_save=False, profile_keys=False, nkro=False, fn_rgb=False, adc_rgb_fix=False, calibration_qol=False, desktop_keys=False):
+def factory_settings(path):
+ snapshot=json.loads(path.read_text(encoding='utf-8'))
+ active=snapshot['active']
+ profiles=snapshot['profiles']
+ assert len(profiles)==4 and 0<=active<4
+ journal=bytearray(4096)
+ struct.pack_into('<III',journal,0,0x39435048,6,1)
+ journal[16:20]=bytes([active,3,0,0])
+ # The donor belongs to one physical board. Do not distribute its learned
+ # endpoints or device identity as factory calibration.
+ journal[20:28]=bytes([1,2,0,1,0x80,0x3e,3,0])
+ fn=bytearray(592)
+ struct.pack_into('<I',fn,8,1)
+ for index,slot in enumerate(profiles):
+  assert slot['slot']==index
+  profile=bytes.fromhex(slot['profile'])
+  assert len(profile)==976 and len(slot['fn'])==2
+  keys=b''.join(profile[i*14:i*14+13] for i in range(36))
+  palette=profile[516:624]
+  assert all(channel<=32 for channel in palette)
+  encoded=sum(channel<<(6*i) for i,channel in enumerate(palette)).to_bytes(81,'little')
+  record=keys+profile[504:516]+encoded+profile[632:976]
+  assert len(record)==905
+  offset=180+905*index
+  journal[offset:offset+905]=record
+  for layer,text in enumerate(slot['fn']):
+   data=bytes.fromhex(text)
+   assert len(data)==73 and data[0] in (0,1)
+   assert all(color<=33**3-1 for color in struct.unpack('<36H',data[1:]))
+   fn[12+index]|=data[0]<<layer
+   offset=16+72*(2*index+layer)
+   fn[offset:offset+72]=data[1:]
+ gamepad=bytes.fromhex(snapshot['gamepad'])
+ assert len(gamepad)==292
+ journal[3800:4092]=gamepad
+ struct.pack_into('<I',journal,4092,0x5ac3d17e)
+ struct.pack_into('<I',journal,12,zlib.crc32(journal[4:12]+journal[16:4092]))
+ struct.pack_into('<II',fn,0,0x314c4e46,zlib.crc32(fn[8:]))
+ return bytes(journal),bytes(fn).ljust(768,b'\xff')
+
+def build(toolchain, output=HERE, diagnostics=False, base=None, lock_fix=False, user_mode_save=False, flash_resident_save=False, profile_keys=False, nkro=False, fn_rgb=False, adc_rgb_fix=False, calibration_qol=False, desktop_keys=False, usb_lighting_fix=False, defaults=None):
  output.mkdir(parents=True,exist_ok=True)
+ desktop_keys=desktop_keys or usb_lighting_fix
  calibration_qol=calibration_qol or desktop_keys
  adc_rgb_fix=adc_rgb_fix or calibration_qol
  fn_rgb=fn_rgb or adc_rgb_fix
@@ -35,10 +76,10 @@ def build(toolchain, output=HERE, diagnostics=False, base=None, lock_fix=False, 
  lock_fix=lock_fix or user_mode_save
  diagnostics=diagnostics or lock_fix
  sram_writer=diagnostics and not flash_resident_save
- release='25' if desktop_keys else '24' if calibration_qol else '23' if adc_rgb_fix else '22' if fn_rgb else '21' if nkro else '20' if profile_keys else '19' if flash_resident_save else '18' if user_mode_save else '17' if lock_fix else '16' if diagnostics else '15'
+ release='26' if usb_lighting_fix else '25' if desktop_keys else '24' if calibration_qol else '23' if adc_rgb_fix else '22' if fn_rgb else '21' if nkro else '20' if profile_keys else '19' if flash_resident_save else '18' if user_mode_save else '17' if lock_fix else '16' if diagnostics else '15'
  product='H3K'+release
  version_byte=int(release,16)
- variant='Lighting-Mouse' if desktop_keys else 'Primed-ADC-Calibration' if calibration_qol else 'Scanner-RGB-Fix' if adc_rgb_fix else 'Fn-RGB-DMA' if fn_rgb else 'NKRO' if nkro else 'Profile-Keys' if profile_keys else 'Onboard-Save' if user_mode_save else 'Live-Save-Test' if lock_fix else 'Save-Diagnostics' if diagnostics else 'Pro'
+ variant='USB-Media-Lighting' if usb_lighting_fix else 'Lighting-Mouse' if desktop_keys else 'Primed-ADC-Calibration' if calibration_qol else 'Scanner-RGB-Fix' if adc_rgb_fix else 'Fn-RGB-DMA' if fn_rgb else 'NKRO' if nkro else 'Profile-Keys' if profile_keys else 'Onboard-Save' if user_mode_save else 'Live-Save-Test' if lock_fix else 'Save-Diagnostics' if diagnostics else 'Pro'
  name=f'Epomaker-HE30-EXPERIMENTAL-v0.{release}-{variant}.bin'
  gcc=toolchain/'bin/riscv-none-elf-gcc.exe';objcopy=toolchain/'bin/riscv-none-elf-objcopy.exe';objdump=toolchain/'bin/riscv-none-elf-objdump.exe';nm=toolchain/'bin/riscv-none-elf-nm.exe'
  env=os.environ.copy();env['PATH']=str(toolchain/'bin')+os.pathsep+env.get('PATH','')
@@ -53,6 +94,7 @@ def build(toolchain, output=HERE, diagnostics=False, base=None, lock_fix=False, 
  if adc_rgb_fix:command+=['-DHE30_ADC_RGB_FIX']
  if calibration_qol:command+=['-DHE30_CALIBRATION_QOL']
  if desktop_keys:command+=['-DHE30_DESKTOP_KEYS']
+ if usb_lighting_fix:command+=['-DHE30_USB_LIGHTING_FIX']
  command+=['-T',str(HERE/'link.ld'),str(HERE/'firmware.c'),str(HERE/'usb-hook.S'),'-o','foundation.elf']
  subprocess.run(command,cwd=output,env=env,check=True)
  code_sections=['-j','.text','-j','.flashwriter']+(['-j','.ramflash'] if sram_writer else [])
@@ -93,6 +135,15 @@ def build(toolchain, output=HERE, diagnostics=False, base=None, lock_fix=False, 
   else:assert not any(original[offset:limit])
   patch(offset,original[offset:offset+len(data)],data,'Linked '+section+' in pinned unused region')
  patch(0x16000,bytes(len(code)),code,'Compiled RV32IM foundation and flash-writer load image')
+ factory,fn_factory=factory_settings(defaults) if defaults else (None,None)
+ if usb_lighting_fix:
+  # Pinned donor range is padding. Keep the original recovery marker at 0x08020100.
+  slow_offset=0x24000-0x5000
+  assert not any(original[slow_offset:slow_offset+0x1000])
+  subprocess.run([str(objcopy),'--dump-section','.slow=slow.bin','foundation.elf'],cwd=output,env=env,check=True)
+  slow_code=(output/'slow.bin').read_bytes()
+  assert 0<len(slow_code)<=0x1000
+  patch(slow_offset,bytes(len(slow_code)),slow_code,'Cold USB and lighting handlers in checked slow flash padding')
  if fn_rgb:
   # Only the replaced donor Hall engine calls or uses this range. Keep an
   # explicit return at its entry so the old DMA ISR cannot run reclaimed code.
@@ -101,8 +152,9 @@ def build(toolchain, output=HERE, diagnostics=False, base=None, lock_fix=False, 
   fn_code=(output/'fncode.bin').read_bytes()
   assert 0<len(fn_code)<=0xf00
   patch(0x9a00,original[0x9a00:0x9a00+len(fn_code)],fn_code,'Fn lighting and ADC code in retired Hall engine')
-  patch(0xa900,original[0xa900:0xaf00],bytes([255])*0x600,'Two three-row Fn lighting journal sidecars')
- patch(0x19000,bytes(0x2000),bytes([255])*0x2000,'Two dedicated4KB journal pages, erased initial image')
+  patch(0xa900,original[0xa900:0xaf00],(fn_factory or bytes([255])*0x300)+bytes([255])*0x300,'Two three-row Fn lighting journal sidecars')
+ patch(0x19000,bytes(0x2000),(factory or bytes([255])*0x1000)+bytes([255])*0x1000,'Two dedicated 4 KB journal pages')
+ if factory:(output/'factory-journal.bin').write_bytes(factory)
  old_main=original[0x287e:0x2882]
  patch(0x287e,old_main,jump_at(0x787e,0x1b000),'Replace diagnostic main with functional main')
  patch(0x122f4,b'\x0c\x03'+'H3B03'.encode('utf-16le'),b'\x0c\x03'+product.encode('utf-16le'),'RGB foundation product identity')
@@ -169,6 +221,11 @@ def build(toolchain, output=HERE, diagnostics=False, base=None, lock_fix=False, 
  if desktop_keys:
   result['desktop_keys']=True
   result['features']+=['Profile cycle and one-step brightness bindings', 'Dedicated five-button USB HID mouse and directional pointer keys', 'Power-on sweep, profile blink and independent lightbar effects']
+ if usb_lighting_fix:
+  result['usb_lighting_fix']=True;result['code_bytes']+=len(slow_code)
+  result['features']+=['Verified EP4 TX buffer address and XInput interface 2', '16 consumer HID mappings', 'Per-profile RGB animation speed and idle shutoff']
+ if defaults:
+  result.update(factory_defaults=True,factory_source_sha256=sha(defaults.read_bytes()))
  (output/name).write_bytes(image);(output/'manifest.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
  print(json.dumps({k:result[k] for k in ['name','sha256','bytes','code_bytes','hardware_tested']},indent=2));return result
 if __name__=='__main__':
@@ -187,6 +244,9 @@ if __name__=='__main__':
  variant.add_argument('--adc-rgb-fix',action='store_true')
  variant.add_argument('--calibration-qol',action='store_true')
  variant.add_argument('--desktop-keys',action='store_true')
+ variant.add_argument('--usb-lighting-fix',action='store_true')
+ p.add_argument('--factory-defaults',type=Path)
  args=p.parse_args()
- output=args.output or (HERE.with_name('he30-v0.25') if args.desktop_keys else HERE.with_name('he30-v0.24') if args.calibration_qol else HERE.with_name('he30-v0.23') if args.adc_rgb_fix else HERE.with_name('he30-v0.22') if args.fn_rgb else HERE.with_name('he30-v0.21') if args.nkro else HERE.with_name('he30-v0.20') if args.profile_keys else HERE.with_name('he30-v0.19') if args.flash_resident_save else HERE.with_name('he30-v0.18') if args.user_mode_save else HERE.with_name('he30-v0.17') if args.live_save_fix else HERE.with_name('he30-v0.16') if args.save_diagnostics else HERE)
- build(args.toolchain.resolve(),output.resolve(),args.save_diagnostics,args.base,args.live_save_fix,args.user_mode_save,args.flash_resident_save,args.profile_keys,args.nkro,args.fn_rgb,args.adc_rgb_fix,args.calibration_qol,args.desktop_keys)
+ output=args.output or (HERE.with_name('he30-v0.26') if args.usb_lighting_fix else HERE.with_name('he30-v0.25') if args.desktop_keys else HERE.with_name('he30-v0.24') if args.calibration_qol else HERE.with_name('he30-v0.23') if args.adc_rgb_fix else HERE.with_name('he30-v0.22') if args.fn_rgb else HERE.with_name('he30-v0.21') if args.nkro else HERE.with_name('he30-v0.20') if args.profile_keys else HERE.with_name('he30-v0.19') if args.flash_resident_save else HERE.with_name('he30-v0.18') if args.user_mode_save else HERE.with_name('he30-v0.17') if args.live_save_fix else HERE.with_name('he30-v0.16') if args.save_diagnostics else HERE)
+ if args.factory_defaults and not args.usb_lighting_fix:p.error('--factory-defaults is supported for v0.26')
+ build(args.toolchain.resolve(),output.resolve(),args.save_diagnostics,args.base,args.live_save_fix,args.user_mode_save,args.flash_resident_save,args.profile_keys,args.nkro,args.fn_rgb,args.adc_rgb_fix,args.calibration_qol,args.desktop_keys,args.usb_lighting_fix,args.factory_defaults)

@@ -17,7 +17,9 @@ export const FN_RGB_MODEL='H3K22';
 export const ADC_RGB_FIX_MODEL='H3K23';
 export const CALIBRATION_QOL_MODEL='H3K24';
 export const DESKTOP_KEYS_MODEL='H3K25';
-export const FN_RGB_PRODUCTS=[FN_RGB_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,DESKTOP_KEYS_MODEL];
+export const MEDIA_MODEL='H3K26';
+export const DESKTOP_PRODUCTS=[DESKTOP_KEYS_MODEL,MEDIA_MODEL];
+export const FN_RGB_PRODUCTS=[FN_RGB_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,...DESKTOP_PRODUCTS];
 export const DESKTOP_USAGES=new Map([
   [0xf4,'Next profile'],[0xf5,'Keyboard brightness +1%'],[0xf6,'Keyboard brightness −1%'],
   ...['Mouse left click','Mouse right click','Mouse middle click','Mouse Back (4)','Mouse Forward (5)',
@@ -25,9 +27,13 @@ export const DESKTOP_USAGES=new Map([
     .map((name,index)=>[0xb0+index,name])
 ]);
 export const isDesktopUsage=code=>DESKTOP_USAGES.has(code);
+export const MEDIA_USAGES=new Map(['Play / pause','Previous track','Next track','Stop playback','Mute volume','Volume up','Volume down',
+  'Display brightness up','Display brightness down','Search / Spotlight','Browser home','Browser back','Browser forward',
+  'Calculator','Apps / Launchpad (macOS)','Mission Control (macOS)'].map((name,index)=>[0xc0+index,name]));
+export const isMediaUsage=code=>MEDIA_USAGES.has(code);
 export const supportsProfileKeys=product=>product===PROFILE_KEY_MODEL||product===NKRO_MODEL||FN_RGB_PRODUCTS.includes(product);
 export const isProfileUsage=value=>Number.isInteger(value)&&value>=0xf0&&value<=0xf3;
-export function validUsage(value,fnLayer=false){return Number.isInteger(value)&&(value===0||(value>=4&&value<=0xa4)||(value>=0xe0&&value<=0xe7)||isProfileUsage(value)||isDesktopUsage(value)||value===0xff||value===0xfd||(fnLayer&&value===0xfe));}
+export function validUsage(value,fnLayer=false){return Number.isInteger(value)&&(value===0||(value>=4&&value<=0xa4)||(value>=0xe0&&value<=0xe7)||isProfileUsage(value)||isDesktopUsage(value)||isMediaUsage(value)||value===0xff||value===0xfd||(fnLayer&&value===0xfe));}
 const zoneUnits=(value,label)=>{
   const units=Math.round(value*10);
   if(!Number.isFinite(value)||Math.abs(value*10-units)>1e-8)throw new Error(`${label} must use 0.1% increments.`);
@@ -109,7 +115,7 @@ function checkReply(response,length,offset){
   if(n!==length||(response[5]|response[6]<<8)!==offset)throw new Error('Foundation reply does not match the request.');
   return response.slice(8,8+n);
 }
-function checkDevice(transport){if(transport?.device?.vendorId!==0x19f5||transport.device.productId!==0xfb4c||!['H3K05','H3K06','H3K07','H3K08','H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25'].includes(transport.device.productName))throw new Error('Select an HE30 running supported foundation firmware.');}
+function checkDevice(transport){if(transport?.device?.vendorId!==0x19f5||transport.device.productId!==0xfb4c||!['H3K05','H3K06','H3K07','H3K08','H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25','H3K26'].includes(transport.device.productName))throw new Error('Select an HE30 running supported foundation firmware.');}
 export class FoundationClient {
   constructor(transport){checkDevice(transport);this.transport=transport;this.queue=Promise.resolve();}
   transaction(action){const pending=this.queue.then(action);this.queue=pending.catch(()=>{});return pending;}
@@ -143,7 +149,9 @@ export class FoundationClient {
   }
   readConfig(){return this.transaction(async()=>{await this.attest();return decodeConfig(await this.readRegion(1,CONFIG_BYTES));});}
   applyConfig(config){
-    if(this.transport.device.productName!==DESKTOP_KEYS_MODEL&&config.keys?.some(key=>isDesktopUsage(key.normalUsage)||isDesktopUsage(key.fnUsage)))
+    if(this.transport.device.productName!==MEDIA_MODEL&&config.keys?.some(key=>isMediaUsage(key.normalUsage)||isMediaUsage(key.fnUsage)))
+      return Promise.reject(new Error('Media mappings require HE30 Pro v0.26.'));
+    if(!DESKTOP_PRODUCTS.includes(this.transport.device.productName)&&config.keys?.some(key=>isDesktopUsage(key.normalUsage)||isDesktopUsage(key.fnUsage)))
       return Promise.reject(new Error('Mouse, brightness and Next profile mappings require HE30 Pro v0.25.'));
     if(!supportsProfileKeys(this.transport.device.productName)&&config.keys?.some(key=>
       isProfileUsage(key.normalUsage)||isProfileUsage(key.fnUsage)||
@@ -164,6 +172,7 @@ for(let i=0;i<26;i++)USAGE_NAMES.set(4+i,String.fromCharCode(65+i));
 for(let i=0;i<10;i++)USAGE_NAMES.set(0x1e+i,String((i+1)%10));
 for(let i=0;i<12;i++)USAGE_NAMES.set(0x3a+i,`F${i+1}`);
 for(const [code,name] of DESKTOP_USAGES)USAGE_NAMES.set(code,name);
+for(const [code,name] of MEDIA_USAGES)USAGE_NAMES.set(code,name);
 export function usageLabel(code){return USAGE_NAMES.get(code)||(Number.isInteger(code)?`0x${code.toString(16).toUpperCase().padStart(2,'0')}`:'');}
 export function parseUsage(text,fnLayer=false){
   const value=String(text).trim();const named=Array.from(USAGE_NAMES).find(([,name])=>name.toLowerCase()===value.toLowerCase());

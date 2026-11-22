@@ -33,6 +33,7 @@ assert original[0:2] == bytes([1, 1])
 assert all(original[2+21*i] == 255 for i in range(10))
 assert all(original[212+5*i] == 255 for i in range(14))
 mouse = manifest.get('desktop_keys',False)
+usb_fix = manifest.get('usb_lighting_fix',False)
 assert setup(c, 0x80, 6, 0x0200, 0, 255)[1][:5] == bytes([9,2,91 if mouse else 66,0,3 if mouse else 2])
 assert setup(c, 0x80, 6, 0x03ee, 0x409, 18)[0] == 0
 assert setup(c, 0xc0, 0x20, 0, 4, 40)[0] == 0
@@ -54,10 +55,11 @@ assert setup(c,0x80,6,0x0200,0,9)[1] == bytes([9,2,131 if mouse else 106,0,4 if 
 head = setup(c,0x80,6,0x0200,0,255)[1]
 tail = c.blob(c.get(0x20000258,4),n=67 if mouse else 42)
 config = head + tail
-assert config[-40:-31] == bytes([9,4,3 if mouse else 2,0,2,0xff,0x5d,1,0])
-assert config[-14:] == bytes.fromhex("0705830320000107050303200001")
+xinput = config[66:106] if usb_fix else config[-40:]
+assert xinput[:9] == bytes([9,4,3 if mouse and not usb_fix else 2,0,2,0xff,0x5d,1,0])
+assert xinput[-14:] == bytes.fromhex("0705830320000107050303200001")
 assert setup(c,0x80,6,0x03ee,0x409,8)[1] == bytes.fromhex("12034d0053004600")
-assert setup(c,0xc0,0x20,0,4,255)[1][16:26] == bytes([3 if mouse else 2])+b'\x01XUSB10\0\0'
+assert setup(c,0xc0,0x20,0,4,255)[1][16:26] == bytes([3 if mouse and not usb_fix else 2])+b'\x01XUSB10\0\0'
 assert setup(c,0xc0,0x20,0,5,255)[0] == 0
 print("PASS USB visibility waits for reply, detaches, and serves both composite layouts and XUSB descriptors",flush=True)
 

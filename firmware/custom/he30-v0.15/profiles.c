@@ -27,6 +27,9 @@ __attribute__((noinline)) static void activate_profile(void){
 #ifdef HE30_FN_RGB
  S->fn_rgb_target=0;
 #endif
+#ifdef HE30_USB_LIGHTING_FIX
+ S->rgb_activity=1;
+#endif
  all_released();
 }
 
@@ -97,6 +100,16 @@ static const FnLighting *lighting_record(u32 library_page){
  return (const FnLighting *)(library_page==PAGE_A?FN_PAGE_A:FN_PAGE_B);
 }
 
+#ifdef HE30_USB_LIGHTING_FIX
+static u32 fn_lighting_crc(const FnLighting *p,u32 version){
+ const u32 size=version==6?__builtin_offsetof(FnLighting,preferences):sizeof(*p);
+ return crc32(&p->sequence,size-8);
+}
+static int fn_lighting_valid(u32 address,u32 sequence,u32 version){
+ const FnLighting *rgb=lighting_record(address);
+ return rgb->magic==FN_RGB_MAGIC&&rgb->sequence==sequence&&rgb->crc==fn_lighting_crc(rgb,version);
+}
+#else
 static u32 fn_lighting_crc(const FnLighting *p){
  return crc32(&p->sequence,sizeof(*p)-8);
 }
@@ -106,6 +119,7 @@ static int fn_lighting_valid(u32 address,u32 sequence){
  return rgb->magic==FN_RGB_MAGIC&&rgb->sequence==sequence&&rgb->crc==fn_lighting_crc(rgb);
 }
 #endif
+#endif
 
 __attribute__((section(".text.first"),noinline)) static int library_valid(const Library *p){
  if(p->magic!=LIB_MAGIC||p->commit!=COMMIT||p->active>=PROFILE_COUNT||p->rate>6||p->fast>2||p->gamepad>1)return 0;
@@ -114,7 +128,11 @@ __attribute__((section(".text.first"),noinline)) static int library_valid(const 
   return p->crc==~crc_update(crc,&p->active,4+160+sizeof(p->profiles));
  }
 #ifdef HE30_FN_RGB
+#ifdef HE30_USB_LIGHTING_FIX
+ if(p->version==6||p->version==7)return fn_lighting_valid((u32)p,p->sequence,p->version)&&p->crc==stored_crc((const u8*)p);
+#else
  if(p->version==6)return fn_lighting_valid((u32)p,p->sequence)&&p->crc==stored_crc((const u8*)p);
+#endif
 #endif
  return (p->version==4||p->version==5)&&p->crc==stored_crc((const u8*)p);
 }
@@ -134,8 +152,14 @@ __attribute__((section(".extra"),noinline))
 int load_saved(void){
  const Library *p=newest_library();
 #ifdef HE30_FN_RGB
+#ifdef HE30_USB_LIGHTING_FIX
+ bytes_zero(&S->fn_light,sizeof(S->fn_light));
+ if(p&&p->version>=6)bytes_copy(&S->fn_light,lighting_record((u32)p),
+     p->version==6?__builtin_offsetof(FnLighting,preferences):sizeof(FnLighting));
+#else
  if(p&&p->version==6)S->fn_light=*lighting_record((u32)p);
  else bytes_zero(&S->fn_light,sizeof(S->fn_light));
+#endif
 #endif
  if(p){
   if(p->version>=4)stored_load((const u8*)p);
@@ -201,7 +225,11 @@ int save_settings(void){
  p->version=6;
  S->fn_light.magic=FN_RGB_MAGIC;
  S->fn_light.sequence=p->sequence;
+#ifdef HE30_USB_LIGHTING_FIX
+ p->version=7;S->fn_light.crc=fn_lighting_crc(&S->fn_light,p->version);
+#else
  S->fn_light.crc=fn_lighting_crc(&S->fn_light);
+#endif
 #endif
  p->crc=stored_crc(0);
  /* A prescaler change mid-frame would corrupt the LED waveform. */
@@ -210,7 +238,11 @@ int save_settings(void){
  /* The new library becomes visible only once its matching palette record
   * has verified. Each pair is in the inactive slot until the final commit. */
  u32 result=flash_writer((u32)lighting_record(target),(const u8 *)&S->fn_light,1);
+#ifdef HE30_USB_LIGHTING_FIX
+ if(!result&&!fn_lighting_valid(target,p->sequence,p->version))result=FLASH;
+#else
  if(!result&&!fn_lighting_valid(target,p->sequence))result=FLASH;
+#endif
  if(!result)result=flash_writer(target,(const u8 *)p,1);
 #else
  u32 result=flash_writer(target,(const u8 *)p,1);

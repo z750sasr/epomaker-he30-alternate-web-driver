@@ -70,12 +70,18 @@ _Static_assert(sizeof(Action)==14 && sizeof(Profile)==976 && sizeof(Library)==40
 #define FN_RGB_MAGIC 0x314c4e46u
 #define FN_PAGE_A (0x08000000u+HE30_FN_PAGE_A)
 #define FN_PAGE_B (0x08000000u+HE30_FN_PAGE_B)
+#ifdef HE30_USB_LIGHTING_FIX
+typedef struct {u16 sleep;u8 speed,keep_bar;} LightingPreferences;
+#endif
 typedef struct {
  u32 magic,crc,sequence;
  u8 enabled[PROFILE_COUNT];
  u16 colors[PROFILE_COUNT][2][N];
+#ifdef HE30_USB_LIGHTING_FIX
+ LightingPreferences preferences[PROFILE_COUNT];
+#endif
 } FnLighting;
-_Static_assert(sizeof(FnLighting)==592&&sizeof(FnLighting)<=FN_RGB_RECORD_BYTES,"Fn lighting journal layout");
+_Static_assert(__builtin_offsetof(FnLighting,colors)==16&&sizeof(FnLighting)<=FN_RGB_RECORD_BYTES,"Fn lighting journal layout");
 #endif
 typedef struct {
  u8 legacy[64];Config cfg,staged;u8 coverage[(CFG_SIZE+7)/8],staging;
@@ -111,6 +117,10 @@ typedef struct {
  u16 mouse_inputs, mouse_down;
  u8 rgb_effect_type, mouse_sent;
  signed char mouse_wheel;
+#endif
+#ifdef HE30_USB_LIGHTING_FIX
+ u32 rgb_epoch_ticks,rgb_ms,rgb_last_activity,rgb_phase;
+ u8 rgb_activity,rgb_asleep,media_pressed,media_sent;
 #endif
 #ifdef HE30_FN_RGB
  FnLighting fn_light;
@@ -233,6 +243,9 @@ static void switch_profile(u8 index);
 #define key_zones_valid(k) ((k)->flags<=3&&(k)->top<=40&&(k)->bottom<=40)
 #endif
 static int usage_ok(u8 u,int fn){
+#ifdef HE30_USB_LIGHTING_FIX
+ if(u>=0xc0&&u<=0xcf)return 1;
+#endif
 #ifdef HE30_DESKTOP_KEYS
  if((u>=0xb0&&u<=0xba)||(u>=0xf4&&u<=0xf6))return 1;
 #endif
@@ -241,6 +254,9 @@ static int usage_ok(u8 u,int fn){
 #endif
  return u==0||(u>=4&&u<=0xa4)||(u>=0xe0&&u<=0xe7)||u==0xff||u==0xfd||(fn&&u==0xfe);
 }
+#ifdef HE30_USB_LIGHTING_FIX
+__attribute__((section(".slow"),noinline))
+#endif
 int config_valid(const Config*c){
  if(c->version!=1||c->groups[0]>2||c->groups[1]>2||c->groups[2]>2||c->groups[0]==c->groups[1]||c->groups[0]==c->groups[2]||c->groups[1]==c->groups[2]||c->settle<100||c->settle>32000||(c->flags&~3)||c->valid_hi>15)return 0;
  for(u32 i=0;i<N;i++){const Key*k=&c->key[i];if(c->rest[i]>4095||c->end[i]>4095||(bit(c->valid_lo,c->valid_hi,i)&&abs32((i32)c->end[i]-c->rest[i])<64)||k->act<10||k->act>990||!k->hys||k->hys>500||k->rt_press<5||k->rt_press>1000||k->rt_release<5||k->rt_release>1000||!key_zones_valid(k)||k->reserved||!usage_ok(k->normal,0)||!usage_ok(k->fn,1))return 0;}
@@ -295,6 +311,9 @@ static void gp_service(void);
 static void gpio_poll_setup(void);
 static int profile_request(const u8 *request);
 static void add_usage(u8 usage){
+#ifdef HE30_USB_LIGHTING_FIX
+ if(usage>=0xc0&&usage<=0xcf){if(!S->media_pressed)S->media_pressed=usage;return;}
+#endif
 #ifdef HE30_DESKTOP_KEYS
  if(usage>=0xb0&&usage<=0xba){S->mouse_inputs|=1u<<(usage-0xb0);return;}
 #endif
@@ -315,6 +334,9 @@ void compose_report(void){
  bytes_zero(S->report,KEYBOARD_REPORT_BYTES);S->rollover=0;
 #ifdef HE30_DESKTOP_KEYS
  S->mouse_inputs=0;
+#endif
+#ifdef HE30_USB_LIGHTING_FIX
+ S->media_pressed=0;
 #endif
  compose_advanced();
 #ifdef HE30_DESKTOP_KEYS
@@ -338,7 +360,12 @@ VERIFY_ENTRY void engine_step(const u16 *input){
  if(S->cal_phase==2){S->cal_lo=S->cal_hi=0;for(u32 i=0;i<N;i++){if(abs32((i32)input[i]-S->cal_rest[i])>abs32((i32)S->cal_end[i]-S->cal_rest[i]))S->cal_end[i]=input[i];u32 minimum=(S->noise_max[i]-S->noise_min[i])*6;if(minimum<64)minimum=64;if(abs32((i32)S->cal_end[i]-S->cal_rest[i])>=minimum)set_bit(&S->cal_lo,&S->cal_hi,i);}}
 #endif
  int baseline_ready=S->cal_phase||startup_baseline(input);
- for(u32 i=0;i<N;i++)S->pos[i]=position(i,S->filtered[i],S->cal_phase!=0);
+ for(u32 i=0;i<N;i++){
+  S->pos[i]=position(i,S->filtered[i],S->cal_phase!=0);
+#ifdef HE30_USB_LIGHTING_FIX
+  if(S->pos[i]>=40)S->rgb_activity=1;
+#endif
+ }
  if(S->inhibit){int quiet=1;for(u32 i=0;i<N;i++)if(S->pos[i]>50)quiet=0;if(quiet){if(S->quiet<8)S->quiet++;if(S->quiet==8&&!S->release_pending)S->inhibit=0;}else S->quiet=0;}
  if(!S->enabled||!baseline_ready||S->cal_phase||S->scan_error||S->inhibit){bytes_zero(S->active,N);bytes_zero(S->latched,N);bytes_zero(S->report,KEYBOARD_REPORT_BYTES);S->fn=0;S->rollover=0;return;}
  for(u32 i=0;i<N;i++){
@@ -597,20 +624,45 @@ done:
 #include "actions.c"
 #include "scan.c"
 #ifdef HE30_DESKTOP_KEYS
+#ifdef HE30_USB_LIGHTING_FIX
+__attribute__((section(".slow_data"))) static const u16 media_usages[16]={
+ 0xcd,0xb6,0xb5,0xb7,0xe2,0xe9,0xea,0x6f,0x70,0x221,0x223,0x224,0x225,0x192,0x2a2,0x29f
+};
+#endif
 __attribute__((section(".extra"),noinline)) static void mouse_service(void){
- if(!usb_ready()){S->mouse_sent=0;return;}
+ if(!usb_ready()){
+  S->mouse_sent=0;
+#ifdef HE30_USB_LIGHTING_FIX
+  S->media_sent=0;
+#endif
+  return;
+ }
  const u32 now=ticks();
  const u8 ready=S->enabled&&!S->inhibit&&!S->cal_phase&&!S->scan_error;
  const u16 down=ready?S->mouse_down:0;
  if(!ready)S->mouse_wheel=0;
  const u8 buttons=down&31;
- if(buttons==S->mouse_sent&&!((down&0x780)||S->mouse_wheel))return;
  if(now-S->mouse_ticks<TICKS_MS)return;
+#ifdef HE30_USB_LIGHTING_FIX
+ const u8 media=ready?S->media_pressed:0;
+ if(media!=S->media_sent){
+  const u16 usage=media?media_usages[media-0xc0]:0;
+  const u8 consumer[3]={2,(u8)usage,usage>>8};
+  if(upload(4,consumer,3,1)==1){S->media_sent=media;S->mouse_ticks=now;}
+  return;
+ }
+#endif
+ if(buttons==S->mouse_sent&&!((down&0x780)||S->mouse_wheel))return;
  const i32 speed=1+(S->light.bar_on>>1);
  const i32 x=(i32)((down>>8)&1)-(i32)((down>>7)&1);
  const i32 y=(i32)((down>>10)&1)-(i32)((down>>9)&1);
- const u8 report[4]={buttons,(u8)(x*speed),(u8)(y*speed),(u8)S->mouse_wheel};
- if(upload(4,report,4,1)==1){S->mouse_sent=buttons;S->mouse_wheel=0;S->mouse_ticks=now;}
+ const u8 report[]={
+#ifdef HE30_USB_LIGHTING_FIX
+  1,
+#endif
+  buttons,(u8)(x*speed),(u8)(y*speed),(u8)S->mouse_wheel
+ };
+ if(upload(4,report,sizeof(report),1)==1){S->mouse_sent=buttons;S->mouse_wheel=0;S->mouse_ticks=now;}
 }
 #endif
 static void begin_calibration(void){

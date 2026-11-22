@@ -5,8 +5,10 @@ MEMORY { CODE(rx) : ORIGIN = 0x1B000, LENGTH = 0x3000
          SPARE(rx) : ORIGIN = 0x18C7C, LENGTH = 0x384
          EXTRA(rx) : ORIGIN = 0x1A200, LENGTH = 0xE00
          FNCODE(rx) : ORIGIN = 0xEA00, LENGTH = 0xF00
+         SLOW(rx) : ORIGIN = 0x24000, LENGTH = 0x1000
          RAMCODE(rwx) : ORIGIN = 0x20007000, LENGTH = 0x400 }
 SECTIONS {
+ .slow : { *(.slow) *(.slow_data) . = ALIGN(4); } > SLOW
  .fncode : { *(.fncode) . = ALIGN(4); } > FNCODE
  .spare : { *(.spare) *(.spare_data) . = ALIGN(4); } > SPARE
  .early : { *(.early) . = ALIGN(4); } > EARLY

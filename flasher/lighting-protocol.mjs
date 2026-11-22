@@ -1,5 +1,5 @@
 // v0.6 RGB extension. It shares the foundation client's transaction queue.
-import {FN_RGB_PRODUCTS,DESKTOP_KEYS_MODEL} from './keyboard-protocol.mjs';
+import {FN_RGB_PRODUCTS,DESKTOP_PRODUCTS,MEDIA_MODEL} from './keyboard-protocol.mjs';
 export const LED_ORDER=['Esc','F1','F2','F3','F4','F5','F6','6','5','4','3','2','1','Grave','Tab','Q','W','E','R','T','G','F','D','S','A','Caps','LShift','Z','X','C','V','B','Space','Alt','Fn','Ctrl'];
 export const LED_TO_KEY=[23,0,1,2,3,4,5,12,18,19,21,20,22,6,13,14,15,16,17,35,24,30,31,33,32,34,25,26,27,28,29,11,7,9,8,10];
 const byte=(v,max,label)=>{if(!Number.isInteger(v)||v<0||v>max)throw new Error(`${label} must be an integer from0 to${max}.`);return v;};
@@ -25,6 +25,15 @@ function decodeFnLighting(data){
   return {enabled:!!data[0],palette};
 }
 const fnAddress=(profile,layer)=>128*(2*byte(profile,3,'Profile')+(byte(layer,2,'Fn layer')===2?1:0));
+export function encodeLightingPreferences(value){
+  const speed=byte(value.speed,100,'Animation speed'),sleep=byte(value.sleep,65535,'Idle timeout');
+  if(typeof value.keepBar!=='boolean')throw new Error('Choose whether the lightbar stays on.');
+  return Uint8Array.of(speed,Number(value.keepBar),sleep&255,sleep>>8);
+}
+function decodeLightingPreferences(data){
+  if(data.length!==4||data[0]>100||data[1]>1)throw new Error('Invalid RGB animation settings.');
+  return {speed:data[0],keepBar:!!data[1],sleep:data[2]|data[3]<<8};
+}
 export function encodeLighting(value){
   if(!value||value.version!==1)throw new Error('Choose a version1 lighting profile.');
   const out=new Uint8Array(128);out.set([1,byte(value.mode,5,'Mode'),byte(value.order,1,'Order'),byte(value.rate,1,'Rate'),byte(value.barCount,64,'Bar count')]);
@@ -69,13 +78,16 @@ export function decodeLightingStatus(bytes){
   return{signature:'H3L1',error:bytes[5],state:bytes[6],pending:bytes[7],keyFrames:v.getUint32(8,true),barFrames:v.getUint32(12,true),config:decodeLighting(bytes.slice(16,144)),...(bytes[4]>=2&&bytes[4]<=3?{power:{mode:bytes[144],digitalHigh:!!bytes[145]}}:{})};
 }
 export function lightingPacket(operation,data=new Uint8Array(),offset=0,length=data.length){
-  byte(operation,10,'Lighting command');if(!(data instanceof Uint8Array)||data.length>56||!Number.isInteger(offset)||offset<0||offset>1023)throw new Error('Invalid lighting packet.');
+  byte(operation,12,'Lighting command');if(!(data instanceof Uint8Array)||data.length>56||!Number.isInteger(offset)||offset<0||offset>1023)throw new Error('Invalid lighting packet.');
   if(operation===8)throw new Error('Use the Pro reader for live RGB.');
   if(operation===9||operation===10){
     const position=offset%128;
     if(!Number.isInteger(length)||length<1||length>56||position+length>73||
        (operation===9?data.length!==0:length!==data.length||!(position===0&&length===55||position===55&&length===18)))
       throw new Error('Invalid Fn lighting packet.');
+  }
+  else if(operation===11||operation===12){
+    if(offset>3||length!==4||data.length!==(operation===11?0:4))throw new Error('Invalid lighting preferences packet.');
   }
   else if(operation===0){if(data.length||length<0||length>56||!Number.isInteger(length)||offset+length>160)throw new Error('Read exceeds lighting status.');}
   else if(offset||length!==data.length||(operation===1?length!==12:operation===2?!length||length%4:[3,7].includes(operation)?length!==1:length!==0))throw new Error('Invalid lighting control payload.');
@@ -86,27 +98,41 @@ export function lightingPacket(operation,data=new Uint8Array(),offset=0,length=d
 }
 export class LightingClient{
   constructor(foundation){this.foundation=foundation;this.transport=foundation.transport;this.check();}
-  get supportsBrightness(){return ['H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25'].includes(this.transport.device.productName);}
+  get supportsBrightness(){return ['H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25','H3K26'].includes(this.transport.device.productName);}
   get supportsFnLighting(){return FN_RGB_PRODUCTS.includes(this.transport.device.productName);}
+  get supportsPreferences(){return this.transport.device.productName===MEDIA_MODEL;}
   checkBrightness(config){
     if(!this.supportsBrightness&&((config.keyBrightness??100)!==100||(config.barBrightness??100)!==100))
       throw new Error('Install HE30 Pro v0.13 to save independent RGB brightness.');
-    if(this.transport.device.productName!==DESKTOP_KEYS_MODEL&&(config.barMode||config.barRainbow||config.barReverse||(config.pointerSpeed??1)!==1))
+    if(!DESKTOP_PRODUCTS.includes(this.transport.device.productName)&&(config.barMode||config.barRainbow||config.barReverse||(config.pointerSpeed??1)!==1))
       throw new Error('Lightbar animations and pointer speed require HE30 Pro v0.25.');
   }
-  check(){const d=this.transport.device;if(d.vendorId!==0x19f5||d.productId!==0xfb4c||!['H3K06','H3K07','H3K08','H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25'].includes(d.productName))throw new Error('RGB controls require HE30 custom firmware v0.6 or later.');}
+  check(){const d=this.transport.device;if(d.vendorId!==0x19f5||d.productId!==0xfb4c||!['H3K06','H3K07','H3K08','H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25','H3K26'].includes(d.productName))throw new Error('RGB controls require HE30 custom firmware v0.6 or later.');}
   async request(op,data=new Uint8Array(),offset=0,length=data.length){
     this.check();
     if(op>=9&&!this.supportsFnLighting)throw new Error('Fn lighting requires HE30 Pro v0.22.');
+    if(op>=11&&!this.supportsPreferences)throw new Error('Animation speed and RGB sleep require HE30 Pro v0.26.');
     const response=await this.transport.request(lightingPacket(op,data,offset,length),{kind:'lighting'});
     if(!(response instanceof Uint8Array)||response.length!==64||response[0]!==0xaa||response[1]!==0xd1||response[7]||response[4]>56||response.slice(8+response[4]).some(Boolean)||response[3]!==response.slice(4,8+response[4]).reduce((a,b)=>(a+b)&255,0))throw new Error('Malformed RGB reply.');
     if(response[2])throw new Error(`RGB command rejected (${response[2]}).`);
-    const read=op===0||op===9;
+    const read=op===0||op===9||op===11;
     if(response[4]!==(read?length:0)||(response[5]|response[6]<<8)!==(read?offset:0))throw new Error('RGB reply does not match the request.');return response.slice(8,8+response[4]);
   }
-  async attest(){const b=await this.request(0,new Uint8Array(),0,8);if(![0x48,0x33,0x4c,0x31,{H3K06:1,H3K07:2,H3K08:3,H3K09:4,H3K10:4,H3K11:4,H3K12:4,H3K13:4,H3K14:4,H3K15:4,H3K16:4,H3K17:4,H3K18:4,H3K19:4,H3K20:4,H3K21:4,H3K22:4,H3K23:4,H3K24:4,H3K25:4}[this.transport.device.productName]].every((v,i)=>b[i]===v))throw new Error('H3L1 signature missing. No RGB control was sent.');}
+  async attest(){const b=await this.request(0,new Uint8Array(),0,8);if(![0x48,0x33,0x4c,0x31,{H3K06:1,H3K07:2,H3K08:3,H3K09:4,H3K10:4,H3K11:4,H3K12:4,H3K13:4,H3K14:4,H3K15:4,H3K16:4,H3K17:4,H3K18:4,H3K19:4,H3K20:4,H3K21:4,H3K22:4,H3K23:4,H3K24:4,H3K25:4,H3K26:4}[this.transport.device.productName]].every((v,i)=>b[i]===v))throw new Error('H3L1 signature missing. No RGB control was sent.');}
   async read(){const bytes=new Uint8Array(160);for(let off=0;off<160;off+=56)bytes.set(await this.request(0,new Uint8Array(),off,Math.min(56,160-off)),off);return decodeLightingStatus(bytes);}
   readStatus(){return this.foundation.transaction(async()=>{await this.attest();return this.read();});}
+  readPreferences(profile){
+    return this.foundation.transaction(async()=>decodeLightingPreferences(await this.request(11,new Uint8Array(),profile,4)));
+  }
+  applyPreferences(profile,value){
+    const data=encodeLightingPreferences(value);
+    return this.foundation.transaction(async()=>{
+      await this.attest();await this.request(12,data,profile);
+      const saved=await this.request(11,new Uint8Array(),profile,4);
+      if(saved.some((v,i)=>v!==data[i]))throw new Error('RGB animation settings did not match the readback.');
+      return decodeLightingPreferences(saved);
+    });
+  }
   async readFnPalette(offset){
     const data=new Uint8Array(73);
     data.set(await this.request(9,new Uint8Array(),offset,55));
@@ -135,7 +161,7 @@ export class LightingClient{
   apply(config){
     this.check();
     this.checkBrightness(config);
-    const pro=['H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25'].includes(this.transport.device.productName);
+    const pro=['H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25','H3K26'].includes(this.transport.device.productName);
     const bytes=encodeLighting(config);
     if(!pro&&config.mode>3)throw new Error('This effect requires HE30 Pro firmware.');
     if(pro&&config.barCount>5)throw new Error('The HE30 Pro bar has five LEDs.');

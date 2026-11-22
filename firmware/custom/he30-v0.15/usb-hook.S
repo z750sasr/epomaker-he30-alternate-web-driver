@@ -29,8 +29,15 @@ usb_setup_hook:
 usb_endpoint_init_hook:
 #ifdef HE30_DESKTOP_KEYS
  /* EP4 OUT remains the vendor transport. Give EP4 IN its own DMA word. */
+#ifdef HE30_USB_LIGHTING_FIX
+ li t0,0x40023468
+ /* Five-byte reports need an eight-byte buffer before the application state.
+    The unused 0x36d8..0x36df window is between the native BSS and RX3. */
+ li t1,0x200036d8
+#else
  li t0,0x4002346c
  li t1,0x200036dc
+#endif
  sw t1,0(t0)
  li t0,0x400234ea
  li t1,2

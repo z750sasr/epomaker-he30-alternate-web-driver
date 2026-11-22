@@ -228,13 +228,14 @@ class CPU:
                     ep,p,n,copy=self.r[10:14]
                     packets={(1,8),(2,64),(3,20)}
                     if manifest.get('nkro'):packets.add((1,29))
-                    if manifest.get('desktop_keys'):packets.add((4,4))
+                    if manifest.get('usb_lighting_fix'):packets.update({(4,3),(4,5)})
+                    elif manifest.get('desktop_keys'):packets.add((4,4))
                     assert copy==1 and (ep,n) in packets
                     if self.busy:self.busy-=1;self.r[10]=0
                     else:self.sent.append((ep,self.blob(p,n=n)));self.r[10]=1
                 pc=self.r[1];continue
             valid_native=any(start<=pc<end for start,end in self.native_test_ranges)
-            assert pc%2==0 and (0x18c7c<=pc<0x19000 or 0x19158<=pc<0x1e000 or RAM_BEGIN<=pc<RAM_END or FN_RGB and 0xea00<=pc<0xf900 or valid_native),f'Invalid PC {pc:#x}'
+            assert pc%2==0 and (0x18c7c<=pc<0x19000 or 0x19158<=pc<0x1e000 or RAM_BEGIN<=pc<RAM_END or FN_RGB and 0xea00<=pc<0xf900 or manifest.get('usb_lighting_fix') and 0x24000<=pc<0x25000 or valid_native),f'Invalid PC {pc:#x}'
             w=self.get(pc,4);size=4
             if (w&3)!=3:w=expand(w&65535);size=2
             op=w&127;rd=w>>7&31;f=w>>12&7;a=w>>15&31;b=w>>20&31;top=w>>25
@@ -302,6 +303,9 @@ class CPU:
 
 def fresh():
     c=CPU()
+    if manifest.get('factory_defaults'):
+        c.flash[0x19000:0x1a000]=b'\xff'*4096
+        c.flash[0xa900:0xac00]=b'\xff'*768
     c.blob(0x20000100,image[0x13b24:0x13b24+91])
     c.call('gp_defaults',0x20003700)
     c.call('config_defaults',S+layout['cfg'])
@@ -615,9 +619,9 @@ check('RGB off and generated color wave reach completed frame readback')
 # The web tests consume exact replies from the compiled handlers.
 fixtures=[]
 fixture= fresh()
-for command,op,length in [(0xd0,0,208),(0xd0,1,664),(0xd1,0,160),(0xd1,8,123),(0xd2,0,89 if manifest.get('desktop_keys') else 88),(0xd2,1,976),(0xd3,0,40),(0xd3,1,292)]+([(0xd1,9,73)] if FN_RGB else []):
+for command,op,length in [(0xd0,0,208),(0xd0,1,664),(0xd1,0,160),(0xd1,8,123),(0xd2,0,89 if manifest.get('desktop_keys') else 88),(0xd2,1,976),(0xd3,0,40),(0xd3,1,292)]+([(0xd1,9,73)] if FN_RGB else [])+([(0xd1,11,4)] if manifest.get('usb_lighting_fix') else []):
     ranges=([(slot*128+off,n) for slot in range(8) for off,n in [(0,55),(55,18)]] if op==9 else
-            [(0,8)]+[(off,min(56,length-off)) for off in range(0,length,56)])
+            [(slot,4) for slot in range(4)] if op==11 else [(0,8)]+[(off,min(56,length-off)) for off in range(0,length,56)])
     for off,n in ranges:
         reply=request(fixture,command,op,off=off,length=n)
         packet=fixture.blob(TEMP,n=64)

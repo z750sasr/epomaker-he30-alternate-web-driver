@@ -9,6 +9,9 @@ __attribute__((noinline)) static void release_actions(void){
 #ifdef HE30_DESKTOP_KEYS
  S->mouse_down=0;S->mouse_wheel=0;
 #endif
+#ifdef HE30_USB_LIGHTING_FIX
+ S->media_pressed=0;
+#endif
 }
 
 #ifndef HE30_DESKTOP_KEYS

@@ -1,4 +1,4 @@
-import {FoundationClient,decodeConfig,encodeConfig,KEY_NAMES,parseUsage,usageLabel,crc32,isProfileUsage,isDesktopUsage,DESKTOP_KEYS_MODEL,DESKTOP_USAGES,PROFILE_KEY_MODEL,NKRO_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,FN_RGB_PRODUCTS,supportsProfileKeys} from '../flasher/keyboard-protocol.mjs';
+import {FoundationClient,decodeConfig,encodeConfig,KEY_NAMES,parseUsage,usageLabel,crc32,isProfileUsage,isDesktopUsage,isMediaUsage,DESKTOP_PRODUCTS,DESKTOP_USAGES,MEDIA_MODEL,MEDIA_USAGES,PROFILE_KEY_MODEL,NKRO_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,FN_RGB_PRODUCTS,supportsProfileKeys} from '../flasher/keyboard-protocol.mjs';
 import {HIDTransport,connectionCandidates} from '../flasher/protocol.mjs';
 import {LightingClient,decodeLighting,encodeLighting} from '../flasher/lighting-protocol.mjs';
 import {GAMEPAD_BYTES,encodeGamepad,decodeGamepad} from './gamepad.mjs';
@@ -69,7 +69,8 @@ export class ProDevice{
     this.foundation=new FoundationClient(transport);
     this.lighting=new LightingClient(this.foundation);
     this.supportsProfileKeys=supportsProfileKeys(transport.device.productName);
-    this.supportsDesktopKeys=transport.device.productName===DESKTOP_KEYS_MODEL;
+    this.supportsDesktopKeys=DESKTOP_PRODUCTS.includes(transport.device.productName);
+    this.supportsMedia=transport.device.productName===MEDIA_MODEL;
     this.supportsGamepad=['H3K11','H3K12','H3K13','H3K14',MODEL,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,...FN_RGB_PRODUCTS].includes(transport.device.productName);
   }
   static async connect(authorizedProduct){
@@ -203,6 +204,7 @@ export class ProDevice{
   fn2(key,value){
     if(isProfileUsage(value)&&!this.supportsProfileKeys)throw new Error('Profile keys require HE30 Pro v0.20.');
     if(isDesktopUsage(value)&&!this.supportsDesktopKeys)throw new Error('This mapping requires HE30 Pro v0.25.');
+    if(isMediaUsage(value)&&!this.supportsMedia)throw new Error('Media mappings require HE30 Pro v0.26.');
     return this.write(4,uint(key,35),Uint8Array.of(value));
   }
   action(slot,action){return this.write(5,uint(slot,7),actionBytes(action));}
@@ -226,4 +228,4 @@ export function bindingCode(value,layer){
   return parseUsage(value,!!layer);
 }
 export const bindingLabel=code=>isProfileUsage(code)?'Profile '+(code-0xef):code===0xfd?'Fn2':code===0xff?'Fn1':usageLabel(code);
-export {decodeConfig,encodeConfig,encodeLighting,KEY_NAMES,PROFILE_KEY_MODEL,NKRO_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,FN_RGB_PRODUCTS,DESKTOP_KEYS_MODEL,DESKTOP_USAGES,isProfileUsage,isDesktopUsage};
+export {decodeConfig,encodeConfig,encodeLighting,KEY_NAMES,PROFILE_KEY_MODEL,NKRO_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,FN_RGB_PRODUCTS,DESKTOP_PRODUCTS,DESKTOP_USAGES,MEDIA_USAGES,isProfileUsage,isDesktopUsage,isMediaUsage};

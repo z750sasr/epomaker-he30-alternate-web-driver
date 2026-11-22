@@ -157,4 +157,4 @@ if FN_RGB:
     initial=bytearray(image)
     initial[0x19000:0x1a000]=record
     assert read(reboot(initial),0xd2,0,88)[6:10]==bytes([3,0,0,3])
-(BUILD/'factory-journal.bin').write_bytes(record)
+if not manifest.get('factory_defaults'):(BUILD/'factory-journal.bin').write_bytes(record)

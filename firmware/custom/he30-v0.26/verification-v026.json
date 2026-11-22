@@ -1,0 +1,10 @@
+{
+  "sha256": "0c664652e0a52d292b262efcfcfc75698e7c131afe8309c2c559acc72cf3ae56",
+  "checks": [
+    "All four captured profiles and eight Fn palettes load byte-for-byte without calibration",
+    "Native TX4 uses its own eight bytes and XInput stays at interface 2 with media enabled",
+    "Mouse clicks and consumer press/release coexist with keyboard and vendor traffic",
+    "RGB sleep and wake, keep-lightbar option, speed zero and speed persistence work per profile"
+  ],
+  "hardware_tested": false
+}

@@ -3,11 +3,11 @@ import {liveTravelPanel,bindLiveTravelPanel,paintLiveTravel} from './live-travel
 import {renderRemap,bindRemap,openRemapPicker,closeRemapPicker,layerTabs} from './remap.mjs';
 import {openAdvancedKeyPicker} from './key-picker.mjs';
 import {beginRecovery} from '../flasher/recovery.mjs';
-import {ProDevice,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,DESKTOP_KEYS_MODEL,FN_RGB_PRODUCTS,GAMEPAD,RATES,ZUOYA,KEY_NAMES,actionBytes,bindingCode,bindingLabel,encodeConfig,encodeLighting,isProfileUsage,isDesktopUsage} from './protocol.mjs';
+import {ProDevice,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,DESKTOP_PRODUCTS,FN_RGB_PRODUCTS,GAMEPAD,RATES,ZUOYA,KEY_NAMES,actionBytes,bindingCode,bindingLabel,encodeConfig,encodeLighting,isProfileUsage,isDesktopUsage,isMediaUsage} from './protocol.mjs';
 import {DISTANCE_MODES,distanceField,distanceLabel,storedDistance} from './tuning.mjs';
 import {FEATURES,actionDepthFields,actionForFeature,actionKeys,renderAdvanced} from './advanced.mjs';
 import {USAGE_NAMES,importProfile} from '../flasher/keyboard-protocol.mjs';
-import {encodeFnLighting,importLighting,LED_TO_KEY} from '../flasher/lighting-protocol.mjs';
+import {encodeFnLighting,encodeLightingPreferences,importLighting,LED_TO_KEY} from '../flasher/lighting-protocol.mjs';
 import {
   GAMEPAD_ACTIONS,GAMEPAD_MODES,GAMEPAD_OPPOSITION,GAMEPAD_NONE,
   defaultGamepad,encodeGamepad,decodeGamepad,assignGamepad,
@@ -83,8 +83,10 @@ const recoverySave=(active=client)=>diagnosticSave(active)||['H3K13','H3K14','H3
 const browserRates=()=>diagnosticSave()||client?.transport.device.productName==='H3K15';
 const onboardRates=()=>[FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,...FN_RGB_PRODUCTS].includes(client?.transport.device.productName);
 const adcProblem=()=>status?.adcError?'ADC stopped after an error.':status?.raw?.some(value=>value>4095)?'The scanner is returning invalid ADC values.':'';
-const partialCalibration=()=>[CALIBRATION_QOL_MODEL,DESKTOP_KEYS_MODEL].includes(client?.transport.device.productName);
+const partialCalibration=()=>[CALIBRATION_QOL_MODEL,...DESKTOP_PRODUCTS].includes(client?.transport.device.productName);
 const desktopKeys=()=>!client||client.supportsDesktopKeys;
+const mediaKeys=()=>!client||client.supportsMedia;
+const lightingPreferences=()=>profile.lightingPreferences??{speed:50,sleep:0,keepBar:false};
 const calibrationAdviceShown=new Set();
 let switchCalibrationAdvice=false,endpointDeviationSince=0,endpointDeviationKeys=[];
 function maybeRecommendCalibration(){
@@ -148,6 +150,7 @@ async function refresh(isCurrent=()=>true){
     if(!valid())return false;
     const state=await current.foundation.readStatus();
     if(current.lighting.supportsFnLighting)nextProfile.fnLighting=await current.lighting.readFn(next.active);
+    if(current.lighting.supportsPreferences)nextProfile.lightingPreferences=await current.lighting.readPreferences(next.active);
     const nextController=current.supportsGamepad?await current.readGamepad():null;
     const nextPadState=current.supportsGamepad?await current.gamepadStatus():null;
     const confirmed=await current.activeProfile();
@@ -305,7 +308,7 @@ function paintBoard(){
   const layerPalette=lighting&&lightingLayer?lightingDraft??profile.fnLighting?.[lightingLayer-1]:null;
   const light=layerPalette?{...profile.lighting,mode:2,palette:layerPalette.palette}:lightingDraft??profile.lighting;
   const frame=lighting&&!lightingLayer&&!lightingDraft?rgb:null;
-  const animation=Math.floor(performance.now()/10);
+  const animation=Math.floor(performance.now()*lightingPreferences().speed/500);
   const preview=byId('rgbPreviewStatus');
   if(preview){
     const text=layerPalette?`Fn${lightingLayer} palette preview · ${layerPalette.enabled?'enabled':'disabled'}`:
@@ -654,7 +657,7 @@ function renderEditor(which){
     const adjustable=!client||client.lighting.supportsBrightness;
     const layers=profile.fnLighting?'<div class="layer-bar">'+layerTabs(lightingLayer,'lighting')+'</div>':'';
     const fn=lightingLayer?profile.fnLighting?.[lightingLayer-1]:null;
-    const fixedKeyRate=[ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,DESKTOP_KEYS_MODEL].includes(client?.transport.device.productName);
+    const fixedKeyRate=[ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,...DESKTOP_PRODUCTS].includes(client?.transport.device.productName);
     const keyboard=fn?'<h2>Fn'+lightingLayer+' key lighting</h2>'+grid(
       check('fnRgbEnabled','Use this palette while Fn is held',fn.enabled),
       '<label>Selected key color<input id="perKey" type="color" value="'+color(fn.palette[key],255/32)+'"></label>')+
@@ -675,7 +678,14 @@ function renderEditor(which){
       adjustable?brightness('barBrightness','Lightbar brightness',light.barBrightness):'',
       select('waveRate',fixedKeyRate?'Lightbar data rate':'LED data rate',['Original','Half rate'],light.rate))+
       commands(btn('Apply lightbar','rgbBar'));
-    return layers+'<div class="lighting-settings"><section>'+keyboard+'</section><section data-lightbar>'+bar+'</section></div>';
+    const preferences=lightingPreferences();
+    const timing=mediaKeys()?'<section data-lighting-timing><h2>Animation and sleep</h2>'+grid(
+      brightness('animationSpeed','Animation speed',preferences.speed),
+      field('rgbSleepMinutes','Idle minutes',Math.floor(preferences.sleep/60),0,1092),
+      field('rgbSleepSeconds','Idle seconds',preferences.sleep%60,0,59),
+      check('rgbKeepBar','Keep lightbar on while keyboard LEDs sleep',preferences.keepBar))+
+      '<p>Set both idle fields to zero to keep the LEDs on.</p>'+commands(btn('Apply animation and sleep','lightingTiming'))+'</section>':'';
+    return layers+'<div class="lighting-settings"><section>'+keyboard+'</section><section data-lightbar>'+bar+'</section>'+timing+'</div>';
   }
   if(which==='gamepad')return renderGamepad();
   if(which==='advanced')return '<div class="tuning-preferences">'+tuningPreferences()+'</div>'+renderAdvanced({action:displayedAction(),rules:profile.actions,slot,creating:advancedKind!==null,
@@ -770,6 +780,7 @@ async function editConfig(edit){
 async function applyRemap(code){
   if(isProfileUsage(code)&&!profileKeys())throw new Error('Profile keys require HE30 Pro v0.20.');
   const codes=code instanceof Map?code:new Map(editTargets(false).map(index=>[index,code]));
+  if(!mediaKeys()&&[...codes.values()].some(isMediaUsage))throw new Error('Media mappings require HE30 Pro v0.26.');
   if(!desktopKeys()&&[...codes.values()].some(isDesktopUsage))throw new Error('This mapping requires HE30 Pro v0.25.');
   if(layer<2)await editConfig(next=>{
     for(const [index,value] of codes)next.keys[index][layer?'fnUsage':'normalUsage']=value;
@@ -791,7 +802,7 @@ async function requireActiveProfile(){
   }
 }
 function remapOptions(){
-  return {root:byId('editor'),keyName:selectionLabel(),layer,usage:selectedUsage(key),profileKeys:profileKeys(),desktopKeys:desktopKeys(),
+  return {root:byId('editor'),keyName:selectionLabel(),layer,usage:selectedUsage(key),profileKeys:profileKeys(),desktopKeys:desktopKeys(),mediaKeys:mediaKeys(),
     onLayer:next=>{if(!busy){layer=next;render();}},
     onPick:code=>{if(!busy)run(()=>applyRemap(code));},
     onCycleAll:()=>run(async()=>{
@@ -1117,12 +1128,17 @@ async function restoreProfile(file){
       delete next.fnLighting;
     }
   }
+  if(next.lightingPreferences){
+    encodeLightingPreferences(next.lightingPreferences);
+    if(client&&!client.lighting.supportsPreferences)throw new Error('This profile has RGB options that require HE30 Pro v0.26.');
+  }
   encodeConfig(nextCfg);encodeLighting(next.lighting);
   client?.lighting.checkBrightness(next.lighting);
   if(!/^[ -~]{1,15}$/.test(next.name)||next.lighting.barCount>5||next.actions?.length!==8||
      !['fn2','gamepad','travel','coefficient'].every(name=>Array.isArray(next[name])&&next[name].length===36))
     throw new Error('Invalid profile structure.');
   next.actions.forEach(actionBytes);
+  if(!mediaKeys()&&next.fn2.some(isMediaUsage))throw new Error('This profile uses media mappings that require HE30 Pro v0.26.');
   if(!desktopKeys()&&next.fn2.some(isDesktopUsage))throw new Error('This profile uses mappings that require HE30 Pro v0.25.');
   if(!profileKeys()&&next.fn2.some(isProfileUsage))throw new Error('This profile uses shortcuts that require HE30 Pro v0.20.');
   for(let i=0;i<36;i++){
@@ -1147,6 +1163,7 @@ async function restoreProfile(file){
     try{
       await client.foundation.applyConfig(nextCfg);
       await client.lighting.apply(next.lighting);
+      if(next.lightingPreferences)await client.lighting.applyPreferences(info.active,next.lightingPreferences);
       if(next.fnLighting)for(const layer of [1,2])await client.lighting.applyFn(info.active,layer,next.fnLighting[layer-1]);
       for(let i=0;i<36;i++){
         if(next.fn2[i]!==profile.fn2[i])await client.fn2(i,next.fn2[i]);
@@ -1168,6 +1185,15 @@ async function restoreProfile(file){
   rgb=null;mark(migrationWarnings.length?'Profile imported. '+migrationWarnings.join(' ')+' '+keepChanges():undefined);
 }
 const actionMap={
+  lightingTiming:async()=>{
+    const speed=values('animationSpeed'),minutes=num('rgbSleepMinutes',0,1092),seconds=num('rgbSleepSeconds',0,59);
+    if(!Number.isInteger(minutes)||!Number.isInteger(seconds))throw new Error('Use whole minutes and seconds.');
+    const next={speed,sleep:minutes*60+seconds,keepBar:checkbox('rgbKeepBar')};
+    encodeLightingPreferences(next);
+    await requireActiveProfile();
+    profile.lightingPreferences=client?await client.lighting.applyPreferences(info.active,next):next;
+    mark('Animation and sleep applied. '+keepChanges());
+  },
   pointerSpeed:async()=>{
     const speed=num('pointerSpeed',1,32);
     if(!Number.isInteger(speed))throw new Error('Choose a whole pointer speed.');
@@ -1262,7 +1288,7 @@ byId('editor').addEventListener('input',event=>{
     const output=input.parentElement.querySelector('output');
     if(output)output.value=input.value+'%';
     if(input.closest('[data-lightbar]')){barDraft=readLightingEditor('bar');paintBarControls();}
-    else lightingDraft=readLightingEditor();
+    else if(!input.closest('[data-lighting-timing]'))lightingDraft=readLightingEditor();
     paintBoard();
   }
   if(input.dataset.distanceFor)byId(input.dataset.distanceFor).value=input.value;

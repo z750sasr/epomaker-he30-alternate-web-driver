@@ -52,7 +52,11 @@ static void lighting_status(u8*out){
 #ifdef HE30_FN_RGB
 /* Each slot has a distinct 128-byte address range on the wire. A 73-byte
  * palette is enabled byte + 36 little-endian base-33 RGB words. */
+#ifdef HE30_USB_LIGHTING_FIX
+__attribute__((section(".slow"),noinline))
+#else
 __attribute__((section(".fncode"),noinline))
+#endif
 static void fn_rgb_request(u8 op,u16 offset,u8 count,const u8 *data){
  const u32 slot=offset>>7,position=offset&127u;
  if(slot>=2*PROFILE_COUNT||position+count>FN_RGB_WIRE_BYTES){
@@ -93,8 +97,27 @@ static void fn_rgb_request(u8 op,u16 offset,u8 count,const u8 *data){
 }
 #endif
 
+#ifdef HE30_USB_LIGHTING_FIX
+__attribute__((section(".slow"),noinline)) static void lighting_preferences(u8 op,u16 slot,u8 n,const u8 *data){
+ if(slot>=PROFILE_COUNT||n!=4){make_reply(0xd1,RANGE,0,0,0);return;}
+ LightingPreferences *p=&S->fn_light.preferences[slot];
+ if(op==11){
+  u8 bytes[4]={p->speed?p->speed-1:50,p->keep_bar,p->sleep,p->sleep>>8};
+  make_reply(0xd1,OK,slot,n,bytes);
+ }else if(slot!=S->library.active)make_reply(0xd1,STATE,0,0,0);
+ else if(data[0]>100||data[1]>1)make_reply(0xd1,RANGE,0,0,0);
+ else{
+  p->speed=data[0]+1;p->keep_bar=data[1];p->sleep=get16(data+2);
+  S->rgb_activity=1;S->dirty=1;make_reply(0xd1,OK,0,0,0);
+ }
+}
+#endif
+
 static void lighting_request(const u8*r){
  u8 op=r[2],n=r[4],error=0;u16 off=get16(r+5);const u8*p=r+8;
+#ifdef HE30_USB_LIGHTING_FIX
+ if(op==11||op==12){lighting_preferences(op,off,n,p);return;}
+#endif
 #ifdef HE30_FN_RGB
  if(op==9||op==10){fn_rgb_request(op,off,n,p);return;}
 #endif
@@ -123,6 +146,9 @@ static void lighting_request(const u8*r){
  else if(op==5){S->rgb_error=0;S->rgb_pending=3;}
  else if(op==6){lighting_defaults();S->dirty=1;}
  else error=RANGE;
+#ifdef HE30_USB_LIGHTING_FIX
+ if(!error&&op)S->rgb_activity=1;
+#endif
  make_reply(0xd1,error,0,0,0);
 }
 /* Configure both control pins together. The sibling binary configures
@@ -173,6 +199,9 @@ static void rgb_boot(void){
  S->rgb_pending=3;
  S->rgb_error=0;
  S->rgb_started=ticks();
+#ifdef HE30_USB_LIGHTING_FIX
+ S->rgb_epoch_ticks=S->rgb_started;
+#endif
 #ifdef HE30_DESKTOP_KEYS
  S->rgb_effect_type=1;S->rgb_effect_start=S->rgb_started;
 #endif
@@ -202,7 +231,11 @@ __attribute__((section(".extra"),noinline)) static void bar_color(u8 *color,u32 
  const u8 mode=(options>>3)&3;
  if(!mode){bytes_copy(color,&S->light.br,3);return;}
  if(mode==3){
+#ifdef HE30_USB_LIGHTING_FIX
+  const u32 phase=time*0x010203u;
+#else
   const u32 phase=S->bar_spectrum;
+#endif
   color[0]=phase>>16;color[1]=phase>>8;color[2]=phase;
   return;
  }
@@ -219,6 +252,17 @@ __attribute__((section(".extra"),noinline)) static void bar_color(u8 *color,u32 
  const u32 hue=(time*(mode==2?3u:1u)+(mode==2?112u*led:0))%768;
  const u32 sector=hue>>8,amount=(hue&255)*level>>8;
  color[sector]=level-amount;color[(sector+1)%3]=amount;
+}
+#endif
+#ifdef HE30_USB_LIGHTING_FIX
+__attribute__((section(".fncode"),noinline)) static void rgb_advance(u32 now){
+ const LightingPreferences *p=&S->fn_light.preferences[S->library.active];
+ const u32 ms=(now-S->rgb_epoch_ticks)/TICKS_MS;
+ S->rgb_epoch_ticks+=ms*TICKS_MS;S->rgb_ms+=ms;
+ S->rgb_phase+=ms*(p->speed?p->speed-1:50);
+ if(S->rgb_activity||S->cal_phase){S->rgb_last_activity=S->rgb_ms;S->rgb_activity=0;}
+ const u8 asleep=p->sleep&&S->rgb_ms-S->rgb_last_activity>=1000u*p->sleep;
+ if(asleep!=S->rgb_asleep){S->rgb_asleep=asleep;S->rgb_pending|=3;}
 }
 #endif
 #ifdef HE30_FN_RGB
@@ -255,6 +299,11 @@ VERIFY_ENTRY void rgb_service(void){
  }
  if(S->identify!=255&&(i32)(ticks()-S->identify_until)>=0){S->identify=255;S->rgb_pending|=1;}
  const u32 now=ticks();
+#ifdef HE30_USB_LIGHTING_FIX
+ rgb_advance(now);
+ const u8 key_asleep=S->rgb_asleep;
+ const u8 bar_asleep=key_asleep&&!S->fn_light.preferences[S->library.active].keep_bar;
+#endif
 #ifdef HE30_FN_RGB
  const u32 profile=S->library.active;
  const u8 fn=S->fn&&(S->fn_light.enabled[profile]&(1u<<(S->fn-1)))?S->fn:0;
@@ -272,10 +321,15 @@ VERIFY_ENTRY void rgb_service(void){
   S->rgb_effect_type=0;S->rgb_pending|=1;
  }
  if(now-S->rgb_effect_time>=33u*TICKS_MS){
+#ifdef HE30_USB_LIGHTING_FIX
+  if(!key_asleep&&(S->light.mode>=4||S->rgb_effect_type))S->rgb_pending|=1;
+  if(!bar_asleep&&(S->light.bar_on&1)&&(S->light.count&24))S->rgb_pending|=2;
+#else
   if(S->light.mode>=4||S->rgb_effect_type)S->rgb_pending|=1;
   if((S->light.bar_on&1)&&(S->light.count&24)){
    S->rgb_pending|=2;S->bar_spectrum=(S->bar_spectrum+0x010203u)&0xffffffu;
   }
+#endif
   S->rgb_effect_time=now;
  }
 #else
@@ -293,7 +347,11 @@ VERIFY_ENTRY void rgb_service(void){
 #endif
 #endif
  bytes_zero(S->rgb_frame,128+count*12);
+#ifdef HE30_USB_LIGHTING_FIX
+ const u32 animation=S->rgb_phase/500;
+#else
  const u32 animation=now/(10u*TICKS_MS);
+#endif
  /* Header high bits store dimming as 100 minus the requested brightness.
   * Legacy profiles leave them zero, which yields full configured intensity. */
  const u32 brightness=100u-((S->rgb_path==1?S->light.order:S->light.rate)>>1);
@@ -301,6 +359,9 @@ VERIFY_ENTRY void rgb_service(void){
   u8 color[3]={0,0,0};
   if(S->rgb_path==1){
    u8 key=led_to_key[j];
+#ifdef HE30_USB_LIGHTING_FIX
+   if(key_asleep){}else
+#endif
 #ifdef HE30_CALIBRATION_QOL
    if(calibration){
     color[bit(S->cal_lo,S->cal_hi,key)?2:bit(S->cfg.valid_lo,S->cfg.valid_hi,key)?1:0]=16;
@@ -334,6 +395,9 @@ VERIFY_ENTRY void rgb_service(void){
    }
   }else{
 #ifdef HE30_DESKTOP_KEYS
+#ifdef HE30_USB_LIGHTING_FIX
+   if(!bar_asleep)
+#endif
    bar_color(color,j,animation);
 #else
    if(S->light.bar_on&&j<S->light.count)bytes_copy(color,&S->light.br,3);
@@ -351,6 +415,9 @@ VERIFY_ENTRY void rgb_service(void){
   if(S->rgb_path==1&&S->identify!=255
 #ifdef HE30_CALIBRATION_QOL
      &&!calibration
+#endif
+#ifdef HE30_USB_LIGHTING_FIX
+     &&!key_asleep
 #endif
   )
    color[0]=color[1]=color[2]=S->identify==key?24:0;
