@@ -5,9 +5,8 @@ const channels=[10,11,12,13,4,5,6,7,14,15,8,9];
 const errors=['No error','ADC reset-calibration timeout','ADC calibration timeout','ADC conversion timeout','RGB DMA transfer timeout','RGB SPI busy timeout'];
 const supported=!!navigator.hid&&window.isSecureContext;
 let transport,busy=false,running=false,token=0,latest,baseline,selected=null,winner=null,lastRGB;
-let baselineWindow=[],noise=[],candidate=null,guideState='baseline',heldFrames=0,releasedFrames=0,monitorTask,pauseTimer,pauseResolve,lastSaved=0;
+let baselineWindow=[],noise=[],candidate=null,guideState='baseline',heldFrames=0,releasedFrames=0,monitorTask,pauseTimer,pauseResolve;
 const frames=[],mapping={},observations=[];
-const storageKey='he30-v04-hardware-results';
 for(const name of physical){const option=document.createElement('option');option.value=name;option.textContent=name;$('physical').append(option);}
 const cells=Array.from({length:36},(_,i)=>{
   const cell=document.createElement('button');cell.type='button';cell.className='sample';
@@ -19,11 +18,7 @@ const cells=Array.from({length:36},(_,i)=>{
 });
 function say(text){$('status').textContent=text;}
 function report(){return{diagnostic:'HE30 v0.4',channels,bankHypotheses:['PC13','PC14','PB10'],physicalMapping:mapping,baseline,frames,rgbObservations:observations,automaticGuide:{state:guideState,noise}};}
-function persist(force=false){
-  if(!force&&Date.now()-lastSaved<2000)return;
-  try{localStorage.setItem(storageKey,JSON.stringify(report()));lastSaved=Date.now();$('autosave').textContent='Results saved automatically in this browser. Save results exports a JSON file.';}
-  catch{$('autosave').textContent='Browser autosave is unavailable. Keep this page open and use Save results.';}
-}
+
 function prompt(){
   const done=physical.filter(key=>mapping[key]!==undefined).length;
   if(!running){$('guide').textContent=`Sampling stopped. ${done}/36 physical keys recorded.`;return;}
@@ -36,7 +31,7 @@ function resetBaseline(){baseline=null;baselineWindow=[];noise=[];candidate=null
 function recordMapping(key,slot,automatic=false){
   mapping[key]=slot;$('mapping').textContent=Object.entries(mapping).map(([name,index])=>`${name} → #${index}`).join(' · ');
   const next=physical.find(name=>mapping[name]===undefined);if(next)$('physical').value=next;
-  selected=null;candidate=null;heldFrames=0;releasedFrames=0;guideState='press';showSamples();persist(true);prompt();
+  selected=null;candidate=null;heldFrames=0;releasedFrames=0;guideState='press';showSamples();prompt();
   if(!next&&automatic){stopMonitoring();$('guide').textContent='All 36 keys recorded and saved in this browser. Save results exports the mapping.';}
 }
 function processAutomatic(snapshot){
@@ -46,7 +41,7 @@ function processAutomatic(snapshot){
     if(baselineWindow.length===5){
       const spread=snapshot.values.map((_,i)=>Math.max(...baselineWindow.map(v=>v[i]))-Math.min(...baselineWindow.map(v=>v[i])));
       if(spread.every(v=>v<=12)){
-        baseline=snapshot.values.map((_,i)=>baselineWindow.map(v=>v[i]).sort((a,b)=>a-b)[2]);noise=spread;guideState='press';persist(true);
+        baseline=snapshot.values.map((_,i)=>baselineWindow.map(v=>v[i]).sort((a,b)=>a-b)[2]);noise=spread;guideState='press';
       }
     }
     prompt();return;
@@ -91,7 +86,7 @@ function show(snapshot){
   if(latest?.mode!==snapshot.mode)resetBaseline();
   latest=snapshot;frames.push({time:new Date().toISOString(),...snapshot});if(frames.length>240)frames.shift();
   processAutomatic(snapshot);
-  const {values,...details}=snapshot;$('details').textContent=JSON.stringify(details,null,2);showSamples();buttons();persist();
+  const {values,...details}=snapshot;$('details').textContent=JSON.stringify(details,null,2);showSamples();buttons();
 }
 async function guarded(action){if(busy)return;busy=true;buttons();try{await action();}catch(error){stopMonitoring();say(error.message);}finally{busy=false;buttons();}}
 async function sample(mode){
@@ -112,7 +107,7 @@ $('connect').onclick=async()=>{
 };
 $('refresh').onclick=()=>guarded(async()=>{show(await readHardwareSnapshot(transport));say('Snapshot read. No hardware test started.');});
 $('passive').onclick=()=>guarded(()=>sample(1));
-function stopMonitoring(){running=false;token++;clearTimeout(pauseTimer);pauseResolve?.();pauseResolve=null;persist(true);prompt();buttons();}
+function stopMonitoring(){running=false;token++;clearTimeout(pauseTimer);pauseResolve?.();pauseResolve=null;prompt();buttons();}
 function startMonitoring(){
   if(busy||running||!transport)return monitorTask;running=true;resetBaseline();const current=++token;buttons();prompt();
   monitorTask=(async()=>{
@@ -150,26 +145,10 @@ async function color(name){
 for(const name of ['red','green','blue','off'])$(name).onclick=()=>guarded(()=>color(name));
 $('record').onclick=()=>{
   const note=$('observation').value.trim();if(!note||!lastRGB){say('Enter the physical LED observation first.');return;}
-  observations.push({...lastRGB,note});$('observations').textContent=observations.map(o=>`Output ${o.path}, slot ${o.index===255?'all':o.index}, ${o.color}: ${o.note}`).join(' · ');$('observation').value='';persist(true);say('LED observation recorded locally. Save results to export it.');
+  observations.push({...lastRGB,note});$('observations').textContent=observations.map(o=>`Output ${o.path}, slot ${o.index===255?'all':o.index}, ${o.color}: ${o.note}`).join(' · ');$('observation').value='';say('LED observation recorded locally. Save results to export it.');
 };
 $('save').onclick=()=>{
   const url=URL.createObjectURL(new Blob([JSON.stringify(report(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`he30-mapping-rgb-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 navigator.hid?.addEventListener('disconnect',event=>{if(transport?.device===event.device){stopMonitoring();transport.disconnected();transport=null;say('Diagnostic keyboard disconnected. Previously captured results can still be saved.');buttons();}});
 window.addEventListener('pagehide',()=>{stopMonitoring();transport?.close().catch(()=>{});});
-try{
-  const saved=JSON.parse(localStorage.getItem(storageKey)||'null');
-  if(saved?.diagnostic==='HE30 v0.4'&&Array.isArray(saved.frames)){
-    const valid=saved.frames.slice(-240).filter(f=>f?.signature==='H3M1'&&[0,1,2].includes(f.mode)&&Array.isArray(f.values)&&f.values.length===36&&f.values.every(v=>Number.isInteger(v)&&v>=0&&v<=65535));
-    frames.push(...valid);latest=valid.at(-1);
-    if(Array.isArray(saved.baseline)&&saved.baseline.length===36&&saved.baseline.every(v=>Number.isInteger(v)&&v>=0&&v<=65535))baseline=saved.baseline.slice();
-    for(const key of physical){const slot=saved.physicalMapping?.[key];if(Number.isInteger(slot)&&slot>=0&&slot<36)mapping[key]=slot;}
-    if(Array.isArray(saved.rgbObservations))observations.push(...saved.rgbObservations.filter(o=>typeof o?.note==='string').slice(-120));
-    $('mapping').textContent=Object.entries(mapping).map(([name,index])=>`${name} → #${index}`).join(' · ')||'No physical mappings recorded.';
-    $('observations').textContent=observations.map(o=>`Output ${o.path}, slot ${o.index===255?'all':o.index}, ${o.color}: ${o.note}`).join(' · ')||'No LED observations recorded.';
-    const next=physical.find(key=>mapping[key]===undefined);if(next)$('physical').value=next;
-    if(latest){const{values,...details}=latest;$('details').textContent=JSON.stringify(details,null,2);showSamples();}
-    $('autosave').textContent='Previous results restored from this browser. Connecting takes a fresh baseline; restored labels remain local notes.';
-  }
-}catch{/* Storage is optional; live capture and manual export still work. */}
-if(!supported)say('Use Chrome or Edge on localhost or HTTPS. WebHID is unavailable here.');buttons();

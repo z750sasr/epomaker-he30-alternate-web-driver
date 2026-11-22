@@ -56,7 +56,7 @@ test('hardware API rejects bad parameters before IO and wrong signatures before 
   }
 });
 
-test('hardware page automatically captures, guides press/release mapping, saves and restores results',async()=>{
+test('hardware page automatically captures, guides press/release mapping, exports results without storing them',async()=>{
   class Element {
     constructor(){this.textContent='';this.disabled=false;this.checked=false;this.value='';this.children=[];this.classList={toggle(){}};}
     append(...items){this.children.push(...items);}click(){this.onclick?.();}
@@ -97,11 +97,11 @@ test('hardware page automatically captures, guides press/release mapping, saves 
     const report=JSON.parse(await exported.text());assert.equal(report.physicalMapping.Esc,14);assert.equal(report.rgbObservations[0].note,'Esc key lit red');
     const actions=device.sent.filter(b=>b[1]===0xdd).map(b=>b[12]);assert.equal(actions[0],1);assert.ok(actions.slice(1,-1).every(a=>a===2));assert.equal(actions.at(-1),3);
     assert.ok(device.sent.every(b=>b[0]===0x55&&[0xdb,0xdd].includes(b[1])));
-    assert.equal(JSON.parse(stored.get('he30-v04-hardware-results')).physicalMapping.Esc,14);
+    assert.equal(stored.size,0,'Diagnostic results must not be stored in the browser');
     const count=device.sent.length;globalThis.window.dispatchEvent(new Event('pagehide'));nodes.clear();globalThis.window=Object.assign(new EventTarget(),{isSecureContext:true});
     await import(`./hardware.mjs?restore=${Date.now()}`);
-    assert.match(nodes.get('mapping').textContent,/Esc → #14/);assert.match(nodes.get('autosave').textContent,/restored/);assert.equal(nodes.get('save').disabled,false);
-    assert.equal(device.sent.length,count,'Reload restores notes without starting device tests');
+    assert.doesNotMatch(document.getElementById('mapping').textContent,/Esc → #14/);
+    assert.equal(device.sent.length,count,'Reload does not restore notes or start device tests');
     device.actionError=2;device.errorPhase='passive';
     const beforeFailure=device.sent.filter(b=>b[1]===0xdd).length;await nodes.get('connect').onclick();
     assert.match(nodes.get('status').textContent,/Automatic tests stopped/);

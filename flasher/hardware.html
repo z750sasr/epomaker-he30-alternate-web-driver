@@ -11,9 +11,9 @@
     <p id="status" role="status" aria-live="polite">Flash v0.4, then connect H3M04 here.</p><pre id="details">No status yet.</pre>
   </section>
   <section class="panel"><h2>2. Find the sensor mapping</h2>
-    <p>Sampling, baseline collection, change detection and browser autosave start automatically after connecting. For physical key names, follow the prompt: press, hold briefly and release each named key. No assignment-button clicks are needed. Without key presses, the page can collect readings but cannot identify physical legends.</p>
+    <p>Sampling, baseline collection, and change detection start automatically after connecting. For physical key names, follow the prompt: press, hold briefly and release each named key. No assignment-button clicks are needed. Without key presses, the page can collect readings but cannot identify physical legends.</p>
     <p id="guide" role="status" aria-live="polite">Connect the keyboard with all keys released to start automatically.</p>
-    <p id="autosave" class="hint">Captured results will save automatically in this browser.</p>
+    <p id="autosave" class="hint">Results remain in this tab until it closes or reloads. Use Save results to export them.</p>
     <div class="buttons"><button id="passive" disabled>Read passive ADC</button><button id="start" disabled>Restart automatic capture</button><button id="stop" class="secondary" disabled>Stop sampling</button><button id="baseline" class="secondary" disabled>Retake released baseline</button></div>
     <p class="hint">The three-bank test drives PC13, PC14 and PB10 using the donor's active-low scheme. It does not send typing input or save calibration. If readings do not follow your keys, save the report so we can revise the pin hypothesis.</p>
     <div id="samples" class="samples"></div>

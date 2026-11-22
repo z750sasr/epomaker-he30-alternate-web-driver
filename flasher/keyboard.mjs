@@ -1,8 +1,9 @@
 import {VID,APP_PID,HIDTransport} from './protocol.mjs';
-import {FoundationClient,KEY_NAMES,CHANNELS,OUTPUTS,USAGE_NAMES,usageLabel,parseUsage,encodeConfig,exportProfile,importProfile} from './keyboard-protocol.mjs';
+import {FoundationClient,CALIBRATION_QOL_MODEL,KEY_NAMES,CHANNELS,OUTPUTS,USAGE_NAMES,usageLabel,parseUsage,encodeConfig,exportProfile,importProfile} from './keyboard-protocol.mjs';
 import {createLightingUI} from './lighting-ui.mjs';
 const $=id=>document.getElementById(id),supported=!!navigator.hid&&window.isSecureContext;
 let transport,client,status,draft,selected=0,localEdits=false,busy=false,polling=false,pollTimer,pollTask,pollFault=false,session=0;
+const partialCalibration=()=>transport?.device.productName===CALIBRATION_QOL_MODEL;
 const editIds=['group1','group2','group3','settle','verified','startup','normal','fn','actuation','hysteresis','rtPress','rtRelease','top','bottom','rapid','keyDisabled'];
 const lightingUI=createLightingUI({runAction:action,getSelected:()=>selected,keyNames:KEY_NAMES,onDirty:()=>controls()});
 for(const id of ['group1','group2','group3'])OUTPUTS.forEach((name,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=name;$(id).append(option);});
@@ -23,7 +24,7 @@ function controls(){
   for(const id of ['apply','applyKeys','copyTuning','export','import'])$(id).disabled=!editable;
   const idle=status?.calibrationPhase===0;
   $('calibrate').disabled=!ready||!draft||localEdits||!idle||!!status?.adcError;
-  $('finish').disabled=!ready||status?.calibrationPhase!==2||!status?.calibrated.every(Boolean);
+  $('finish').disabled=!ready||status?.calibrationPhase!==2||!(partialCalibration()?status.calibrated.some(Boolean):status.calibrated.every(Boolean));
   $('abort').disabled=!ready||idle||!status;
   $('enable').disabled=!ready||!idle||!!status?.typingEnabled||!!status?.adcError||!status?.calibrated.every(Boolean)||!(status?.configFlags&1)||localEdits;
   $('save').disabled=!ready||!idle||localEdits||lightingUI.dirty||!status?.dirty;
@@ -65,7 +66,7 @@ function showStatus(value){
   $('typingState').textContent=value.adcError?`ADC error ${value.adcError}`:!value.usbReady?'USB not ready':value.releaseInterlock?'Release all keys':value.typingEnabled?'Enabled':'Disabled';
   $('learnedState').textContent=`${count}/36 ranges`; $('savedState').textContent=value.dirty?'Unsaved RAM changes':value.savedValid?`Saved record ${value.savedSequence}`:'No saved record';
   $('calibrationProgress').value=count;
-  $('calibrationState').textContent=value.calibrationPhase===1?`Keep every key released. Collecting released frames: ${value.restFrames}/32.`:value.calibrationPhase===2?`Press every key fully, then release it. ${count}/36 ranges learned. Finish after all keys are released.`:count===36?'All 36 ranges available. Release all keys, then enable typing.':`Calibration idle. ${36-count} keys still need a valid learned range.`;
+  $('calibrationState').textContent=value.calibrationPhase===1?`Keep every key released. Collecting released frames: ${value.restFrames}/32.`:value.calibrationPhase===2?partialCalibration()?`Fully press and release the keys you want to calibrate. ${count} captured.`:`Press every key fully, then release it. ${count}/36 ranges learned. Finish after all keys are released.`:count===36?'All 36 ranges available. Release all keys, then enable typing.':`Calibration idle. ${36-count} keys still need a valid learned range.`;
   $('rawStatus').textContent=JSON.stringify(value,null,2);renderCards();controls();
 }
 function schedule(){clearTimeout(pollTimer);if(client&&!busy&&!pollFault)pollTimer=setTimeout(poll,150);}

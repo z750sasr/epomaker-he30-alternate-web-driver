@@ -1,13 +1,13 @@
 import {bindBoardSelection} from './board-selection.mjs';
 import {liveTravelPanel,bindLiveTravelPanel,paintLiveTravel} from './live-travel.mjs';
-import {renderRemap,bindRemap,openRemapPicker,closeRemapPicker} from './remap.mjs';
+import {renderRemap,bindRemap,openRemapPicker,closeRemapPicker,layerTabs} from './remap.mjs';
 import {openAdvancedKeyPicker} from './key-picker.mjs';
 import {beginRecovery} from '../flasher/recovery.mjs';
-import {ProDevice,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,GAMEPAD,RATES,ZUOYA,KEY_NAMES,actionBytes,bindingCode,bindingLabel,encodeConfig,encodeLighting,isProfileUsage} from './protocol.mjs';
+import {ProDevice,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,DESKTOP_KEYS_MODEL,FN_RGB_PRODUCTS,GAMEPAD,RATES,ZUOYA,KEY_NAMES,actionBytes,bindingCode,bindingLabel,encodeConfig,encodeLighting,isProfileUsage,isDesktopUsage} from './protocol.mjs';
 import {DISTANCE_MODES,distanceField,distanceLabel,storedDistance} from './tuning.mjs';
 import {FEATURES,actionDepthFields,actionForFeature,actionKeys,renderAdvanced} from './advanced.mjs';
 import {USAGE_NAMES,importProfile} from '../flasher/keyboard-protocol.mjs';
-import {importLighting,LED_TO_KEY} from '../flasher/lighting-protocol.mjs';
+import {encodeFnLighting,importLighting,LED_TO_KEY} from '../flasher/lighting-protocol.mjs';
 import {
   GAMEPAD_ACTIONS,GAMEPAD_MODES,GAMEPAD_OPPOSITION,GAMEPAD_NONE,
   defaultGamepad,encodeGamepad,decodeGamepad,assignGamepad,
@@ -29,23 +29,21 @@ const defaults=()=>({
   calibrated:Array(36).fill(false),released:Array(36).fill(0),pressed:Array(36).fill(0),
   keys:KEY_NAMES.map(name=>({normalUsage:codeFor(name),fnUsage:254,actuation:500,hysteresis:50,rtPress:40,rtRelease:40,rapidTrigger:false,topDeadzone:0,bottomDeadzone:0,disabled:false}))
 });
-const defaultProfile=()=>({name:'Profile',fn2:Array(36).fill(254),gamepad:Array(36).fill(0),travel:Array(36).fill(4000),coefficient:Array(36).fill(0),
+const blankFnLighting=()=>Array.from({length:2},()=>({enabled:false,palette:Array.from({length:36},()=>[0,0,0])}));
+const defaultProfile=()=>({name:'Profile',fn2:Array(36).fill(254),fnLighting:blankFnLighting(),gamepad:Array(36).fill(0),travel:Array(36).fill(4000),coefficient:Array(36).fill(0),
   actions:Array.from({length:8},blankAction),lighting:{version:1,mode:1,order:0,rate:0,barCount:5,barEnabled:true,color:[16,16,16],barColor:[16,16,16],palette:Array.from({length:36},()=>[0,0,0])}});
 const offline=Array.from({length:4},(_,i)=>({config:defaults(),profile:{...defaultProfile(),name:'Profile '+(i+1)}}));
 let client=null,config=offline[0].config,profile=offline[0].profile;
 let info={active:0,rate:3,scanMode:0,gamepad:false,names:offline.map(p=>p.profile.name)};
 let status=null,rgb=null,slot=0,layer=0,key=0,page=new URLSearchParams(location.search).get('page')==='gamepad'?'gamepad':'performance',view='quick',busy=false,dirty=false,generation=0,pollPending=false;
-let lightingDraft=null,paletteEdited=false;
+let lightingDraft=null,barDraft=null,paletteEdited=false,lightingLayer=0;
 let advancedKind=null;
 let controller={...defaultGamepad(),mode:1},padState=null,padChoice=null,usbTransition=false;
 let autoSaveTimer, recoveryPending=false;
 let selectionOnlyDirty=false;
 let selectedKeys=new Set([key]);
 let selectionAnchor=key;
-let distancePrecision=Number(localStorage.getItem('he30-distance-precision')||0);
-if(![0,1,2].includes(distancePrecision))distancePrecision=0;
-let boardGauge=localStorage.getItem('he30-board-gauge')==='true';
-let syncRapid=localStorage.getItem('he30-sync-rapid')==='true';
+let distancePrecision=0,boardGauge=false,syncRapid=false;
 let liveTravel=false, travelPanelPosition=null, travelSelectionOnly=true;
 let lastFullStatus=0;
 let lastProfileCheck=0;
@@ -83,16 +81,43 @@ const liveOnly=!navigator.hid;
 const diagnosticSave=(active=client)=>[SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL].includes(active?.transport.device.productName);
 const recoverySave=(active=client)=>diagnosticSave(active)||['H3K13','H3K14','H3K15'].includes(active?.transport.device.productName);
 const browserRates=()=>diagnosticSave()||client?.transport.device.productName==='H3K15';
-const onboardRates=()=>[FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL].includes(client?.transport.device.productName);
-const profileKeys=()=>!client||client.supportsProfileKeys;
-const rememberedRatesKey=active=>'he30-pro-'+active.transport.device.productName.toLowerCase()+'-rates';
-function rememberedRates(){
-  try{
-    const rates=JSON.parse(localStorage.getItem(rememberedRatesKey(client)));
-    if(Number.isInteger(rates?.rate)&&RATES[rates.rate]&&Number.isInteger(rates.scanMode)&&rates.scanMode>=0&&rates.scanMode<=2)return rates;
-  }catch{}
-  return null;
+const onboardRates=()=>[FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,...FN_RGB_PRODUCTS].includes(client?.transport.device.productName);
+const adcProblem=()=>status?.adcError?'ADC stopped after an error.':status?.raw?.some(value=>value>4095)?'The scanner is returning invalid ADC values.':'';
+const partialCalibration=()=>[CALIBRATION_QOL_MODEL,DESKTOP_KEYS_MODEL].includes(client?.transport.device.productName);
+const desktopKeys=()=>!client||client.supportsDesktopKeys;
+const calibrationAdviceShown=new Set();
+let switchCalibrationAdvice=false,endpointDeviationSince=0,endpointDeviationKeys=[];
+function maybeRecommendCalibration(){
+  if(!client||!status||!status.frames||status.calibrationPhase||status.startupBaseline===1||adcProblem()||
+     document.querySelector('dialog[open]')||byId('workspace').hidden)return;
+  let reason,detail;
+  if(switchCalibrationAdvice&&!calibrationAdviceShown.has('switch')){
+    reason='switch';detail='The switch settings changed. If you installed different switches, calibrate the affected keys.';
+  }else if(status.missingKeys&&!calibrationAdviceShown.has('missing')){
+    reason='missing';detail=status.missingKeys+' of 36 keys are missing calibration. '+(partialCalibration()?'You can calibrate individual keys.':'This firmware calibrates all keys together.');
+  }else if(!calibrationAdviceShown.has('deviation')){
+    const outside=status.raw.flatMap((raw,i)=>{
+      if(!config.calibrated[i])return [];
+      const low=Math.min(config.released[i],config.pressed[i]),high=Math.max(config.released[i],config.pressed[i]);
+      const margin=Math.max(96,(high-low)/4);
+      return raw<low-margin||raw>high+margin?[i]:[];
+    });
+    const sustained=endpointDeviationKeys.filter(i=>outside.includes(i));
+    if(!sustained.length){endpointDeviationKeys=outside;endpointDeviationSince=performance.now();return;}
+    endpointDeviationKeys=sustained;
+    if(performance.now()-endpointDeviationSince<1500)return;
+    reason='deviation';detail='Readings for '+sustained.map(i=>KEY_NAMES[i]).join(', ')+' repeatedly fell outside their calibrated range. If you changed switches or the keys are behaving oddly, recalibrate those keys.';
+  }
+  if(!reason)return;
+  calibrationAdviceShown.add(reason);
+  byId('calibrationAdviceDetail').textContent=detail;
+  const dialog=byId('calibrationAdvice');
+  dialog.returnValue='';dialog.showModal();
 }
+const profileKeys=()=>!client||client.supportsProfileKeys;
+const sessionRates=new Map();
+const rememberedRatesKey=active=>active.transport.device.productName;
+const rememberedRates=()=>sessionRates.get(rememberedRatesKey(client))??null;
 const keepChanges=()=>recoverySave()?'Export this profile to keep a copy.':'Save changes to keep them after unplugging.';
 const values=id=>Number(byId(id).value);
 const checkbox=id=>byId(id).checked;
@@ -122,6 +147,7 @@ async function refresh(isCurrent=()=>true){
     const next=await current.capabilities(),nextConfig=await current.foundation.readConfig(),nextProfile=await current.profile();
     if(!valid())return false;
     const state=await current.foundation.readStatus();
+    if(current.lighting.supportsFnLighting)nextProfile.fnLighting=await current.lighting.readFn(next.active);
     const nextController=current.supportsGamepad?await current.readGamepad():null;
     const nextPadState=current.supportsGamepad?await current.gamepadStatus():null;
     const confirmed=await current.activeProfile();
@@ -131,6 +157,7 @@ async function refresh(isCurrent=()=>true){
     if(switched){advancedKind=null;slot=0;rgb=null;}
     acceptStatus(state,switched);
     info=next;config=nextConfig;profile=nextProfile;
+    if(!profile.fnLighting)lightingLayer=0;
     if(nextController)controller=nextController;
     padState=nextPadState;
     padChoice=fullGamepad()?gamepadActionForKey(controller,key):null;
@@ -162,10 +189,11 @@ function controllerForBindings(bindings,settings=controller){
 async function run(task){
   if(busy)return;
   busy=true;generation++;document.body.classList.add('working');
+  document.documentElement.setAttribute('data-driver-busy','');
   byId('save').disabled=true;byId('activeProfile').disabled=true;
   try{await task();}
   catch(err){await reportDeviceError(err);}
-  finally{busy=false;document.body.classList.remove('working');render();}
+  finally{busy=false;document.body.classList.remove('working');document.documentElement.removeAttribute('data-driver-busy');render();}
 }
 async function reportDeviceError(error){
   const failed=client;
@@ -182,18 +210,58 @@ function mark(text='Changes applied. '+keepChanges()){
 function selectedUsage(idx){
   return layer===2?profile.fn2[idx]:layer===1?config.keys[idx].fnUsage:config.keys[idx].normalUsage;
 }
-function readLightingEditor(){
-  const next=structuredClone(profile.lighting);
-  Object.assign(next,{mode:values('lightMode'),order:values('colorOrder'),rate:values('waveRate'),color:channels(named('keyColor')),
-    barColor:channels(named('barColor')),barEnabled:checkbox('barEnabled')});
-  for(const id of ['keyBrightness','barBrightness']){
-    if(byId(id))next[id]=values(id);
+function readLightingEditor(scope='keyboard'){
+  if(scope==='bar'){
+    const next=structuredClone(profile.lighting);
+    Object.assign(next,{rate:values('waveRate'),barColor:channels(named('barColor')),barEnabled:checkbox('barEnabled')});
+    if(byId('barBrightness'))next.barBrightness=values('barBrightness');
+    if(byId('barMode'))Object.assign(next,{barMode:values('barMode'),barRainbow:checkbox('barRainbow'),barReverse:!!values('barDirection')});
+    return next;
   }
+  if(lightingLayer){
+    const next=structuredClone(profile.fnLighting[lightingLayer-1]);
+    next.enabled=checkbox('fnRgbEnabled');
+    if(paletteEdited){
+      const keyColor=channels(named('perKey'));
+      for(const index of selectedKeys)next.palette[index]=keyColor;
+    }
+    return next;
+  }
+  const next=structuredClone(profile.lighting);
+  Object.assign(next,{mode:values('lightMode'),order:values('colorOrder'),color:channels(named('keyColor'))});
+  if(byId('keyBrightness'))next.keyBrightness=values('keyBrightness');
   if(next.mode===2&&paletteEdited){
     const keyColor=channels(named('perKey'));
     for(const index of selectedKeys)next.palette[index]=keyColor;
   }
   return next;
+}
+function previewBarColor(light,index,time){
+  if(!light.barEnabled||index>=light.barCount)return [0,0,0];
+  let result=light.barColor;
+  const mode=light.barMode??0;
+  if(mode===3){
+    const phase=(Math.floor(time*10/33)*0x010203)&0xffffff;
+    result=[phase>>>16,(phase>>>8)&255,phase&255];
+  }else if(mode){
+    const pulse=time%256;
+    const level=mode===1?Math.floor(Math.min(pulse,255-pulse)/4):32;
+    if(mode===1&&!light.barRainbow)result=result.map(channel=>channel*level/32);
+    else{
+      const led=light.barReverse?4-index:index;
+      const hue=(time*(mode===2?3:1)+(mode===2?112*led:0))%768;
+      const sector=hue>>8,amount=(hue&255)*level>>8;
+      result=[0,0,0];result[sector]=level-amount;result[(sector+1)%3]=amount;
+    }
+  }
+  return result.map(channel=>Math.round(channel*(light.barBrightness??100)/100));
+}
+function paintBarControls(){
+  if(!byId('barMode'))return;
+  const mode=values('barMode');
+  byId('barColor').closest('label').hidden=mode>=2||mode===1&&checkbox('barRainbow');
+  byId('barRainbow').closest('label').hidden=mode!==1;
+  byId('barDirection').closest('label').hidden=mode!==2;
 }
 const physicalLedIndex=KEY_NAMES.map((_,index)=>LED_TO_KEY.indexOf(index));
 function previewKeyColor(light,index,animation){
@@ -234,12 +302,14 @@ function renderBoard(){
 function paintBoard(){
   const board=byId('board');
   const lighting=page==='lighting';
-  const light=lightingDraft??profile.lighting;
-  const frame=lighting&&!lightingDraft?rgb:null;
+  const layerPalette=lighting&&lightingLayer?lightingDraft??profile.fnLighting?.[lightingLayer-1]:null;
+  const light=layerPalette?{...profile.lighting,mode:2,palette:layerPalette.palette}:lightingDraft??profile.lighting;
+  const frame=lighting&&!lightingLayer&&!lightingDraft?rgb:null;
   const animation=Math.floor(performance.now()/10);
   const preview=byId('rgbPreviewStatus');
   if(preview){
-    const text=lightingDraft?'Previewing lighting changes':frame?'Live keyboard and light strip':client?'Waiting for the keyboard’s RGB frame':'Offline lighting preview';
+    const text=layerPalette?`Fn${lightingLayer} palette preview · ${layerPalette.enabled?'enabled':'disabled'}`:
+      lightingDraft?'Previewing lighting changes':frame?'Live keyboard and light strip':client?'Waiting for the keyboard’s RGB frame':'Offline lighting preview';
     if(preview.textContent!==text)preview.textContent=text;
   }
   const calibrating=!!client&&!!status?.calibrationPhase;
@@ -253,9 +323,11 @@ function paintBoard(){
       const raw=String(status.raw[i]);
       if(reading.textContent!==raw)reading.textContent=raw;
       element.dataset.calibrated=status.calibrated[i];
+      if(partialCalibration())element.dataset.calibrationState=status.calibrated[i]?'captured':config.calibrated[i]?'previous':'missing';
       element.setAttribute('aria-label',KEY_NAMES[i]+' · '+raw+' ADC'+(status.calibrated[i]?' · measured':''));
     }else{
       delete element.dataset.calibrated;
+      delete element.dataset.calibrationState;
       element.removeAttribute('aria-label');
     }
     element.dataset.pressed=!!status?.pressed[i];
@@ -266,30 +338,33 @@ function paintBoard(){
     }
   }
   byId('board').querySelectorAll('.pro-bar i').forEach((led,i)=>{
-    const actual=frame?Array.from(frame.subarray(108+3*i,111+3*i)):
-      light.barEnabled&&i<light.barCount?light.barColor.map(channel=>Math.round(channel*(light.barBrightness??100)/100)):[0,0,0];
-    led.style.setProperty('--bar-color',actual.some(Boolean)?color(actual,255/32):'');
+    const bar=barDraft??profile.lighting;
+    const actual=lighting&&rgb&&!barDraft?Array.from(rgb.subarray(108+3*i,111+3*i)):previewBarColor(bar,i,animation);
+    led.style.setProperty('--bar-color',actual.some(Boolean)?color(actual,bar.barMode===3?1:255/32):'');
   });
   paintTravelMonitor();
   paintRuleTravel();
   const rollover=byId('keyboardRollover');
-  if(rollover)rollover.textContent=client?.transport.device.productName===NKRO_MODEL&&status?.nkro?
+  if(rollover)rollover.textContent=[NKRO_MODEL,...FN_RGB_PRODUCTS].includes(client?.transport.device.productName)&&status?.nkro?
     'NKRO active · 6KRO on host boot request':'6-key rollover plus modifiers';
   const pos=status?.positions[key];
   const travel=byId('travelReading');
   if(travel)travel.textContent=pos==null?'—':(pos*profile.travel[key]/1e6).toFixed(3)+' mm estimated · '+(pos/10).toFixed(1)+'%';
-  const cal=byId('calState');
+  const problem=adcProblem(),cal=byId('calState');
   if(cal){
     const n=status?.calibrated.filter(Boolean).length||0;
-    cal.textContent=status?.adcError?'ADC error '+status.adcError:status?.calibrationPhase===1?'Keep all keys released while baseline readings are collected.':status?.calibrationPhase===2?'Fully press and release each key. '+n+' of 36 measured.':status?.startupBaseline===1?'Release all keys. Waiting for stable idle readings.':status?.startupBaseline===2?'Startup baseline active. Calibrate to measure full key travel.':n+' of 36 keys calibrated.';
+    cal.textContent=problem?problem+' Restart the scanner before calibrating.':status?.calibrationPhase===1?'Keep all keys released while baseline readings are collected.':status?.calibrationPhase===2?partialCalibration()?'Fully press and release the keys you want to calibrate. '+n+' captured.':'Fully press and release each key. '+n+' of 36 measured.':status?.startupBaseline===1?'Release all keys. Waiting for stable idle readings.':status?.startupBaseline===2?'Startup baseline active. Calibrate to measure full key travel.':n+' of 36 keys calibrated.';
     byId('calProgress').value=n;
-    byId('finish').disabled=!client||n!==36||status?.calibrationPhase!==2;
+    byId('finish').disabled=!client||!!problem||(partialCalibration()?n===0:n!==36)||status?.calibrationPhase!==2;
+    byId('editor').querySelector('[data-action="begin"]').disabled=!client||!!problem||!!status?.calibrationPhase;
   }
   const diag=byId('scanStats');
-  if(diag)diag.textContent=info.scanHz?info.scanHz.toLocaleString()+' Hz complete 36-key scans · '+(info.scanTicks/144).toFixed(1)+' µs ADC frame · '+(info.scanWorst/144).toFixed(1)+' µs worst ADC frame':'Awaiting a scan measurement';
+  if(diag)diag.textContent=problem?problem+' Restart the scanner to resume live readings.':
+    info.scanHz?info.scanHz.toLocaleString()+' Hz complete 36-key scans · '+(info.scanTicks/144).toFixed(1)+' µs ADC frame · '+(info.scanWorst/144).toFixed(1)+' µs worst ADC frame':'Awaiting a scan measurement';
+  if(byId('rawData'))byId('rawData').textContent=status?.raw?KEY_NAMES.map((k,i)=>k.padEnd(7)+String(status.raw[i]).padStart(5)+' ADC   '+(status.positions[i]/10).toFixed(1)+'%').join('\n'):'';
   const running=byId('runningRates');
   if(running)running.textContent=client
-    ? 'Active polling rate cap '+(RATES[info.runningRate]?.toLocaleString()||'—')+' Hz · Scan '+(info.scanHz?info.scanHz.toLocaleString()+' Hz':scanModes[info.runningScanner]||'measuring')
+    ? 'Active polling rate cap '+(RATES[info.runningRate]?.toLocaleString()||'—')+' Hz · Scan '+(problem?'check Diagnostics':info.scanHz?info.scanHz.toLocaleString()+' Hz':'measuring')
     : 'Connect the keyboard to read its active rates.';
   const pad=byId('controllerStatus');
   if(pad){const text=controllerStatus();if(pad.textContent!==text)pad.textContent=text;}
@@ -506,9 +581,11 @@ const scanModes=['Compatibility','DMA balanced','DMA fast'];
 // Estimate using the default bank settling delays and a complete 36-key ADC scan.
 const estimatedScanRates=[600,10000,15000];
 function scanOptions(){
-  return scanModes.map((name,mode)=>{
-    const rate=mode===info.runningScanner&&info.scanHz?info.scanHz:estimatedScanRates[mode];
-    return name+' · ≈'+rate.toLocaleString()+' Hz';
+  const current=FN_RGB_PRODUCTS.includes(client?.transport.device.productName);
+  return (current?['DMA stability','DMA balanced',partialCalibration()?'DMA fast · primed':'DMA fast · ADC6 tuned']:scanModes).map((name,mode)=>{
+    const measured=mode===info.runningScanner&&info.scanHz&&!info.scanTrial&&!adcProblem();
+    if(measured)return name+' · '+info.scanHz.toLocaleString()+' Hz measured';
+    return current?name:name+' · ≈'+estimatedScanRates[mode].toLocaleString()+' Hz';
   });
 }
 const displayedAction=()=>advancedKind===null?profile.actions[slot]:
@@ -557,9 +634,12 @@ function paintRuleTravel(){
   if(output.textContent!==label)output.textContent=label;
 }
 function renderEditor(which){
+  const calibrating=!!status?.calibrationPhase;
+  const calibrationLock=calibrating?'<p>Calibration is in progress. Finish it in Quick Settings or stop it here to change scanner and polling settings.</p>'+commands(btn('Stop calibration','abort')):'';
   if(which==='quick')return '<h2>Switch calibration</h2><p id="calState" aria-live="polite"></p><progress id="calProgress" max="36" value="0"></progress>'+
     '<div class="commands">'+btn('Begin calibration','begin',!client||!!status?.calibrationPhase)+'<button id="finish" class="button ghost" data-action="finish" disabled>Finish calibration</button>'+btn('Abort','abort',!client||!status?.calibrationPhase)+
-    btn(status?.typingEnabled?'Disable typing':'Enable typing',status?.typingEnabled?'disable':'enable',!client||!!status?.calibrationPhase)+'</div><p>Begin with all keys released. The keyboard preview shows live ADC readings and highlights each key once its travel is measured.</p>';
+    btn(status?.typingEnabled?'Disable typing':'Enable typing',status?.typingEnabled?'disable':'enable',!client||calibrating)+
+    btn('Restart scanner','retry',!client||calibrating)+'</div><p>'+(partialCalibration()?'Red means uncalibrated, green means previously calibrated, and blue means captured in this session. Finish updates the blue keys.':'Begin with all keys released. The keyboard preview shows live ADC readings and highlights each key once its travel is measured.')+'</p>';
   if(which==='actuation'||which==='rapid')return tuning(which==='rapid');
   if(which==='keymap')return renderRemap(remapOptions());
   if(which==='switches'){
@@ -572,16 +652,30 @@ function renderEditor(which){
   if(which==='lighting'){
     const light=profile.lighting;
     const adjustable=!client||client.lighting.supportsBrightness;
-    return '<h2>Keyboard and lightbar</h2>'+grid(select('lightMode','Keyboard effect',['Off','Solid','Per key','Reactive','Color wave','Breathing'],light.mode),
-      '<label>Keyboard color<input id="keyColor" type="color" value="'+color(light.color,255/32)+'"></label>',
-      adjustable?brightness('keyBrightness','Keyboard brightness',light.keyBrightness):'',
+    const layers=profile.fnLighting?'<div class="layer-bar">'+layerTabs(lightingLayer,'lighting')+'</div>':'';
+    const fn=lightingLayer?profile.fnLighting?.[lightingLayer-1]:null;
+    const fixedKeyRate=[ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,DESKTOP_KEYS_MODEL].includes(client?.transport.device.productName);
+    const keyboard=fn?'<h2>Fn'+lightingLayer+' key lighting</h2>'+grid(
+      check('fnRgbEnabled','Use this palette while Fn is held',fn.enabled),
+      '<label>Selected key color<input id="perKey" type="color" value="'+color(fn.palette[key],255/32)+'"></label>')+
+      commands(btn('Apply Fn lighting','rgb')):
+      '<h2>Keyboard lighting</h2>'+grid(
+        select('lightMode','Keyboard effect',['Off','Solid','Per key','Reactive','Color wave','Breathing'],light.mode),
+        '<label>Keyboard color<input id="keyColor" type="color" value="'+color(light.color,255/32)+'"></label>',
+        '<label>Selected key color<input id="perKey" type="color" value="'+color(light.palette[key],255/32)+'"></label>',
+        adjustable?brightness('keyBrightness','Keyboard brightness',light.keyBrightness):'',
+        select('colorOrder','Channel order',['GRB','RGB'],light.order))+
+        commands(btn('Apply keyboard lighting','rgb'),btn('Identify selected LED','identify',!client||selectedKeys.size!==1));
+    const bar='<h2>Lightbar</h2>'+grid(
       check('barEnabled','Enable lightbar',light.barEnabled),
+      desktopKeys()?select('barMode','Effect',['Static','Breathing','Rainbow wave','Spectrum'],light.barMode??0):'',
       '<label>Lightbar color<input id="barColor" type="color" value="'+color(light.barColor,255/32)+'"></label>',
-      adjustable?brightness('barBrightness','Light strip brightness',light.barBrightness):'',
-      '<label>Selected key color<input id="perKey" type="color" value="'+color(light.palette[key],255/32)+'"></label>',
-      select('colorOrder','Channel order',['GRB','RGB'],light.order),select('waveRate','LED data rate',['Original','Half rate'],light.rate))+
-      commands(btn('Apply lighting','rgb'),btn('Identify selected LED','identify',!client||selectedKeys.size!==1))+
-      (adjustable?'':'<p class="hint">Update to HE30 Pro v0.13 for separate keyboard and light strip brightness.</p>');
+      desktopKeys()?check('barRainbow','Rainbow breathing',light.barRainbow):'',
+      desktopKeys()?select('barDirection','Wave direction',['Top to bottom','Bottom to top'],Number(!!light.barReverse)):'',
+      adjustable?brightness('barBrightness','Lightbar brightness',light.barBrightness):'',
+      select('waveRate',fixedKeyRate?'Lightbar data rate':'LED data rate',['Original','Half rate'],light.rate))+
+      commands(btn('Apply lightbar','rgbBar'));
+    return layers+'<div class="lighting-settings"><section>'+keyboard+'</section><section data-lightbar>'+bar+'</section></div>';
   }
   if(which==='gamepad')return renderGamepad();
   if(which==='advanced')return '<div class="tuning-preferences">'+tuningPreferences()+'</div>'+renderAdvanced({action:displayedAction(),rules:profile.actions,slot,creating:advancedKind!==null,
@@ -590,6 +684,7 @@ function renderEditor(which){
     (which==='settings'?grid(select('polling','Polling rate',RATES.map(rate=>rate+' Hz'),info.rate),
       select('scan','Scan rate',scanOptions(),info.scanMode),
       tuningPreferences(),
+      desktopKeys()?field('pointerSpeed','Pointer speed · counts per report',profile.lighting.pointerSpeed??1,1,32):'',
       fullGamepad()?'<p class="hint">Xbox controller visibility is available on the Gamepad page.</p>':check('enablePad','Expose USB gamepad after reconnect',info.gamepad))+
       (browserRates()||onboardRates()
         ? commands(btn('Apply polling rate','applyPolling',!!status?.calibrationPhase),btn('Apply scan mode','applyScanner',!!status?.calibrationPhase),
@@ -597,16 +692,25 @@ function renderEditor(which){
           onboardRates()?'':btn('Forget remembered rates','forgetRates',!rememberedRates()),
           browserRates()&&!diagnosticSave()?btn('Install startup rates via recovery','rateImage',!!status?.calibrationPhase):'')
         : commands(btn('Apply for this session','sessionRates',!!status?.calibrationPhase),(recoverySave()?btn('Install startup rates via recovery','rateImage',!!status?.calibrationPhase):btn('Apply and save device settings','device',!!status?.calibrationPhase)),btn('Restart scanner','retry',!client||!!status?.calibrationPhase)))+
-      '<p id="runningRates"></p><p>'+(onboardRates()
+      (desktopKeys()?commands(btn('Apply pointer speed','pointerSpeed',calibrating)):'')+
+      calibrationLock+'<p id="runningRates"></p><p>'+(onboardRates()
         ? 'Polling applies immediately. Changing scan mode restarts Hall scanning. Save changes keeps pending settings on the keyboard.'
         : browserRates()
-        ? 'Polling applies immediately. Changing scan mode restarts Hall scanning. Remember active rates reapplies your settings when this browser reconnects. '+(diagnosticSave()?'Export profiles to keep a copy of other edits.':'Recovery installs rates on the keyboard and clears profiles and calibration.')
+        ? 'Polling applies immediately. Changing scan mode restarts Hall scanning. Remember active rates keeps your settings until you close or reload this tab. '+(diagnosticSave()?'Export profiles to keep a copy of other edits.':'Recovery installs rates on the keyboard and clears profiles and calibration.')
         : recoverySave()?'Recovery installs the selected startup rates with factory profiles and clears calibration. Export profiles first.':'Apply and save writes all pending changes to the keyboard.')+' Scan rates describe complete 36-key scans and vary with device activity.</p>':
       grid(textField('profileName','Current profile name',profile.name))+commands(btn('Rename profile','renameProfile'),btn('Export current profile','exportProfile'))+
       '<label>Restore profile or earlier HE30 settings<input type="file" id="restoreProfile" accept="application/json,.json"></label>');
   if(which==='firmware')return '<h2>Firmware & recovery</h2><p>The recovery page checks the firmware hash and tracks the USB transition.</p>'+
     commands(btn('Enter recovery','recovery',!client||recoveryPending),'<a href="../flasher/" class="button ghost linked-button">Open flasher</a>');
-  if(which==='diagnostics')return '<h2>Scan diagnostics</h2><p id="scanStats">Awaiting a scan measurement</p><p id="travelReading"></p><pre id="rawData"></pre>';
+  if(which==='diagnostics')return '<h2>Scan diagnostics</h2><p id="scanStats">Awaiting a scan measurement</p>'+
+    calibrationLock+commands(btn('Restart scanner','retry',!client||calibrating))+
+    (FN_RGB_PRODUCTS.includes(client?.transport.device.productName)?
+      grid(select('scanTrial','ADC experiment',[
+        'Use configured scanner','A · Original fast','B · Longer ADC6 acquisition','C · ADC6 last',
+        'D · Add 2 µs per bank','E · Discard first conversion','F · ADC6 last, longer acquisition'
+      ],info.scanTrial))+commands(btn('Apply ADC experiment','scanTrial',!!status?.calibrationPhase))+
+      '<p>Experiments are temporary. Compare the measured scan rate and raw ADC values below.</p>':'')+
+    '<p id="travelReading"></p><pre id="rawData"></pre>';
   return '<h2>Epomaker HE30</h2><p>'+(client?client.transport.device.productName+' connected':'Offline workspace')+' · 36 Hall sensors · 4 onboard profiles · 3 layers</p>'+
     '<p>Current profile '+esc(profile.name)+'. USB gamepad '+(info.gamepadAttached?'enabled':'disabled')+'.</p>'+
     (client?'<p id="keyboardRollover"></p>':'')+
@@ -623,7 +727,7 @@ function render(){
   const [title,description]=headings[which]||headings.overview;
   byId('pageTitle').innerHTML='<h1>'+title+'</h1><p>'+description+'</p>';
   closeRemapPicker();
-  lightingDraft=null;paletteEdited=false;
+  lightingDraft=barDraft=null;paletteEdited=false;
   if(page!=='lighting')rgb=null;
   byId('editor').before(byId('board'));
   byId('editor').innerHTML=renderEditor(which);
@@ -652,6 +756,10 @@ function render(){
     byId('editor').querySelector('.layer-bar').after(byId('board'));
     bindRemap(remapOptions());
   }
+  if(which==='lighting'){
+    byId('editor').querySelector('.layer-bar')?.after(byId('board'));
+    paintBarControls();
+  }
 }
 async function editConfig(edit){
   const next=structuredClone(config);edit(next);encodeConfig(next);
@@ -662,6 +770,7 @@ async function editConfig(edit){
 async function applyRemap(code){
   if(isProfileUsage(code)&&!profileKeys())throw new Error('Profile keys require HE30 Pro v0.20.');
   const codes=code instanceof Map?code:new Map(editTargets(false).map(index=>[index,code]));
+  if(!desktopKeys()&&[...codes.values()].some(isDesktopUsage))throw new Error('This mapping requires HE30 Pro v0.25.');
   if(layer<2)await editConfig(next=>{
     for(const [index,value] of codes)next.keys[index][layer?'fnUsage':'normalUsage']=value;
   });
@@ -682,9 +791,21 @@ async function requireActiveProfile(){
   }
 }
 function remapOptions(){
-  return {root:byId('editor'),keyName:selectionLabel(),layer,usage:selectedUsage(key),profileKeys:profileKeys(),
+  return {root:byId('editor'),keyName:selectionLabel(),layer,usage:selectedUsage(key),profileKeys:profileKeys(),desktopKeys:desktopKeys(),
     onLayer:next=>{if(!busy){layer=next;render();}},
     onPick:code=>{if(!busy)run(()=>applyRemap(code));},
+    onCycleAll:()=>run(async()=>{
+      const targets=editTargets(false);
+      await requireActiveProfile();
+      if(client){
+        for(const index of targets)await client.cycleAll(index,layer);
+        await refresh();
+      }else for(const slot of offline)for(const index of targets){
+        if(layer===2)slot.profile.fn2[index]=244;
+        else slot.config.keys[index][layer?'fnUsage':'normalUsage']=244;
+      }
+      mark('Next profile assigned in all four profiles. '+keepChanges());
+    }),
     onReset:()=>{if(!busy)run(()=>applyRemap(new Map(editTargets(false).map(index=>[index,layer?254:codeFor(KEY_NAMES[index])]))));}};
 }
 async function writeRule(index,rule){
@@ -725,9 +846,10 @@ const actions={
   async switch(all){
     const travel=Math.round(num('travel',.5,6)*1000),coefficient=Math.round(num('coefficient',0,65535));
     for(const i of editTargets(all)){
+      if(travel===profile.travel[i]&&coefficient===profile.coefficient[i])continue;
       if(client){await requireActiveProfile();await client.switch(i,travel,coefficient);}
       profile.travel[i]=travel;profile.coefficient[i]=coefficient;
-      if(client)dirty=true;
+      if(client){dirty=true;switchCalibrationAdvice=true;}
     }
     mark();
   },
@@ -747,13 +869,20 @@ const actions={
     await writeRule(index,blankAction());
     if(slot===index)advancedKind=null;
   },
-  async rgb(){
-    const next=readLightingEditor();
+  async rgb(scope='keyboard'){
+    const next=readLightingEditor(scope);
+    if(scope==='keyboard'&&lightingLayer){
+      await requireActiveProfile();
+      const applied=client?await client.lighting.applyFn(info.active,lightingLayer,next):next;
+      profile.fnLighting[lightingLayer-1]=applied;
+      mark('Fn'+lightingLayer+' palette applied. '+keepChanges());
+      return;
+    }
     encodeLighting(next);
     await requireActiveProfile();
     const applied=client?await client.lighting.apply(next):null;
     profile.lighting=applied?.config||next;rgb=null;
-    mark(applied?.error?'Colors accepted. The keyboard reported an LED transfer error.':'Lighting applied. '+keepChanges());
+    mark(applied?.error?'Colors accepted. The keyboard reported an LED transfer error.':(scope==='bar'?'Lightbar':'Keyboard lighting')+' applied. '+keepChanges());
   },
   async gamepad(){
     await requireActiveProfile();
@@ -796,7 +925,7 @@ const actions={
   },
   async applyRates(active,before,rate,scanMode,gamepad,scope='both'){
     const changed=before.rate!==rate||before.scanMode!==scanMode||before.gamepad!==gamepad;
-    const restartScanner=scope!=='polling'&&(before.runningScanner!==scanMode||!!status?.adcError);
+    const restartScanner=scope!=='polling'&&(before.runningScanner!==scanMode||!!before.scanTrial||!!adcProblem());
     if(changed){
       await active.deviceSettings(rate,scanMode,gamepad);
       dirty=true;
@@ -852,13 +981,13 @@ const actions={
     const {runningRate:rate,runningScanner:scanMode}=await active.capabilities();
     if(client!==active)return;
     if(!RATES[rate]||scanMode<0||scanMode>2)throw new Error('The keyboard did not report valid active rates.');
-    localStorage.setItem(rememberedRatesKey(active),JSON.stringify({rate,scanMode}));
-    message('Active rates remembered in this browser.');
+    sessionRates.set(rememberedRatesKey(active),{rate,scanMode});
+    message('Active rates remembered for this tab.');
   },
   forgetRates(){
     if(!browserRates())return;
-    localStorage.removeItem(rememberedRatesKey(client));
-    message('Remembered rates removed from this browser.');
+    sessionRates.delete(rememberedRatesKey(client));
+    message('Remembered rates cleared for this tab.');
   },
   async renameProfile(){
     const label=named('profileName').trim();
@@ -980,12 +1109,21 @@ async function restoreProfile(file){
   if(!['he30-pro-profile-v1','he30-pro-profile-v2'].includes(saved.format))throw new Error('Choose a HE30 profile JSON.');
   if(saved.format==='he30-pro-profile-v2'&&!fullGamepad())throw new Error('Update to HE30 Pro v0.11 before importing an Xbox controller profile.');
   const next=structuredClone(saved.profile),nextCfg=structuredClone(saved.config);
+  if(next.fnLighting!==undefined){
+    if(!Array.isArray(next.fnLighting)||next.fnLighting.length!==2)throw new Error('Expected two Fn lighting palettes.');
+    const palettes=next.fnLighting.map(encodeFnLighting);
+    if(client&&!client.lighting.supportsFnLighting){
+      if(palettes.some(data=>data.some(Boolean)))throw new Error('Fn lighting requires HE30 Pro v0.22.');
+      delete next.fnLighting;
+    }
+  }
   encodeConfig(nextCfg);encodeLighting(next.lighting);
   client?.lighting.checkBrightness(next.lighting);
   if(!/^[ -~]{1,15}$/.test(next.name)||next.lighting.barCount>5||next.actions?.length!==8||
      !['fn2','gamepad','travel','coefficient'].every(name=>Array.isArray(next[name])&&next[name].length===36))
     throw new Error('Invalid profile structure.');
   next.actions.forEach(actionBytes);
+  if(!desktopKeys()&&next.fn2.some(isDesktopUsage))throw new Error('This profile uses mappings that require HE30 Pro v0.25.');
   if(!profileKeys()&&next.fn2.some(isProfileUsage))throw new Error('This profile uses shortcuts that require HE30 Pro v0.20.');
   for(let i=0;i<36;i++){
     if(![next.fn2[i],next.gamepad[i],next.travel[i],next.coefficient[i]].every(Number.isInteger)||
@@ -1009,6 +1147,7 @@ async function restoreProfile(file){
     try{
       await client.foundation.applyConfig(nextCfg);
       await client.lighting.apply(next.lighting);
+      if(next.fnLighting)for(const layer of [1,2])await client.lighting.applyFn(info.active,layer,next.fnLighting[layer-1]);
       for(let i=0;i<36;i++){
         if(next.fn2[i]!==profile.fn2[i])await client.fn2(i,next.fn2[i]);
         if(!nextController&&next.gamepad[i]!==profile.gamepad[i])await client.mapping(i,next.gamepad[i]);
@@ -1021,6 +1160,7 @@ async function restoreProfile(file){
       await refresh();
     }catch(error){await refresh().catch(()=>{});throw new Error('Restore was interrupted. Review the keyboard settings before saving. '+error.message);}
   }else{
+    next.fnLighting??=profile.fnLighting??blankFnLighting();
     offline[info.active]={config:nextCfg,profile:next};config=nextCfg;profile=next;info.names[info.active]=next.name;
     if(nextController)controller=nextController;
   }
@@ -1028,12 +1168,25 @@ async function restoreProfile(file){
   rgb=null;mark(migrationWarnings.length?'Profile imported. '+migrationWarnings.join(' ')+' '+keepChanges():undefined);
 }
 const actionMap={
+  pointerSpeed:async()=>{
+    const speed=num('pointerSpeed',1,32);
+    if(!Number.isInteger(speed))throw new Error('Choose a whole pointer speed.');
+    await requireActiveProfile();
+    if(client)await client.pointerSpeed(speed);
+    profile.lighting.pointerSpeed=speed;
+    mark('Pointer speed applied. '+keepChanges());
+  },
+  scanTrial:async()=>{
+    await client.scanTrial(values('scanTrial'));
+    await refresh();
+    message('Scanner restarted. Check the measured scan rate and raw readings.');
+  },
   selectAllKeys:()=>selectKeys(visualKeyOrder),
   invertKeys:()=>selectKeys(visualKeyOrder,'toggle'),
   singleKey:()=>{selectionAnchor=key;selectKeys([key]);},
   bind:actions.bind,tune:()=>actions.tune(false,false),tuneAll:()=>actions.tune(true,false),
   rapid:()=>actions.tune(false,true),rapidAll:()=>actions.tune(true,true),
-  switch:()=>actions.switch(false),switchAll:()=>actions.switch(true),rule:actions.rule,rgb:actions.rgb,gamepad:actions.gamepad,clearPad:actions.clearPad,
+  switch:()=>actions.switch(false),switchAll:()=>actions.switch(true),rule:actions.rule,rgb:()=>actions.rgb(),rgbBar:()=>actions.rgb('bar'),gamepad:actions.gamepad,clearPad:actions.clearPad,
   rateImage:()=>{location.assign('../flasher/?polling='+values('polling')+'&scanner='+values('scan'));},
   device:actions.device,sessionRates:()=>actions.device(false),applyPolling:()=>actions.device(false,'polling'),applyScanner:()=>actions.device(false,'scanner'),
   rememberRates:actions.rememberRates,forgetRates:actions.forgetRates,
@@ -1050,6 +1203,7 @@ document.addEventListener('click',e=>{
     if(!multiKeyPage()){selectedKeys=new Set([key]);selectionAnchor=key;}
     render();
   }
+  if(el.dataset.lightingLayer!==undefined){lightingLayer=Number(el.dataset.lightingLayer);render();}
   if(el.id==='livePressDistanceToggle')setLiveTravel(!liveTravel);
   if(el.dataset.key!==undefined){
     const index=Number(el.dataset.key);
@@ -1087,6 +1241,9 @@ document.addEventListener('click',e=>{
 });
 byId('backHomeButton').onclick=showWelcome;
 byId('tryWorkspace').onclick=showWorkspace;
+byId('calibrationAdvice').addEventListener('close',e=>{
+  if(e.target.returnValue==='calibrate'&&client){page='performance';view='quick';render();}
+});
 byId('startInitialization').onclick=()=>{
   if(client){showWorkspace();return;}
   byId('welcomeContent').hidden=true;
@@ -1098,13 +1255,14 @@ byId('sidebarThemeSelect').onchange=e=>{document.documentElement.dataset.theme=e
 byId('rename').onclick=()=>{page='settings';view='profiles';render();byId('profileName').focus();};
 byId('editor').addEventListener('input',event=>{
   const input=event.target;
-  if(input.id==='perKey'){byId('lightMode').value='2';paletteEdited=true;}
+  if(input.id==='perKey'){if(!lightingLayer)byId('lightMode').value='2';paletteEdited=true;}
   if(input.id==='barColor')byId('barEnabled').checked=true;
   if(input.id==='keyColor'&&![1,3,5].includes(values('lightMode')))byId('lightMode').value='1';
   if(page==='lighting'){
     const output=input.parentElement.querySelector('output');
     if(output)output.value=input.value+'%';
-    lightingDraft=readLightingEditor();
+    if(input.closest('[data-lightbar]')){barDraft=readLightingEditor('bar');paintBarControls();}
+    else lightingDraft=readLightingEditor();
     paintBoard();
   }
   if(input.dataset.distanceFor)byId(input.dataset.distanceFor).value=input.value;
@@ -1128,15 +1286,14 @@ bindBoardSelection(byId('board'),()=>!busy&&multiKeyPage(),(keys,mode)=>{
 byId('editor').addEventListener('change',e=>{
   if(e.target.id==='distancePrecision'){
     distancePrecision=Number(e.target.value);
-    localStorage.setItem('he30-distance-precision',String(distancePrecision));render();
+    render();
   }
   if(e.target.id==='boardGauge'){
     boardGauge=e.target.checked;
-    localStorage.setItem('he30-board-gauge',String(boardGauge));paintBoard();
+    paintBoard();
   }
   if(e.target.id==='syncRapid'){
     syncRapid=e.target.checked;
-    localStorage.setItem('he30-sync-rapid',String(syncRapid));
     if(syncRapid)byId('rtPress').dispatchEvent(new Event('input',{bubbles:true}));
   }
   if(e.target.id==='restoreProfile')run(()=>restoreProfile(e.target.files[0]));
@@ -1184,6 +1341,7 @@ const connectKeyboard=authorizedProduct=>run(async()=>{
     return;
   }
   const next=await ProDevice.connect(authorizedProduct);if(!next)return;
+  calibrationAdviceShown.clear();switchCalibrationAdvice=false;endpointDeviationSince=0;endpointDeviationKeys=[];
   client=next;generation++;
   try{
     await refresh();
@@ -1193,7 +1351,7 @@ const connectKeyboard=authorizedProduct=>run(async()=>{
     if(remembered){
       try{
         await actions.applyRates(next,info,remembered.rate,remembered.scanMode,info.gamepad);
-        if(client===next)message('Connected. Rates restored from this browser.');
+        if(client===next)message('Connected. Rates restored for this tab.');
       }catch(error){await reportDeviceError(error);}
     }else message('Connected to '+next.transport.device.productName+'.');
   }
@@ -1233,7 +1391,7 @@ async function poll(){
     try{
       const full=(!fast&&!lighting)||!status||start-lastFullStatus>=(lighting?200:1000);
       const next=full?await active.foundation.readStatus():fast?await active.foundation.readTravel():null;
-      const extra=full&&current()&&['diagnostics','overview','settings'].includes(page)?await active.capabilities():null;
+      const extra=full&&current()&&(['diagnostics','overview','settings'].includes(page)||lighting&&active.supportsDesktopKeys)?await active.capabilities():null;
       const checkProfile=full||start-lastProfileCheck>=200;
       const observed=extra?.active??(checkProfile&&current()?await active.activeProfile():info.active);
       if(current()&&checkProfile)lastProfileCheck=start;
@@ -1245,22 +1403,31 @@ async function poll(){
       }else if(current()){
         if(full){
           lastFullStatus=start;
+          const wasCalibrating=!!status?.calibrationPhase;
           acceptStatus(next);
+          if(wasCalibrating!==!!status.calibrationPhase)render();
           paintSaveState();
-          if(extra)Object.assign(info,extra);
+          if(extra){
+            Object.assign(info,extra);
+            if(extra.keyBrightness!==undefined&&extra.keyBrightness!==(profile.lighting.keyBrightness??100)){
+              profile.lighting.keyBrightness=extra.keyBrightness;
+              const brightness=byId('keyBrightness');
+              if(brightness&&!lightingDraft){brightness.value=extra.keyBrightness;brightness.parentElement.querySelector('output').value=extra.keyBrightness+'%';}
+            }
+          }
           const scan=byId('scan');
           if(scan)scanOptions().forEach((label,index)=>{scan.options[index].textContent=label;});
-          if(byId('rawData'))byId('rawData').textContent=KEY_NAMES.map((k,i)=>k.padEnd(7)+String(next.raw[i]).padStart(5)+' ADC   '+(next.positions[i]/10).toFixed(1)+'%').join('\n');
           if(page==='gamepad'&&active.supportsGamepad){
             const controllerLive=await active.gamepadStatus();
             if(current())padState=controllerLive;
           }
         }else if(next)status={...status,...next};
-        if(lighting&&current()&&!lightingDraft){
+        if(lighting&&current()&&(!lightingDraft||!barDraft)){
           const frame=await active.liveRGB();
           if(current())rgb=frame;
         }
         if(current())paintBoard();
+        if(full&&current())maybeRecommendCalibration();
       }
     }catch(error){if(current())await reportDeviceError(error);}
     finally{pollPending=false;}
@@ -1273,7 +1440,7 @@ async function poll(){
 for(const label of [...USAGE_NAMES.values(),'Fn1','Fn2']){
   const option=document.createElement('option');option.value=label;byId('keyCodes').append(option);
 }
-fetch('switches.json').then(r=>{if(!r.ok)throw new Error();return r.json();}).then(data=>{catalog.push(...data.switches);if(page==='performance'&&view==='switches')render();}).catch(()=>{});
+fetch('switches.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error();return r.json();}).then(data=>{catalog.push(...data.switches);if(page==='performance'&&view==='switches')render();}).catch(()=>{});
 render();
 byId('heroKeyboard').innerHTML=byId('board').innerHTML;
 byId('heroKeyboard').querySelectorAll('button').forEach(button=>{

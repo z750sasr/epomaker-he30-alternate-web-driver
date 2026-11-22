@@ -6,9 +6,15 @@ __attribute__((noinline)) static void release_actions(void){
  bytes_zero(S->winner,ACTION_COUNT);
  bytes_zero(S->action_queue,ACTION_COUNT);
  S->gp_pending=1;gp_reset(&G->state);
+#ifdef HE30_DESKTOP_KEYS
+ S->mouse_down=0;S->mouse_wheel=0;
+#endif
 }
 
-__attribute__((section(".early"),noinline)) static void filter_pair(const Action *a,u32 slot){
+#ifndef HE30_DESKTOP_KEYS
+__attribute__((section(".early")))
+#endif
+__attribute__((noinline)) static void filter_pair(const Action *a,u32 slot){
  const u32 left=a->key,right=a->other;
  const u8 both=S->active[left] | (S->active[right]<<1);
  const u8 new_edges=both&~S->action_prev[slot];

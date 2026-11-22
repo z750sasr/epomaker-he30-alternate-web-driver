@@ -72,6 +72,10 @@ def expand(w):
 
 DIAGNOSTICS=manifest.get('save_diagnostics',False)
 FLASH_RESIDENT_SAVE=manifest.get('flash_resident_save',False)
+FN_RGB=manifest.get('fn_rgb',False)
+FN_PAGES=[int(p,16) for p in manifest.get('fn_light_pages',[])]
+def writable(address):
+    return 0x0801e000<=address<0x08020000 or any(p<=address<p+768 for p in FN_PAGES)
 SRAM_WRITER=DIAGNOSTICS and not FLASH_RESIDENT_SAVE
 RAM_BEGIN=symbols.get('__ramflash_begin',0)
 RAM_END=symbols.get('__ramflash_end',0)
@@ -86,7 +90,7 @@ class CPU:
         self.user_mode=manifest.get('user_mode_save',False)
         self.flash_read_protected=FLASH_RESIDENT_SAVE
         self.flash_buffer_busy=FLASH_RESIDENT_SAVE
-        self.sent=[];self.adc_samples={};self.busy=0;self.fail=None;self.adc_ready=False;self.conversions=[]
+        self.sent=[];self.adc_samples={};self.busy=0;self.fail=None;self.adc_ready=False;self.conversions=[];self.first_rank_sample=None
         self.native_test_ranges=()
         self.latch={0x40010800:0,0x40011000:0x6000,0x40010c00:0x400};self.unlock=0;self.mode_unlock=0;self.page_buffer={};self.erases=[];self.programs=[];self.cut=None;self.dma_frames=[]
     def field(self,name,value=None,size=1):
@@ -132,7 +136,7 @@ class CPU:
             self.ram[a-0x20000000:a-0x20000000+n]=v.to_bytes(n,'little');return
         f=self.physical(a)
         if f is not None:
-            assert n==4 and a%4==0 and 0x0801e000<=a<0x08020000 and self.mode_unlock==2
+            assert n==4 and a%4==0 and writable(a) and self.mode_unlock==2
             assert writer_bounds[0]<=self.pc<writer_bounds[1]
             assert self.regs.get(0x40022010,0)&0x10000
             assert a&~255==self.erases[-1], 'Write outside the last erased row'
@@ -159,15 +163,19 @@ class CPU:
         if a==0x40012408 and v&0x500000==0x500000:
             self.adc_ready=self.fail!='conversion'
             if v&0x100 and self.regs.get(0x40020008,0)&1:
-                assert self.regs[0x4002000c]==12 and self.regs[0x40020010]==0x4001244c
+                count=self.regs[0x4002000c]
+                assert count in ([12,13] if FN_RGB else [12]) and self.regs[0x40020010]==0x4001244c
+                assert (self.regs[0x4001242c]>>20&15)==count-1
                 if self.fail=='dma_adc':self.regs[0x40020000]|=8
                 elif self.fail!='conversion':
                     banks=[i for i,(port,mask) in enumerate([(0x40011000,0x2000),(0x40011000,0x4000),(0x40010c00,0x400)]) if not self.latch[port]&mask]
                     assert len(banks)==1
-                    for i in range(12):
+                    for i in range(count):
                         channel=(self.regs[0x40012434-4*(i//6)]>>((i%6)*5))&31
                         self.conversions.append((banks[0],channel))
-                        self.put(self.regs[0x40020014]+2*i,1000+banks[0]*500+11*channel,2)
+                        sample=self.adc_samples.get((banks[0],channel),1000+banks[0]*500+11*channel)
+                        if i==0 and self.first_rank_sample is not None:sample=self.first_rank_sample
+                        self.put(self.regs[0x40020014]+2*i,sample,2)
                     self.regs[0x40020000]|=2
         if a==0xe000f008:self.time=v
         if a==0x40022004:
@@ -186,7 +194,7 @@ class CPU:
             if v&0x8000:self.mode_unlock=0
             if v&0x20040==0x20040:
                 page=self.regs[0x40022014]
-                assert self.unlock==2 and self.mode_unlock==2 and 0x0801e000<=page<0x08020000 and page%256==0
+                assert self.unlock==2 and self.mode_unlock==2 and writable(page) and page%256==0
                 self.regs[a]&=~0x40
                 if self.flash_read_protected and not 0x5000<=self.pc<0x20000:
                     self.regs[0x4002200c]=0x10
@@ -220,12 +228,13 @@ class CPU:
                     ep,p,n,copy=self.r[10:14]
                     packets={(1,8),(2,64),(3,20)}
                     if manifest.get('nkro'):packets.add((1,29))
+                    if manifest.get('desktop_keys'):packets.add((4,4))
                     assert copy==1 and (ep,n) in packets
                     if self.busy:self.busy-=1;self.r[10]=0
                     else:self.sent.append((ep,self.blob(p,n=n)));self.r[10]=1
                 pc=self.r[1];continue
             valid_native=any(start<=pc<end for start,end in self.native_test_ranges)
-            assert pc%2==0 and (0x18c7c<=pc<0x19000 or 0x19158<=pc<0x1e000 or RAM_BEGIN<=pc<RAM_END or valid_native),f'Invalid PC {pc:#x}'
+            assert pc%2==0 and (0x18c7c<=pc<0x19000 or 0x19158<=pc<0x1e000 or RAM_BEGIN<=pc<RAM_END or FN_RGB and 0xea00<=pc<0xf900 or valid_native),f'Invalid PC {pc:#x}'
             w=self.get(pc,4);size=4
             if (w&3)!=3:w=expand(w&65535);size=2
             op=w&127;rd=w>>7&31;f=w>>12&7;a=w>>15&31;b=w>>20&31;top=w>>25
@@ -502,7 +511,7 @@ pset(c,8,b'\6\2\1')
 pset(c,2,b'\0')
 assert read(c,0xd2,1,976)[704:712]==b'Slot One'
 assert get_wire(c)[160+8*14+8]==253
-assert control(c,8)==0 and c.erases==list(range(0x0801e000,0x0801f000,256))
+assert control(c,8)==0 and c.erases==([FN_PAGES[0]+256*i for i in range(3)] if FN_RGB else [])+list(range(0x0801e000,0x0801f000,256))
 d=reboot(saved_image(c))
 assert d.get(0x20000102)==106 and d.get(0x20000104)==3
 assert read(d,0xd2,0,88)[5:11]==b'\0\6\2\1\0\1'
@@ -578,7 +587,9 @@ start=fresh();start.flash[:]=saved_image(e)
 start.call('firmware_main',limit=4500000,stop=lambda cpu,pc:cpu.field('frames',size=4)>=2)
 assert start.calls[:4]==[0x795e,0x15e7e,0x52c0,0x5412]
 assert start.latch[0x40010800]&0x600==0x600
-assert start.conversions[:36]==[(g,ch) for g in [2,0,1] for ch in [6,7,14,15,8,9,5,4,12,13,11,10]]
+expected_channels=[10,7,14,15,8,9,5,4,12,13,11,6] if FN_RGB else [6,7,14,15,8,9,5,4,12,13,11,10]
+if manifest.get('calibration_qol'):expected_channels=[6,6,7,14,15,8,9,5,4,12,13,11,10]
+assert start.conversions[:len(expected_channels)*3]==[(g,ch) for g in [2,0,1] for ch in expected_channels]
 assert not start.programs and not start.erases
 for _ in range(20):
     start.time+=20*144000;start.call('rgb_service')
@@ -604,8 +615,9 @@ check('RGB off and generated color wave reach completed frame readback')
 # The web tests consume exact replies from the compiled handlers.
 fixtures=[]
 fixture= fresh()
-for command,op,length in [(0xd0,0,208),(0xd0,1,664),(0xd1,0,160),(0xd1,8,123),(0xd2,0,88),(0xd2,1,976),(0xd3,0,40),(0xd3,1,292)]:
-    ranges=[(0,8)]+[(off,min(56,length-off)) for off in range(0,length,56)]
+for command,op,length in [(0xd0,0,208),(0xd0,1,664),(0xd1,0,160),(0xd1,8,123),(0xd2,0,89 if manifest.get('desktop_keys') else 88),(0xd2,1,976),(0xd3,0,40),(0xd3,1,292)]+([(0xd1,9,73)] if FN_RGB else []):
+    ranges=([(slot*128+off,n) for slot in range(8) for off,n in [(0,55),(55,18)]] if op==9 else
+            [(0,8)]+[(off,min(56,length-off)) for off in range(0,length,56)])
     for off,n in ranges:
         reply=request(fixture,command,op,off=off,length=n)
         packet=fixture.blob(TEMP,n=64)

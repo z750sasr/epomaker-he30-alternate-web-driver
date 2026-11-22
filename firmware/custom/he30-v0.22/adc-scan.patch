@@ -1,0 +1,239 @@
+diff --git a/firmware/custom/he30-v0.15/firmware.c b/firmware/custom/he30-v0.15/firmware.c
+index ba23518..14de80b 100644
+--- a/firmware/custom/he30-v0.15/firmware.c
++++ b/firmware/custom/he30-v0.15/firmware.c
+@@ -108,7 +108,7 @@ typedef struct {
+  u32 rgb_effect_time;
+ #ifdef HE30_FN_RGB
+  FnLighting fn_light;
+- u8 fn_rgb_draft[FN_RGB_FIRST_CHUNK],fn_rgb_target,rendered_fn;
++ u8 fn_rgb_draft[FN_RGB_FIRST_CHUNK],fn_rgb_target,rendered_fn,scan_trial,scan_order;
+ #endif
+ } App;
+ #define S ((App *)STATE_ADDR)
+@@ -128,6 +128,9 @@ _Static_assert(sizeof(App)<0x2c00,"state/stack reservations");
+ static void lighting_defaults(void);
+ static void rgb_cleanup(void);
+ static int lighting_valid(const Lighting *l);
++#ifdef HE30_FN_RGB
++static u8 restart_scan(void);
++#endif
+ /* Retained offsets let the instruction verifier inspect the compiler's actual
+  * SRAM layout rather than assuming host struct alignment. */
+ #define OFF(member) __builtin_offsetof(App,member)
+@@ -361,6 +364,7 @@ static u8 adc_init(void){
+  for(u32 mask=8;mask>=4;mask>>=1){MM32(0x40012408)|=mask;u32 timeout=25000;while((MM32(0x40012408)&mask)&&--timeout);if(!timeout){MM32(0x40012408)=0;return mask==8?1:2;}}
+  return 0;
+ }
++#ifndef HE30_FN_RGB
+ static u8 adc_frame_slow(u16 *out){
+  for(u32 group=0;group<3;group++){
+   banks_off();u8 bank=S->cfg.groups[group];if(bank==0)MM32(0x40011014)=0x2000;else if(bank==1)MM32(0x40011014)=0x4000;else MM32(0x40010c14)=0x400;
+@@ -368,6 +372,7 @@ static u8 adc_frame_slow(u16 *out){
+   for(u32 j=0;j<12;j++){MM32(0x40012434)=channels[j];MM32(0x40012400)=0;MM32(0x40012408)|=0x500000;u32 timeout=25000;while(!(MM32(0x40012400)&2)&&--timeout);if(!timeout){banks_off();MM32(0x40012408)=0;return 3;}out[group*12+j]=MM32(0x4001244c)&4095;}
+  }banks_off();return 0;
+ }
++#endif
+ static u32 record_crc(const Record*r){u32 c=crc_update(~0u,&r->version,8);return~crc_update(c,&r->config,sizeof(Config)+(r->version==2?128:0));}
+ static int record_valid(const Record*r){return r->magic==RECORD_MAGIC&&(r->version==1||r->version==2)&&r->commit==COMMIT&&r->crc==record_crc(r)&&config_valid(&r->config)&&(r->version==1||lighting_valid(&r->light));}
+ static const Record* newest_record(void){const Record*best=0;for(u32 i=0;i<8;i++){const Record*r=(const Record*)(PAGE_A+i*1024);if(record_valid(r)&&(!best||(i32)(r->sequence-best->sequence)>0))best=r;}return best;}
+@@ -575,7 +580,11 @@ static int control(u8 op){
+   case 7:S->enabled=0;S->cfg.flags&=~START_TYPING;S->dirty=1;all_released();return OK;
+   case 8:return save_settings();
+   case 9:all_released();S->enabled=S->cal_phase=S->staging=0;config_defaults(&S->cfg);lighting_defaults();S->startup_frames=0;recache();S->enabled=typing_requested();S->dirty=1;return OK;
++#ifdef HE30_FN_RGB
++  case 10:S->scan_trial=0;return restart_scan();
++#else
+   case 10:all_released();S->startup_frames=0;S->scan_error=scan_init();S->enabled=typing_requested();S->first_frame=0;return S->scan_error?ADC:OK;
++#endif
+   case 11:S->cal_phase=0;S->enabled=typing_requested();all_released();return OK;
+   case 12:S->cal_phase=0;S->enabled=0;all_released();return load_saved();
+   default:return RANGE;
+diff --git a/firmware/custom/he30-v0.15/profiles.c b/firmware/custom/he30-v0.15/profiles.c
+index 0e24be4..cb719d7 100644
+--- a/firmware/custom/he30-v0.15/profiles.c
++++ b/firmware/custom/he30-v0.15/profiles.c
+@@ -106,7 +106,12 @@ static const Library *newest_library(void){
+  return (i32)(b->sequence-a->sequence)>0?b:a;
+ }
+ 
+-__attribute__((section(".extra"),noinline)) int load_saved(void){
++#ifdef HE30_FN_RGB
++__attribute__((section(".fncode"),noinline))
++#else
++__attribute__((section(".extra"),noinline))
++#endif
++int load_saved(void){
+  const Library *p=newest_library();
+ #ifdef HE30_FN_RGB
+  if(p&&p->version==6)S->fn_light=*lighting_record((u32)p);
+@@ -133,7 +138,12 @@ __attribute__((section(".extra"),noinline)) int load_saved(void){
+  return OK;
+ }
+ 
+-__attribute__((section(".extra"),noinline)) int save_settings(void){
++#ifdef HE30_FN_RGB
++__attribute__((section(".fncode"),noinline))
++#else
++__attribute__((section(".extra"),noinline))
++#endif
++int save_settings(void){
+  if(S->cal_phase)return STATE;
+  if(!S->dirty&&S->saved_valid)return OK;
+  if(!config_valid(&S->cfg)||!lighting_valid(&S->light))return RANGE;
+@@ -211,7 +221,11 @@ __attribute__((section(".extra"),noinline)) static int profile_request(const u8
+   put32(status,0x31503348);
+   status[4]=1;status[5]=S->library.active;status[6]=S->library.rate;status[7]=S->library.fast;
+   status[8]=S->library.gamepad;status[9]=S->usb_rate;status[10]=MM8(0x20000104)==3;status[11]=ACTION_COUNT;
+-  put16(status+12,S->scan_hz);status[14]=S->running_fast;put32(status+16,S->scan_ticks);put32(status+20,S->scan_worst);
++  put16(status+12,S->scan_hz);status[14]=S->running_fast;
++#ifdef HE30_FN_RGB
++  status[15]=S->scan_trial;
++#endif
++  put32(status+16,S->scan_ticks);put32(status+20,S->scan_worst);
+   for(u32 i=0;i<4;i++)bytes_copy(status+24+16*i,S->library.profiles[i].label,16);
+   if(off+n<=sizeof(status)){make_reply(PROFILE_COMMAND,OK,off,n,status+off);return OK;}
+   error=RANGE;
+@@ -245,7 +259,13 @@ __attribute__((section(".extra"),noinline)) static int profile_request(const u8
+   }
+  }else if(op==8&&off==0&&n==3&&data[0]<=6&&data[1]<=2&&data[2]<=1){
+   S->library.rate=data[0];S->library.fast=data[1];S->library.gamepad=data[2];S->usb_rate=6-data[0];gp_queue_usb();changed=1;
+- }else error=RANGE;
++ }
++#ifdef HE30_FN_RGB
++ else if(op==9&&off==0&&n==1&&data[0]<=6){
++  S->scan_trial=data[0];error=restart_scan();
++ }
++#endif
++ else error=RANGE;
+  /* A pacing-only update must preserve a held key. USB visibility changes
+   * release reports in the USB transition, and the scanner has its own reset. */
+  if(changed){S->dirty=1;if(op!=8)all_released();}
+diff --git a/firmware/custom/he30-v0.15/scan.c b/firmware/custom/he30-v0.15/scan.c
+index d4cbfaa..165c590 100644
+--- a/firmware/custom/he30-v0.15/scan.c
++++ b/firmware/custom/he30-v0.15/scan.c
+@@ -1,15 +1,39 @@
+-/* ADC1 regular sequence of twelve channels. DMA1 channel 1 is independent
+- * of the LED channels. The conservative one-shot path remains selectable. */
++/* ADC1 regular sequence for one sensor bank. DMA1 channel 1 is independent
++ * of the LED channels. */
+ static void fast_adc_setup(void){
+  u32 ranks[2]={0,0};
++#ifdef HE30_FN_RGB
++ const u8 trial=S->scan_trial;
++ const u8 sample=trial||S->library.fast==2?1:S->library.fast==1?2:3;
++ const int longer=trial==2||trial==6||(!trial&&S->library.fast==2);
++ S->scan_order=trial==5?2:(trial==3||trial==6||(!trial&&S->library.fast==2));
++ const u32 count=S->scan_order==2?13:12;
++ for(u32 i=0;i<12;i++){
++  /* Swap ADC6 and ADC10, or prepend one ADC6 conversion for the discard test. */
++  u32 index=S->scan_order==2?(i?i-1:0):S->scan_order==1&&(i==0||i==11)?11-i:i;
++  ranks[i/6]|=(u32)channels[index]<<((i%6)*5);
++ }
++#else
+  for(u32 i=0;i<12;i++)ranks[i/6]|=(u32)channels[i]<<((i%6)*5);
++#endif
+  MM32(0x40021004)=(MM32(0x40021004)&~0xf800u)|0xa000u; /* APB2 / 2, ADC / 6 */
++#ifdef HE30_FN_RGB
++ MM32(0x4001242c)=((count-1)<<20)|(count==13?channels[11]:0);
++#else
+  MM32(0x4001242c)=11u<<20;
++#endif
+  MM32(0x40012430)=ranks[1];
+  MM32(0x40012434)=ranks[0];
+  MM32(0x40012404)=0x100;
++#ifdef HE30_FN_RGB
++ MM32(0x4001240c)=0x249249u*sample;
++ MM32(0x40012410)=0x09249249u*sample+(longer?(1u<<18):0);
++ MM32(0x40020008)=0;
++ MM32(0x40020010)=0x4001244c;
++#else
+  MM32(0x4001240c)=S->library.fast==2?0x249249:0x492492;
+  MM32(0x40012410)=S->library.fast==2?0x09249249:0x12492492;
++#endif
+  MM32(0x40021014)|=1;
+ }
+ 
+@@ -19,24 +43,57 @@ static u8 scan_init(void){
+  if(S->rgb_state==1||S->rgb_state==2){rgb_cleanup();S->rgb_pending=3;}
+  u8 error=adc_init();
+  S->running_fast=error?0:S->library.fast;
++#ifdef HE30_FN_RGB
++ if(!error)fast_adc_setup();
++#else
+  if(S->running_fast)fast_adc_setup();
++#endif
+  S->scan_hz=0;S->scan_worst=0;S->scan_sample_start=ticks();S->scan_sample_frames=S->frames;
+  return error;
+ }
+ 
++#ifdef HE30_FN_RGB
++__attribute__((section(".fncode"),noinline)) static u8 restart_scan(void){
++ all_released();S->startup_frames=0;S->scan_error=scan_init();
++ S->enabled=typing_requested();S->first_frame=0;
++ return S->scan_error?ADC:OK;
++}
++#endif
++
++#ifdef HE30_FN_RGB
++VERIFY_ENTRY
++#endif
+ static u8 adc_frame_fast(u16 *out){
++#ifdef HE30_FN_RGB
++ const u8 order=S->scan_order;
++ const u32 settling=S->scan_trial||S->running_fast==2?120:S->running_fast==1?400:720;
++ u16 discard[13];
++#endif
+  for(u32 group=0;group<3;group++){
+   banks_off();
+   u8 bank=S->cfg.groups[group];
+   if(bank==2)MM32(0x40010c14)=0x400;
+   else MM32(0x40011014)=0x2000u<<bank;
++#ifndef HE30_FN_RGB
+   const u32 settling=S->running_fast==2?120:400;
++#endif
+   delay(settling);
++#ifdef HE30_FN_RGB
++  if(S->scan_trial==4){
++   const u32 enabled=ticks();
++   while(ticks()-enabled<2u*TICKS_MS/1000u){}
++  }
++#endif
+   MM32(0x40020008)=0;
+   MM32(0x40020004)=15;
++#ifdef HE30_FN_RGB
++  MM32(0x4002000c)=order==2?13:12;
++  MM32(0x40020014)=(u32)(order==2?discard:out+12*group);
++#else
+   MM32(0x4002000c)=12;
+   MM32(0x40020010)=0x4001244c;
+   MM32(0x40020014)=(u32)(out+12*group);
++#endif
+   MM32(0x40020008)=0x2581;
+   MM32(0x40012400)=0;
+   MM32(0x40012408)=0x5e0101;
+@@ -47,6 +104,11 @@ static u8 adc_frame_fast(u16 *out){
+   MM32(0x40020008)=0;
+   u32 flags=MM32(0x40020000);
+   if((flags&10)!=2){banks_off();MM32(0x40012408)=0;return 3;}
++#ifdef HE30_FN_RGB
++  u16 *bank_out=out+12*group;
++  if(order==1){const u16 first=bank_out[0];bank_out[0]=bank_out[11];bank_out[11]=first;}
++  if(order==2)bytes_copy(bank_out,discard+1,24);
++#endif
+  }
+  banks_off();return 0;
+ }
+@@ -54,7 +116,11 @@ static u8 adc_frame_fast(u16 *out){
+ static u8 adc_frame(u16 *out){
+  u32 start=ticks();
+  /* Fast mode changes take effect at reboot or explicit scanner retry. */
++#ifdef HE30_FN_RGB
++ u8 error=adc_frame_fast(out);
++#else
+  u8 error=S->running_fast?adc_frame_fast(out):adc_frame_slow(out);
++#endif
+  u32 end=ticks(),span=end-start,window=end-S->scan_sample_start;
+  S->scan_ticks=span;
+  if(span>S->scan_worst)S->scan_worst=span;

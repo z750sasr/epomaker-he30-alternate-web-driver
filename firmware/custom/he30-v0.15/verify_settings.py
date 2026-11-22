@@ -80,7 +80,7 @@ if manifest.get('flash_lock_fix'):
     print("PASS Enhanced-read exit occurs after unlock and restoration occurs before relocking",flush=True)
 assert c.get(0x40021004,4) == clock
 assert c.csr[0x300]&8
-assert len(c.programs) == 1024 and len(c.erases) == 16
+assert len(c.programs) == 1024+192*FN_RGB and len(c.erases) == 16+3*FN_RGB
 assert c.programs[-1] == 0x0801effc, "Commit row must be last"
 saved = reboot(saved_image(c))
 assert read(saved,0xd2,0,88)[6:10] == bytes([6,2,0,0])
@@ -103,9 +103,9 @@ if DIAGNOSTICS:
     retry_clock=retry.get(0x40021004,4)
     pset(retry,8,bytes([2,1,0]))
     assert control(retry,8)==9
-    assert retry.erases==[0x0801f000], "Verification failure must stop before committing a new journal"
+    assert retry.erases==[FN_PAGES[1] if FN_RGB else 0x0801f000], "Verification failure must stop before committing a new journal"
     trace=struct.unpack('<7I',retry.blob(SAVE_TRACE,n=28))
-    assert trace[1:3]==(10,0x0801f000) and trace[5:]==(9,9)
+    assert trace[1:3]==(10,FN_PAGES[1] if FN_RGB else 0x0801f000) and trace[5:]==(9,9)
     assert retry.csr[0x300]&8 and retry.get(0x40021004,4)==retry_clock
     preserved=reboot(saved_image(retry))
     assert read(preserved,0xd2,0,88)[6:10]==bytes([6,2,0,0])
@@ -147,6 +147,14 @@ print("PASS Zero brightness mutes the keyboard wave while leaving the strip at f
 factory = fresh()
 pset(factory,8,bytes([3,0,0]))
 assert control(factory,8) == 0
-record = saved_image(factory)[0x19000:0x1a000]
+record = bytearray(saved_image(factory)[0x19000:0x1a000])
 assert len(record)==4096 and record[16:20]==bytes([0,3,0,0])
+if FN_RGB:
+    # A preconfigured install has no Fn palettes yet. Ship a self-contained
+    # v5 record and let the first onboard Save migrate it to a paired record.
+    struct.pack_into('<I',record,4,5)
+    struct.pack_into('<I',record,12,zlib.crc32(record[4:12]+record[16:4092]))
+    initial=bytearray(image)
+    initial[0x19000:0x1a000]=record
+    assert read(reboot(initial),0xd2,0,88)[6:10]==bytes([3,0,0,3])
 (BUILD/'factory-journal.bin').write_bytes(record)

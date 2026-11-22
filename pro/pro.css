@@ -424,11 +424,23 @@
   border-color: var(--mint);
   background: color-mix(in srgb, var(--mint) 18%, var(--key-start));
 }
+.calibration-active .pro-key[data-calibration-state] {
+  border-color: var(--calibration-color);
+  background: color-mix(in srgb, var(--calibration-color) 24%, var(--key-start));
+}
+.pro-key[data-calibration-state=missing] { --calibration-color: #fa6972; }
+.pro-key[data-calibration-state=previous] { --calibration-color: #6ac990; }
+.pro-key[data-calibration-state=captured] { --calibration-color: #66a7ff; }
 .pro-content[data-page=lighting] .pro-key {
   border-color: var(--key-rgb, var(--key-border));
   background: color-mix(in srgb, var(--key-rgb, var(--key-start)) 45%, var(--key-start));
 }
 .pro-content[data-page=lighting] .pro-key::after { display: none; }
+.lighting-settings { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.lighting-settings > section { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.lighting-settings > section h2 { margin-top: 0; }
+.lighting-settings [hidden] { display: none; }
+@media (max-width: 850px) { .lighting-settings { grid-template-columns: 1fr; } }
 .pro-content[data-page=lighting] .pro-bar i {
   background: var(--bar-color, var(--key-start));
   box-shadow: 0 0 .65rem var(--bar-color, transparent);

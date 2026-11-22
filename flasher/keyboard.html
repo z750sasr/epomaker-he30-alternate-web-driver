@@ -23,7 +23,7 @@ main{max-width:1180px}.status-grid,.fields{display:grid;grid-template-columns:re
 <p class="notes">Applying a different group order invalidates calibration. Applying settings releases current inputs and requires the keys to be released before typing resumes. It does not save to flash.</p>
 </section>
 <section class="panel"><p class="step">3 · Calibrate</p><h2>Learn released and fully pressed readings</h2>
-<p>Apply any group changes first. Release all keys, begin calibration, and wait for the released readings. Then press every physical key fully, release it, and watch the learned count.</p>
+<p>Apply any group changes first. Release all keys, begin calibration, and wait for the released readings. Then fully press and release keys as prompted below.</p>
 <p id="calibrationState" role="status" aria-live="polite">No calibration status yet.</p><progress id="calibrationProgress" max="36" value="0" aria-label="Keys with learned calibration"></progress>
 <div class="buttons"><button id="calibrate" disabled>Begin calibration</button><button id="finish" disabled>Finish calibration</button><button id="abort" class="secondary" disabled>Abort calibration</button><button id="enable" disabled>Enable typing</button></div>
 <p class="notes">Finish requires all 36 valid ranges and released keys. Calibration suppresses typing. After enabling or applying, release all keys to clear the input interlock.</p>

@@ -32,11 +32,31 @@ __attribute__((noinline)) static void activate_profile(void){
 
 #ifdef HE30_PROFILE_KEYS
 __attribute__((noinline)) static void switch_profile(u8 index){
+#ifdef HE30_DESKTOP_KEYS
+ if(index==S->library.active)return;
+#endif
  capture_profile();
  S->library.active=index;
  activate_profile();
  G->staging=0;
+#ifdef HE30_DESKTOP_KEYS
+ S->rgb_effect_type=2;S->rgb_effect_start=ticks();
+#endif
  S->dirty=1;
+}
+#endif
+#ifdef HE30_DESKTOP_KEYS
+__attribute__((section(".fncode"),noinline)) static void cycle_map_all(u32 key,u8 layer){
+ capture_profile();
+ for(u32 i=0;i<PROFILE_COUNT;i++){
+  Profile *p=&S->library.profiles[i];
+  if(layer==2)p->fn2[key]=0xf4;
+  else if(layer)p->keys[key].fn=0xf4;
+  else p->keys[key].normal=0xf4;
+ }
+ if(!layer)S->cfg.key[key].normal=0xf4;
+ else if(layer==1)S->cfg.key[key].fn=0xf4;
+ all_released();S->dirty=1;
 }
 #endif
 __attribute__((section(".extra"),noinline)) static void profiles_defaults(void){
@@ -106,7 +126,12 @@ static const Library *newest_library(void){
  return (i32)(b->sequence-a->sequence)>0?b:a;
 }
 
-__attribute__((section(".extra"),noinline)) int load_saved(void){
+#ifdef HE30_FN_RGB
+__attribute__((section(".fncode"),noinline))
+#else
+__attribute__((section(".extra"),noinline))
+#endif
+int load_saved(void){
  const Library *p=newest_library();
 #ifdef HE30_FN_RGB
  if(p&&p->version==6)S->fn_light=*lighting_record((u32)p);
@@ -133,7 +158,12 @@ __attribute__((section(".extra"),noinline)) int load_saved(void){
  return OK;
 }
 
-__attribute__((section(".extra"),noinline)) int save_settings(void){
+#ifdef HE30_FN_RGB
+__attribute__((section(".fncode"),noinline))
+#else
+__attribute__((section(".extra"),noinline))
+#endif
+int save_settings(void){
  if(S->cal_phase)return STATE;
  if(!S->dirty&&S->saved_valid)return OK;
  if(!config_valid(&S->cfg)||!lighting_valid(&S->light))return RANGE;
@@ -207,12 +237,25 @@ __attribute__((section(".extra"),noinline)) static int profile_request(const u8 
  Profile *p=current_profile();
  int error=OK,changed=0;
  if(op==0){
-  u8 status[88]={0};
+  u8 status[
+#ifdef HE30_DESKTOP_KEYS
+   89
+#else
+   88
+#endif
+  ]={0};
   put32(status,0x31503348);
   status[4]=1;status[5]=S->library.active;status[6]=S->library.rate;status[7]=S->library.fast;
   status[8]=S->library.gamepad;status[9]=S->usb_rate;status[10]=MM8(0x20000104)==3;status[11]=ACTION_COUNT;
-  put16(status+12,S->scan_hz);status[14]=S->running_fast;put32(status+16,S->scan_ticks);put32(status+20,S->scan_worst);
+  put16(status+12,S->scan_hz);status[14]=S->running_fast;
+#ifdef HE30_FN_RGB
+  status[15]=S->scan_trial;
+#endif
+  put32(status+16,S->scan_ticks);put32(status+20,S->scan_worst);
   for(u32 i=0;i<4;i++)bytes_copy(status+24+16*i,S->library.profiles[i].label,16);
+#ifdef HE30_DESKTOP_KEYS
+  status[88]=100-(S->light.order>>1);
+#endif
   if(off+n<=sizeof(status)){make_reply(PROFILE_COMMAND,OK,off,n,status+off);return OK;}
   error=RANGE;
  }else if(op==1){
@@ -245,7 +288,22 @@ __attribute__((section(".extra"),noinline)) static int profile_request(const u8 
   }
  }else if(op==8&&off==0&&n==3&&data[0]<=6&&data[1]<=2&&data[2]<=1){
   S->library.rate=data[0];S->library.fast=data[1];S->library.gamepad=data[2];S->usb_rate=6-data[0];gp_queue_usb();changed=1;
- }else error=RANGE;
+ }
+#ifdef HE30_FN_RGB
+ else if(op==9&&off==0&&n==1&&data[0]<=6){
+  S->scan_trial=data[0];error=restart_scan();
+ }
+#endif
+#ifdef HE30_DESKTOP_KEYS
+ else if(op==10&&off==0&&n==1&&data[0]>=1&&data[0]<=32){
+  S->light.bar_on=((data[0]-1)<<1)|(S->light.bar_on&1);S->dirty=1;
+ }
+ else if(op==11&&off<N&&n==1&&data[0]<=2){
+  if(S->staging)error=STATE;
+  else cycle_map_all(off,data[0]);
+ }
+#endif
+ else error=RANGE;
  /* A pacing-only update must preserve a held key. USB visibility changes
   * release reports in the USB transition, and the scanner has its own reset. */
  if(changed){S->dirty=1;if(op!=8)all_released();}

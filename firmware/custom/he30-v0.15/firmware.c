@@ -106,9 +106,15 @@ typedef struct {
  u32 gp_ticks;
  u8 live_keys[N][3],live_bar[5][3],rgb_colors[N][3];
  u32 rgb_effect_time;
+#ifdef HE30_DESKTOP_KEYS
+ u32 rgb_effect_start, mouse_ticks, bar_spectrum;
+ u16 mouse_inputs, mouse_down;
+ u8 rgb_effect_type, mouse_sent;
+ signed char mouse_wheel;
+#endif
 #ifdef HE30_FN_RGB
  FnLighting fn_light;
- u8 fn_rgb_draft[FN_RGB_FIRST_CHUNK],fn_rgb_target,rendered_fn;
+ u8 fn_rgb_draft[FN_RGB_FIRST_CHUNK],fn_rgb_target,rendered_fn,scan_trial,scan_order;
 #endif
 } App;
 #define S ((App *)STATE_ADDR)
@@ -128,6 +134,9 @@ _Static_assert(sizeof(App)<0x2c00,"state/stack reservations");
 static void lighting_defaults(void);
 static void rgb_cleanup(void);
 static int lighting_valid(const Lighting *l);
+#ifdef HE30_FN_RGB
+static u8 restart_scan(void);
+#endif
 /* Retained offsets let the instruction verifier inspect the compiler's actual
  * SRAM layout rather than assuming host struct alignment. */
 #define OFF(member) __builtin_offsetof(App,member)
@@ -199,7 +208,7 @@ static int usb_ready(void){return G->usb_switch!=3&&MM8(0x20000269)&&MM8(0x20000
 static void put16(u8*p,u16 v){p[0]=v;p[1]=v>>8;}
 __attribute__((section(".spare"),noinline)) static void put32(u8*p,u32 v){for(u32 i=0;i<4;i++)p[i]=v>>(8*i);}
 static u16 get16(const u8*p){return p[0]|(u16)p[1]<<8;}
-#ifdef HE30_PROFILE_KEYS
+#if defined(HE30_PROFILE_KEYS) && !defined(HE30_DESKTOP_KEYS)
 __attribute__((section(".early")))
 #else
 __attribute__((section(".spare")))
@@ -224,6 +233,9 @@ static void switch_profile(u8 index);
 #define key_zones_valid(k) ((k)->flags<=3&&(k)->top<=40&&(k)->bottom<=40)
 #endif
 static int usage_ok(u8 u,int fn){
+#ifdef HE30_DESKTOP_KEYS
+ if((u>=0xb0&&u<=0xba)||(u>=0xf4&&u<=0xf6))return 1;
+#endif
 #ifdef HE30_PROFILE_KEYS
  if(profile_usage(u))return 1;
 #endif
@@ -255,13 +267,37 @@ static u16 position(u32 i,u16 raw,int learning){
  if(p>=1000-bottom)return 1000;
  return learning?((p-top)*1000)/(1000-top-bottom):((p-top)*S->deadzone_gain[i])>>16;
 }
+#ifndef HE30_CALIBRATION_QOL
 static int released_now(int learning){for(u32 i=0;i<N;i++){i32 rest=learning?S->cal_rest[i]:S->cfg.rest[i],end=learning?S->cal_end[i]:S->cfg.end[i];u32 tolerance=abs32(end-rest)/8;if(tolerance<16)tolerance=16;if(abs32((i32)S->raw[i]-rest)>tolerance)return 0;}return 1;}
+#endif
+#ifdef HE30_CALIBRATION_QOL
+static u32 release_tolerance(u32 span){return span<128?16:span/8;}
+#ifndef HE30_DESKTOP_KEYS
+__attribute__((section(".fncode")))
+#endif
+__attribute__((noinline)) static void calibration_capture(void){
+ for(u32 i=0;i<N;i++){
+  const i32 rest=S->cal_rest[i];
+  const u16 sample=S->filtered[i];
+  const u32 span=abs32((i32)S->cal_end[i]-rest),distance=abs32((i32)sample-rest);
+  if(sample>4095||rest>4095)continue;
+  if(distance>span){S->cal_end[i]=sample;continue;}
+  if(bit(S->cal_lo,S->cal_hi,i)||distance>release_tolerance(span))continue;
+  u32 minimum=(S->noise_max[i]-S->noise_min[i])*6;
+  if(minimum<64)minimum=64;
+  if(span>=minimum){set_bit(&S->cal_lo,&S->cal_hi,i);S->rgb_pending|=1;}
+ }
+}
+#endif
 static void release_actions(void);
 static void compose_advanced(void);
 static void gp_service(void);
 static void gpio_poll_setup(void);
 static int profile_request(const u8 *request);
 static void add_usage(u8 usage){
+#ifdef HE30_DESKTOP_KEYS
+ if(usage>=0xb0&&usage<=0xba){S->mouse_inputs|=1u<<(usage-0xb0);return;}
+#endif
  if(usage>=0xe0&&usage<=0xe7){S->report[0]|=1u<<(usage-0xe0);return;}
 #ifdef HE30_NKRO
  if(!usage||usage>0xa4)return;
@@ -277,7 +313,16 @@ static void add_usage(u8 usage){
 }
 void compose_report(void){
  bytes_zero(S->report,KEYBOARD_REPORT_BYTES);S->rollover=0;
+#ifdef HE30_DESKTOP_KEYS
+ S->mouse_inputs=0;
+#endif
  compose_advanced();
+#ifdef HE30_DESKTOP_KEYS
+ const u16 edge=S->mouse_inputs&~S->mouse_down;
+ if((edge&32)&&S->mouse_wheel<127)S->mouse_wheel++;
+ if((edge&64)&&S->mouse_wheel>-127)S->mouse_wheel--;
+ S->mouse_down=S->mouse_inputs;
+#endif
  if(S->rollover)for(u32 i=2;i<8;i++)S->report[i]=1;
 }
 VERIFY_ENTRY void engine_step(const u16 *input){
@@ -287,7 +332,11 @@ VERIFY_ENTRY void engine_step(const u16 *input){
   for(u32 i=0;i<N;i++){S->sums[i]+=input[i];if(input[i]<S->noise_min[i])S->noise_min[i]=input[i];if(input[i]>S->noise_max[i])S->noise_max[i]=input[i];}
   if(++S->rest_count==32){for(u32 i=0;i<N;i++)S->cal_rest[i]=S->cal_end[i]=S->sums[i]/32;S->cal_phase=2;}
  }
+#ifdef HE30_CALIBRATION_QOL
+ if(S->cal_phase==2)calibration_capture();
+#else
  if(S->cal_phase==2){S->cal_lo=S->cal_hi=0;for(u32 i=0;i<N;i++){if(abs32((i32)input[i]-S->cal_rest[i])>abs32((i32)S->cal_end[i]-S->cal_rest[i]))S->cal_end[i]=input[i];u32 minimum=(S->noise_max[i]-S->noise_min[i])*6;if(minimum<64)minimum=64;if(abs32((i32)S->cal_end[i]-S->cal_rest[i])>=minimum)set_bit(&S->cal_lo,&S->cal_hi,i);}}
+#endif
  int baseline_ready=S->cal_phase||startup_baseline(input);
  for(u32 i=0;i<N;i++)S->pos[i]=position(i,S->filtered[i],S->cal_phase!=0);
  if(S->inhibit){int quiet=1;for(u32 i=0;i<N;i++)if(S->pos[i]>50)quiet=0;if(quiet){if(S->quiet<8)S->quiet++;if(S->quiet==8&&!S->release_pending)S->inhibit=0;}else S->quiet=0;}
@@ -308,6 +357,19 @@ VERIFY_ENTRY void engine_step(const u16 *input){
  for(u32 i=0;i<N;i++)if(S->active[i]&&!previous[i]){
   u8 u=S->fn==2?S->library.profiles[S->library.active].fn2[i]:S->fn?S->cfg.key[i].fn:S->cfg.key[i].normal;
   if(u==0xfe)u=S->cfg.key[i].normal;
+#ifdef HE30_DESKTOP_KEYS
+  if(u==0xf4){
+   if(!S->staging){switch_profile((S->library.active+1)&3);return;}
+   u=0;
+  }
+  if(u==0xf5||u==0xf6){
+   const u8 dim=S->light.order>>1;
+   if((u==0xf5&&dim)||(u==0xf6&&dim<100)){
+    S->light.order+=u==0xf5?-2:2;S->rgb_pending|=1;S->dirty=1;
+   }
+   u=0;
+  }
+#endif
 #ifdef HE30_PROFILE_KEYS
   if(profile_usage(u)){
    if(!S->staging&&(u-0xf0u)!=S->library.active){switch_profile(u-0xf0u);return;}
@@ -361,6 +423,7 @@ static u8 adc_init(void){
  for(u32 mask=8;mask>=4;mask>>=1){MM32(0x40012408)|=mask;u32 timeout=25000;while((MM32(0x40012408)&mask)&&--timeout);if(!timeout){MM32(0x40012408)=0;return mask==8?1:2;}}
  return 0;
 }
+#ifndef HE30_FN_RGB
 static u8 adc_frame_slow(u16 *out){
  for(u32 group=0;group<3;group++){
   banks_off();u8 bank=S->cfg.groups[group];if(bank==0)MM32(0x40011014)=0x2000;else if(bank==1)MM32(0x40011014)=0x4000;else MM32(0x40010c14)=0x400;
@@ -368,6 +431,7 @@ static u8 adc_frame_slow(u16 *out){
   for(u32 j=0;j<12;j++){MM32(0x40012434)=channels[j];MM32(0x40012400)=0;MM32(0x40012408)|=0x500000;u32 timeout=25000;while(!(MM32(0x40012400)&2)&&--timeout);if(!timeout){banks_off();MM32(0x40012408)=0;return 3;}out[group*12+j]=MM32(0x4001244c)&4095;}
  }banks_off();return 0;
 }
+#endif
 static u32 record_crc(const Record*r){u32 c=crc_update(~0u,&r->version,8);return~crc_update(c,&r->config,sizeof(Config)+(r->version==2?128:0));}
 static int record_valid(const Record*r){return r->magic==RECORD_MAGIC&&(r->version==1||r->version==2)&&r->commit==COMMIT&&r->crc==record_crc(r)&&config_valid(&r->config)&&(r->version==1||lighting_valid(&r->light));}
 static const Record* newest_record(void){const Record*best=0;for(u32 i=0;i<8;i++){const Record*r=(const Record*)(PAGE_A+i*1024);if(record_valid(r)&&(!best||(i32)(r->sequence-best->sequence)>0))best=r;}return best;}
@@ -532,12 +596,43 @@ done:
 #include "controller.c"
 #include "actions.c"
 #include "scan.c"
+#ifdef HE30_DESKTOP_KEYS
+__attribute__((section(".extra"),noinline)) static void mouse_service(void){
+ if(!usb_ready()){S->mouse_sent=0;return;}
+ const u32 now=ticks();
+ const u8 ready=S->enabled&&!S->inhibit&&!S->cal_phase&&!S->scan_error;
+ const u16 down=ready?S->mouse_down:0;
+ if(!ready)S->mouse_wheel=0;
+ const u8 buttons=down&31;
+ if(buttons==S->mouse_sent&&!((down&0x780)||S->mouse_wheel))return;
+ if(now-S->mouse_ticks<TICKS_MS)return;
+ const i32 speed=1+(S->light.bar_on>>1);
+ const i32 x=(i32)((down>>8)&1)-(i32)((down>>7)&1);
+ const i32 y=(i32)((down>>10)&1)-(i32)((down>>9)&1);
+ const u8 report[4]={buttons,(u8)(x*speed),(u8)(y*speed),(u8)S->mouse_wheel};
+ if(upload(4,report,4,1)==1){S->mouse_sent=buttons;S->mouse_wheel=0;S->mouse_ticks=now;}
+}
+#endif
 static void begin_calibration(void){
  S->enabled=0;all_released();S->cal_phase=1;S->rest_count=0;S->cal_lo=S->cal_hi=0;bytes_zero(S->sums,sizeof(S->sums));for(u32 i=0;i<N;i++){S->noise_min[i]=4095;S->noise_max[i]=0;S->cal_rest[i]=S->cal_end[i]=0;}
 }
 static int finish_calibration(void){
+#ifdef HE30_CALIBRATION_QOL
+ if(S->cal_phase!=2)return STATE;
+ if(!(S->cal_lo|S->cal_hi))return CALIBRATION;
+ for(u32 i=0;i<N;i++)if(bit(S->cal_lo,S->cal_hi,i)){
+  const i32 rest=S->cal_rest[i],end=S->cal_end[i];
+  if(abs32((i32)S->raw[i]-rest)>release_tolerance(abs32(end-rest)))return RELEASE;
+ }
+ for(u32 i=0;i<N;i++)if(bit(S->cal_lo,S->cal_hi,i)){
+  S->cfg.rest[i]=S->cal_rest[i];S->cfg.end[i]=S->cal_end[i];
+ }
+ S->cfg.valid_lo|=S->cal_lo;S->cfg.valid_hi|=S->cal_hi;
+ S->cal_phase=0;recache();S->dirty=1;S->enabled=typing_requested();all_released();return OK;
+#else
  if(S->cal_phase!=2)return STATE;if(S->cal_lo!=ALL_LO||S->cal_hi!=ALL_HI)return CALIBRATION;if(!released_now(1))return RELEASE;
  bytes_copy(S->cfg.rest,S->cal_rest,sizeof(S->cal_rest));bytes_copy(S->cfg.end,S->cal_end,sizeof(S->cal_end));S->cfg.valid_lo=ALL_LO;S->cfg.valid_hi=ALL_HI;S->cal_phase=0;recache();S->dirty=1;S->enabled=typing_requested();all_released();return OK;
+#endif
 }
 static u8 missing(u32 lo,u32 hi){u8 n=0;for(u32 i=0;i<N;i++)if(!bit(lo,hi,i))n++;return n;}
 __attribute__((section(".early"),noinline)) void status_bytes(u8*out){
@@ -575,7 +670,11 @@ static int control(u8 op){
   case 7:S->enabled=0;S->cfg.flags&=~START_TYPING;S->dirty=1;all_released();return OK;
   case 8:return save_settings();
   case 9:all_released();S->enabled=S->cal_phase=S->staging=0;config_defaults(&S->cfg);lighting_defaults();S->startup_frames=0;recache();S->enabled=typing_requested();S->dirty=1;return OK;
+#ifdef HE30_FN_RGB
+  case 10:S->scan_trial=0;return restart_scan();
+#else
   case 10:all_released();S->startup_frames=0;S->scan_error=scan_init();S->enabled=typing_requested();S->first_frame=0;return S->scan_error?ADC:OK;
+#endif
   case 11:S->cal_phase=0;S->enabled=typing_requested();all_released();return OK;
   case 12:S->cal_phase=0;S->enabled=0;all_released();return load_saved();
   default:return RANGE;
@@ -626,6 +725,9 @@ __attribute__((section(".entry"),noreturn)) void firmware_main(void){
   rgb_service();
   if(!S->scan_error){u16 input[N];u8 error=adc_frame(input);if(error){S->scan_error=error;S->enabled=0;all_released();}else engine_step(input);}
   keyboard_service();gp_service();gp_usb_service();
+#ifdef HE30_DESKTOP_KEYS
+  mouse_service();
+#endif
   if(S->vendor_pending&&usb_ready()&&upload(2,S->vendor,64,1)==1)S->vendor_pending=0;
  }
 }

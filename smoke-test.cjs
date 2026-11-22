@@ -58,8 +58,8 @@ async function verifyBrowserBootstrap() {
     vm.runInContext(readSource(file), browser, { filename: file });
   }
   vm.runInContext('applyUiTheme("light")', browser);
-  if (browser.document.documentElement.dataset.theme !== "light" || storedTheme !== "light" || !elements.get("#themeToggle")?.listeners.has("click")) {
-    throw new Error("The topbar theme toggle did not apply and persist light mode.");
+  if (browser.document.documentElement.dataset.theme !== "light" || storedTheme !== null || !elements.get("#themeToggle")?.listeners.has("click")) {
+    throw new Error("The theme toggle must apply light mode without persisting it.");
   }
   const demoSummary = vm.runInContext(`(() => {
     const demo = makeDemoProfile();
@@ -516,11 +516,11 @@ if (!deleteAdvancedSource.includes("restoreAdvancedHosts(item)") || deleteAdvanc
 for (const fragment of [".mapping-picker-control", ".modifier-options", ".modifier-picker > p", ".advanced-host-keyboard", ".advanced-host-slots", ".dks-action-row", ".dks-track-shell", ".dks-native-track", ".dks-checkpoint", ".dks-point-scale", ".dks-interaction-status", ".dks-gesture-hint", ".dks-threshold-groups", ".dks-row-presets", ".profile-tool-disclosure", ".configured-action-buttons"]) {
   if (!styleSource.includes(fragment)) throw new Error(`Advanced-editor styling is missing: ${fragment}`);
 }
-for (const fragment of ['id="themeToggle"', 'styles/theme-light.css', 'he30-ui-theme']) {
+for (const fragment of ['id="themeToggle"', 'styles/theme-light.css']) {
   if (!htmlSource.includes(fragment)) throw new Error(`Theme-switch markup is missing: ${fragment}`);
 }
-for (const fragment of ["UI_THEME_STORAGE_KEY", "applyUiTheme", "toggleUiTheme"]) {
-  if (!appSource.includes(fragment)) throw new Error(`Persistent theme behavior is missing: ${fragment}`);
+for (const fragment of ["applyUiTheme", "toggleUiTheme"]) {
+  if (!appSource.includes(fragment)) throw new Error(`Theme behavior is missing: ${fragment}`);
 }
 for (const fragment of [':root[data-theme="light"]', ".theme-toggle-track", ".lighting-preview", ".modal"]) {
   if (!styleSource.includes(fragment)) throw new Error(`Light workspace styling is missing: ${fragment}`);

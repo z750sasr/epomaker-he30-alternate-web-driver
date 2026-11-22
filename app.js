@@ -155,13 +155,7 @@ async function returnHome() {
 // ---------------------------------------------------------------------------
 // One-time application bootstrap
 // ---------------------------------------------------------------------------
-const UI_THEME_STORAGE_KEY = "he30-ui-theme";
-
-function savedUiTheme() {
-  try { return localStorage?.getItem?.(UI_THEME_STORAGE_KEY); } catch (_) { return null; }
-}
-
-function applyUiTheme(theme, { persist = true } = {}) {
+function applyUiTheme(theme) {
   const resolvedTheme = theme === "light" ? "light" : "dark";
   if (document.documentElement) document.documentElement.dataset.theme = resolvedTheme;
   const isLight = resolvedTheme === "light";
@@ -173,9 +167,7 @@ function applyUiTheme(theme, { persist = true } = {}) {
   }
   const themeColor = document.querySelector?.('meta[name="theme-color"]');
   themeColor?.setAttribute?.("content", isLight ? "#ffffff" : "#07111f");
-  if (persist) {
-    try { localStorage?.setItem?.(UI_THEME_STORAGE_KEY, resolvedTheme); } catch (_) { /* Keep the in-memory theme. */ }
-  }
+
 }
 
 function toggleUiTheme() {
@@ -243,7 +235,7 @@ function bindStaticControls() {
 }
 
 // Start only after every preceding application module has loaded.
-applyUiTheme(document.documentElement?.dataset?.theme === "light" || savedUiTheme() === "light" ? "light" : "dark", { persist: false });
+applyUiTheme(document.documentElement?.dataset?.theme);
 renderMiniKeyboard();
 bindStaticControls();
 if (APP_MODE === "live" && !API.HE30Driver.supported()) {

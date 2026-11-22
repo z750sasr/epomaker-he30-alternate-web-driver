@@ -24,7 +24,13 @@ static void lighting_defaults(void){
  S->identify=255;S->rgb_pending=3;
 }
 static int lighting_valid(const Lighting*l){
+#ifdef HE30_DESKTOP_KEYS
+ const u8 count=l->count&128?l->count&7:l->count;
+ if(l->version!=1||l->mode>5||(l->order>>1)>100||(l->rate>>1)>100||
+    count>5||(l->bar_on>>1)>31||((l->bar_on&1)&&!count))return 0;
+#else
  if(l->version!=1||l->mode>5||(l->order>>1)>100||(l->rate>>1)>100||l->count>5||l->bar_on>1||(l->bar_on&&!l->count))return 0;
+#endif
  const u8*p=&l->r;for(u32 i=0;i<114;i++)if(p[i]>32)return 0;
  for(u32 i=0;i<8;i++)if(l->reserved[i])return 0;return 1;
 }
@@ -113,7 +119,7 @@ static void lighting_request(const u8*r){
   }
  }else if(op==3){if(n!=1)error=PACKET;else if(p[0]>=36&&p[0]!=255)error=RANGE;else{S->identify=p[0];S->identify_until=ticks()+2000*TICKS_MS;S->rgb_pending|=1;}}
  else if(n)error=PACKET;
- else if(op==4){S->light.mode=S->light.bar_on=0;S->identify=255;S->rgb_pending=3;S->dirty=1;}
+ else if(op==4){S->light.mode=0;S->light.bar_on&=~1u;S->identify=255;S->rgb_pending=3;S->dirty=1;}
  else if(op==5){S->rgb_error=0;S->rgb_pending=3;}
  else if(op==6){lighting_defaults();S->dirty=1;}
  else error=RANGE;
@@ -167,6 +173,9 @@ static void rgb_boot(void){
  S->rgb_pending=3;
  S->rgb_error=0;
  S->rgb_started=ticks();
+#ifdef HE30_DESKTOP_KEYS
+ S->rgb_effect_type=1;S->rgb_effect_start=S->rgb_started;
+#endif
  S->rgb_state=3;     /* nonblocking 10 ms settling period */
  S->rgb_retry_left=8;  /* 8 additional refreshes, 250 ms apart */
  S->rgb_retry_next=ticks()+250u*TICKS_MS;
@@ -186,6 +195,35 @@ __attribute__((section(".spare"),noinline)) static void rgb_failed(void){
  S->rgb_error|=S->rgb_path;
  rgb_cleanup();
 }
+#ifdef HE30_DESKTOP_KEYS
+__attribute__((section(".extra"),noinline)) static void bar_color(u8 *color,u32 led,u32 time){
+ const u8 options=S->light.count;
+ if(!(S->light.bar_on&1)||led>=(options&7))return;
+ const u8 mode=(options>>3)&3;
+ if(!mode){bytes_copy(color,&S->light.br,3);return;}
+ if(mode==3){
+  const u32 phase=S->bar_spectrum;
+  color[0]=phase>>16;color[1]=phase>>8;color[2]=phase;
+  return;
+ }
+ u32 level=32;
+ if(mode==1){
+  const u32 phase=time%256;
+  level=(phase<128?phase:255-phase)/4;
+  if(!(options&32)){
+   for(u32 i=0;i<3;i++)color[i]=(&S->light.br)[i]*level/32;
+   return;
+  }
+ }
+ if(options&64)led=4-led;
+ const u32 hue=(time*(mode==2?3u:1u)+(mode==2?112u*led:0))%768;
+ const u32 sector=hue>>8,amount=(hue&255)*level>>8;
+ color[sector]=level-amount;color[(sector+1)%3]=amount;
+}
+#endif
+#ifdef HE30_FN_RGB
+__attribute__((section(".fncode"),noinline))
+#endif
 VERIFY_ENTRY void rgb_service(void){
  if(S->rgb_state==3){
   if((u32)(ticks()-S->rgb_started)<10u*TICKS_MS)return;
@@ -220,15 +258,39 @@ VERIFY_ENTRY void rgb_service(void){
 #ifdef HE30_FN_RGB
  const u32 profile=S->library.active;
  const u8 fn=S->fn&&(S->fn_light.enabled[profile]&(1u<<(S->fn-1)))?S->fn:0;
+#ifdef HE30_CALIBRATION_QOL
+ const u8 calibration=S->cal_phase&&!S->scan_error;
+ const u8 rendered=calibration?3:fn;
+ if(rendered!=S->rendered_fn)S->rgb_pending|=1;
+#else
  if(fn!=S->rendered_fn)S->rgb_pending|=1;
 #endif
+#endif
+#ifdef HE30_DESKTOP_KEYS
+ u32 effect_age=(now-S->rgb_effect_start)/TICKS_MS;
+ if(S->rgb_effect_type&&effect_age>=(S->rgb_effect_type==1?336u:440u)){
+  S->rgb_effect_type=0;S->rgb_pending|=1;
+ }
+ if(now-S->rgb_effect_time>=33u*TICKS_MS){
+  if(S->light.mode>=4||S->rgb_effect_type)S->rgb_pending|=1;
+  if((S->light.bar_on&1)&&(S->light.count&24)){
+   S->rgb_pending|=2;S->bar_spectrum=(S->bar_spectrum+0x010203u)&0xffffffu;
+  }
+  S->rgb_effect_time=now;
+ }
+#else
  if(S->light.mode>=4&&now-S->rgb_effect_time>=33u*TICKS_MS){S->rgb_pending|=1;S->rgb_effect_time=now;}
+#endif
  if(!S->rgb_pending)return;
  S->rgb_path=S->rgb_pending==3?3-S->rgb_path:S->rgb_pending;
  S->rgb_pending&=~(1u<<(S->rgb_path-1));
  const u32 count=S->rgb_path==1?N:5;
 #ifdef HE30_FN_RGB
+#ifdef HE30_CALIBRATION_QOL
+ if(S->rgb_path==1)S->rendered_fn=rendered;
+#else
  if(S->rgb_path==1)S->rendered_fn=fn;
+#endif
 #endif
  bytes_zero(S->rgb_frame,128+count*12);
  const u32 animation=now/(10u*TICKS_MS);
@@ -239,6 +301,19 @@ VERIFY_ENTRY void rgb_service(void){
   u8 color[3]={0,0,0};
   if(S->rgb_path==1){
    u8 key=led_to_key[j];
+#ifdef HE30_CALIBRATION_QOL
+   if(calibration){
+    color[bit(S->cal_lo,S->cal_hi,key)?2:bit(S->cfg.valid_lo,S->cfg.valid_hi,key)?1:0]=16;
+   }else
+#endif
+#ifdef HE30_DESKTOP_KEYS
+   if(S->rgb_effect_type){
+    if(S->rgb_effect_type==1){
+     const u32 distance=effect_age/8-j;
+     if(distance<6){color[1]=18-distance*3;color[2]=24-distance*4;}
+    }else if(!(effect_age/110&1))color[0]=color[1]=color[2]=20;
+   }else
+#endif
 #ifdef HE30_FN_RGB
    if(fn){
     const u32 value=S->fn_light.colors[profile][fn-1][key];
@@ -258,11 +333,26 @@ VERIFY_ENTRY void rgb_service(void){
     for(u32 i=0;i<3;i++)color[i]=base[i]*level/96;
    }
   }else{
+#ifdef HE30_DESKTOP_KEYS
+   bar_color(color,j,animation);
+#else
    if(S->light.bar_on&&j<S->light.count)bytes_copy(color,&S->light.br,3);
+#endif
   }
+#ifdef HE30_CALIBRATION_QOL
+  if(S->rgb_path!=1||(!calibration
+#ifdef HE30_DESKTOP_KEYS
+     &&!S->rgb_effect_type
+#endif
+  ))
+#endif
   for(u32 i=0;i<3;i++)color[i]=(color[i]*brightness+50)/100;
   const u32 key=S->rgb_path==1?led_to_key[j]:j;
-  if(S->rgb_path==1&&S->identify!=255)
+  if(S->rgb_path==1&&S->identify!=255
+#ifdef HE30_CALIBRATION_QOL
+     &&!calibration
+#endif
+  )
    color[0]=color[1]=color[2]=S->identify==key?24:0;
   bytes_copy(S->rgb_colors[key],color,3);
   const u32 order=S->light.order&1;
@@ -275,6 +365,14 @@ VERIFY_ENTRY void rgb_service(void){
  u32 spi=rgb_spi(),dma=rgb_dma();MM32(dma)=0;MM16(spi+4)=0;MM16(spi)=0;
  MM32(0x40020004)=S->rgb_path==1?0xf0000:0xf00;
  MM32(dma+4)=128+count*12;MM32(dma+8)=spi+12;MM32(dma+12)=(u32)S->rgb_frame;
- MM16(spi)=(S->rgb_path==1?0x35c:((MM32(0x40021004)&0x3800)==0x2000?0x35c:0x364))+(S->light.rate&1)*8;MM32(dma)=0x2090;MM16(spi+4)=2;
+ const u16 strip_rate=((MM32(0x40021004)&0x3800)==0x2000?0x35c:0x364)+(S->light.rate&1)*8;
+#ifdef HE30_ADC_RGB_FIX
+ /* Use the slower waveform on the long key chain, including Fn palettes.
+  * The saved rate still selects the separate five-pixel lightbar timing. */
+ MM16(spi)=S->rgb_path==1?0x364:strip_rate;
+#else
+ MM16(spi)=S->rgb_path==1?0x35c+(S->light.rate&1)*8:strip_rate;
+#endif
+ MM32(dma)=0x2090;MM16(spi+4)=2;
  S->rgb_started=ticks();S->rgb_state=1;MM32(dma)=0x2091;
 }

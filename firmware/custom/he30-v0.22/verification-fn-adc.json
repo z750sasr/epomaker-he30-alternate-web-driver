@@ -1,0 +1,10 @@
+{
+  "sha256": "21c0fc8f08249ac3062eb72be8d53f45f3c6f1f8b6f2225f547371124a76b5b0",
+  "checks": [
+    "Fn RGB writes validate color data and are atomic across fragments and profile changes",
+    "Held Fn1 and Fn2 display their per-key colors in LED order and leave the lightbar independent",
+    "All eight palettes survive reboot; interrupted or corrupt newest pairs preserve earlier palettes",
+    "ADC A\u2013F rank and acquisition settings preserve all 36 physical slots and shut down on DMA error"
+  ],
+  "hardware_tested": false
+}

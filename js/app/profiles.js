@@ -42,24 +42,6 @@ function preserveAdvancedUiMetadata(profile, stagedActions) {
   return profile;
 }
 
-function preserveStagedProfileForSwitch(nextProfileIndex) {
-  if (!state.profile || !state.dirty.size) return false;
-  const snapshot = {
-    savedAt: new Date().toISOString(),
-    reason: `Keyboard switched to profile ${nextProfileIndex + 1}`,
-    dirtySections: [...state.dirty],
-    profile: state.profile,
-  };
-  try {
-    const identity = state.identity?.vidPid || "keyboard";
-    localStorage.setItem(`he30-staged-${identity}-p${state.profile.profileIndex}`, JSON.stringify(snapshot));
-    log("warning", `Staged profile ${state.profile.profileIndex + 1} saved to browser recovery before switching`, { nextProfile: nextProfileIndex + 1, dirtySections: snapshot.dirtySections });
-  } catch (error) {
-    log("warning", "Could not save staged profile recovery before switching", error.message);
-  }
-  return true;
-}
-
 /**
  * The one profile-switch pipeline used by both UI buttons and hardware events.
  * It serializes reads, optionally activates the onboard profile, refreshes every
@@ -77,7 +59,7 @@ async function syncDeviceProfile(profileIndex, { activate = false, layer = 0, or
 
   const driver = state.driver;
   const profileChanged = state.profile?.profileIndex !== target;
-  const recoveredStagedChanges = state.profile?.profileIndex !== target && preserveStagedProfileForSwitch(target);
+  const hadStagedChanges = profileChanged && !!state.dirty.size;
   const resumeLiveMonitor = state.liveMonitorActive;
   state.profileSyncBusy = true;
   state.profileSyncTarget = target;
@@ -95,11 +77,10 @@ async function syncDeviceProfile(profileIndex, { activate = false, layer = 0, or
     // show its base layer instead: local 0, displayed globally as 0/4/8.
     // Layer-only changes within the already loaded profile remain live.
     const activeLayer = profileChanged ? 0 : (activate ? targetLayer : (state.profileSyncTarget === target ? state.profileSyncLayer : targetLayer));
-    try { localStorage.setItem(`he30-backup-${state.identity.vidPid}-p${target}`, JSON.stringify({ savedAt: new Date().toISOString(), profile })); } catch (error) { log("warning", "Browser backup storage unavailable", error.message); }
     setWorkspace(profile, "device", { identity: state.identity, info: state.info, preserveView: true, layer: activeLayer });
     log("info", `${origin === "keyboard" ? "Keyboard selected" : "Selected"} profile ${target + 1}; workspace refreshed on layer ${activeLayer}`);
-    showToast(recoveredStagedChanges
-      ? `Profile ${target + 1} loaded. Previous staged changes were saved to browser recovery.`
+    showToast(hadStagedChanges
+      ? `Profile ${target + 1} loaded. Previous staged changes were cleared.`
       : `Profile ${target + 1} is live. All pages now show its settings.`);
     if (resumeLiveMonitor && state.page === "hall") await startLiveMonitor();
   } catch (error) {
@@ -157,10 +138,9 @@ async function connectKeyboard() {
     const [info, profileIndex] = await Promise.all([driver.getInfo(), driver.getActiveProfile()]);
     state.info = info;
     const profile = await driver.readProfile(profileIndex, (percent, message) => updateProgress(8 + Math.round(percent * .9), message));
-    try { localStorage.setItem(`he30-backup-${state.identity.vidPid}-p${profileIndex}`, JSON.stringify({ savedAt: new Date().toISOString(), profile })); } catch (error) { log("warning", "Browser backup storage unavailable", error.message); }
     setWorkspace(profile, "device", { identity: state.identity, info });
     state.profileChangeUnsubscribe = driver.subscribeProfileChange(handleHardwareProfileChange);
-    log("info", `Profile ${profileIndex + 1} loaded; in-browser recovery backup created`);
+    log("info", `Profile ${profileIndex + 1} loaded from the keyboard`);
     showToast(`${state.identity.name} connected. Profile ${profileIndex + 1} is ready.`);
   } catch (error) {
     if (error.proProduct) {

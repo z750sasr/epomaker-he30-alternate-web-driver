@@ -1,4 +1,4 @@
-import {FoundationClient,decodeConfig,encodeConfig,KEY_NAMES,parseUsage,usageLabel,crc32,isProfileUsage,PROFILE_KEY_MODEL,NKRO_MODEL,supportsProfileKeys} from '../flasher/keyboard-protocol.mjs';
+import {FoundationClient,decodeConfig,encodeConfig,KEY_NAMES,parseUsage,usageLabel,crc32,isProfileUsage,isDesktopUsage,DESKTOP_KEYS_MODEL,DESKTOP_USAGES,PROFILE_KEY_MODEL,NKRO_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,FN_RGB_PRODUCTS,supportsProfileKeys} from '../flasher/keyboard-protocol.mjs';
 import {HIDTransport,connectionCandidates} from '../flasher/protocol.mjs';
 import {LightingClient,decodeLighting,encodeLighting} from '../flasher/lighting-protocol.mjs';
 import {GAMEPAD_BYTES,encodeGamepad,decodeGamepad} from './gamepad.mjs';
@@ -8,7 +8,7 @@ export const SAVE_DIAGNOSTICS_MODEL='H3K16';
 export const LIVE_SAVE_TEST_MODEL='H3K17';
 export const ONBOARD_SAVE_TEST_MODEL='H3K18';
 export const FLASH_RESIDENT_SAVE_MODEL='H3K19';
-export const PRO_PRODUCTS=['H3K09','H3K10','H3K11','H3K12','H3K13','H3K14',MODEL,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL];
+export const PRO_PRODUCTS=['H3K09','H3K10','H3K11','H3K12','H3K13','H3K14',MODEL,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,...FN_RGB_PRODUCTS];
 export const RATES=[125,250,500,1000,2000,4000,8000];
 export const ACTIONS=['Disabled','SOCD','Rappy Snappy','Dynamic Keystroke','Mod Tap','Toggle','Key Combination','Macro','Multi-Point Trigger','End Key'];
 export const GAMEPAD=['Unassigned','Left stick left','Left stick right','Left stick up','Left stick down','Right stick left','Right stick right','Right stick up','Right stick down','Left trigger','Right trigger',...Array.from({length:16},(_,i)=>'Button '+(i+1))];
@@ -69,7 +69,8 @@ export class ProDevice{
     this.foundation=new FoundationClient(transport);
     this.lighting=new LightingClient(this.foundation);
     this.supportsProfileKeys=supportsProfileKeys(transport.device.productName);
-    this.supportsGamepad=['H3K11','H3K12','H3K13','H3K14',MODEL,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL].includes(transport.device.productName);
+    this.supportsDesktopKeys=transport.device.productName===DESKTOP_KEYS_MODEL;
+    this.supportsGamepad=['H3K11','H3K12','H3K13','H3K14',MODEL,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,...FN_RGB_PRODUCTS].includes(transport.device.productName);
   }
   static async connect(authorizedProduct){
     if(!navigator.hid)throw new Error('Open this page in desktop Chrome or Edge on localhost or HTTPS.');
@@ -129,13 +130,13 @@ export class ProDevice{
   }
   capabilities(){
     return this.foundation.transaction(async()=>{
-      const data=await this.region(0xd2,0,88);
+      const data=await this.region(0xd2,0,this.supportsDesktopKeys?89:88);
       const active=profileIndex(data);
       if(data[6]>6||data[11]!==8)throw new Error('H3P1 profile protocol is unavailable.');
       const v=new DataView(data.buffer);
       return {active,rate:data[6],scanMode:data[7],gamepad:!!data[8],runningRate:6-data[9],
-        gamepadAttached:!!data[10],scanHz:u16(data,12),runningScanner:data[14],scanTicks:v.getUint32(16,true),scanWorst:v.getUint32(20,true),
-        names:Array.from({length:4},(_,i)=>decoder.decode(data.slice(24+i*16,40+i*16)).replace(/\0.*$/s,''))};
+        gamepadAttached:!!data[10],scanHz:u16(data,12),runningScanner:data[14],scanTrial:data[15],scanTicks:v.getUint32(16,true),scanWorst:v.getUint32(20,true),
+        keyBrightness:data[88],names:Array.from({length:4},(_,i)=>decoder.decode(data.slice(24+i*16,40+i*16)).replace(/\0.*$/s,''))};
     });
   }
   activeProfile(){return this.foundation.transaction(async()=>profileIndex(await this.exchange(0xd2,0,0,8)));}
@@ -190,6 +191,10 @@ export class ProDevice{
   }
   write(op,offset,data){return this.foundation.transaction(()=>this.exchange(0xd2,op,offset,data.length,data));}
   select(index){return this.write(2,0,Uint8Array.of(uint(index,3)));}
+  scanTrial(index){
+    if(!FN_RGB_PRODUCTS.includes(this.transport.device.productName))throw new Error('ADC experiments require HE30 Pro v0.22 or later.');
+    return this.write(9,0,Uint8Array.of(uint(index,6)));
+  }
   rename(text){
     if(!/^[ -~]{1,15}$/.test(text))throw new Error('Use 1–15 printable ASCII characters.');
     const out=new Uint8Array(16);out.set(encoder.encode(text));
@@ -197,12 +202,21 @@ export class ProDevice{
   }
   fn2(key,value){
     if(isProfileUsage(value)&&!this.supportsProfileKeys)throw new Error('Profile keys require HE30 Pro v0.20.');
+    if(isDesktopUsage(value)&&!this.supportsDesktopKeys)throw new Error('This mapping requires HE30 Pro v0.25.');
     return this.write(4,uint(key,35),Uint8Array.of(value));
   }
   action(slot,action){return this.write(5,uint(slot,7),actionBytes(action));}
   switch(key,travel,coefficient){return this.write(6,uint(key,35),pack16(uint(travel,6000,500),uint(coefficient,65535)));}
   mapping(key,binding){return this.write(7,uint(key,35),Uint8Array.of(uint(binding,26)));}
   deviceSettings(rate,scanMode,gamepad){return this.write(8,0,Uint8Array.of(uint(rate,6),uint(scanMode,2),Number(gamepad)));}
+  pointerSpeed(speed){
+    if(!this.supportsDesktopKeys)throw new Error('Pointer speed requires HE30 Pro v0.25.');
+    return this.write(10,0,Uint8Array.of(uint(speed,32,1)));
+  }
+  cycleAll(key,layer){
+    if(!this.supportsDesktopKeys)throw new Error('This mapping requires HE30 Pro v0.25.');
+    return this.write(11,uint(key,35),Uint8Array.of(uint(layer,2)));
+  }
 }
 export function bindingCode(value,layer){
   const profile=/^profile ([1-4])$/i.exec(value.trim());
@@ -212,4 +226,4 @@ export function bindingCode(value,layer){
   return parseUsage(value,!!layer);
 }
 export const bindingLabel=code=>isProfileUsage(code)?'Profile '+(code-0xef):code===0xfd?'Fn2':code===0xff?'Fn1':usageLabel(code);
-export {decodeConfig,encodeConfig,encodeLighting,KEY_NAMES,PROFILE_KEY_MODEL,NKRO_MODEL,isProfileUsage};
+export {decodeConfig,encodeConfig,encodeLighting,KEY_NAMES,PROFILE_KEY_MODEL,NKRO_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,FN_RGB_PRODUCTS,DESKTOP_KEYS_MODEL,DESKTOP_USAGES,isProfileUsage,isDesktopUsage};

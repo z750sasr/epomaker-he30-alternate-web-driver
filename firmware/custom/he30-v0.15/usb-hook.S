@@ -27,6 +27,16 @@ usb_setup_hook:
 .global usb_endpoint_init_hook
 .type usb_endpoint_init_hook,@function
 usb_endpoint_init_hook:
+#ifdef HE30_DESKTOP_KEYS
+ /* EP4 OUT remains the vendor transport. Give EP4 IN its own DMA word. */
+ li t0,0x4002346c
+ li t1,0x200036dc
+ sw t1,0(t0)
+ li t0,0x400234ea
+ li t1,2
+ sb t1,0(t0)
+ sb zero,320(gp)
+#endif
 #ifdef HE30_NKRO
  /* Report protocol is the USB default after a bus reset. */
  li t0,1
@@ -77,3 +87,27 @@ usb_out_hook:
  li t0,0x5b98
  jr t0
 .size usb_out_hook,.-usb_out_hook
+
+#ifdef HE30_DESKTOP_KEYS
+.section .usb_hooks,"ax",@progbits
+.align 2
+.global usb_mouse_in_hook
+.type usb_mouse_in_hook,@function
+usb_mouse_in_hook:
+ li a4,0x24
+ bne a5,a4,1f
+ li t0,0x400234ea
+ lbu a4,0(t0)
+ andi a4,a4,-4
+ xori a4,a4,8
+ ori a4,a4,2
+ sb a4,0(t0)
+ sb zero,320(gp)
+ li t0,0x5b98
+ jr t0
+1:
+ li a4,33
+ li t0,0x57f6
+ jr t0
+.size usb_mouse_in_hook,.-usb_mouse_in_hook
+#endif

@@ -1,0 +1,12 @@
+{
+  "sha256": "63b74f9d1f34fc4fd86a044c2e57b99a21fb6876322d0fac242450bae4e170f6",
+  "checks": [
+    "Fn RGB writes validate color data and are atomic across fragments and profile changes",
+    "Held Fn1 and Fn2 display their per-key colors in LED order and leave the lightbar independent",
+    "All eight palettes survive reboot; interrupted or corrupt newest pairs preserve earlier palettes",
+    "ADC A\u2013F rank and acquisition settings preserve all 36 physical slots and shut down on DMA error",
+    "Cold startup programs the ADC DMA source after its peripheral clock is enabled",
+    "Keyboard stays at half-rate while the lightbar responds to both data-rate selections"
+  ],
+  "hardware_tested": false
+}
