@@ -1,8 +1,18 @@
+import {bindBoardSelection} from './board-selection.mjs';
+import {liveTravelPanel,bindLiveTravelPanel,paintLiveTravel} from './live-travel.mjs';
+import {renderRemap,bindRemap,openRemapPicker,closeRemapPicker} from './remap.mjs';
 import {openAdvancedKeyPicker} from './key-picker.mjs';
 import {beginRecovery} from '../flasher/recovery.mjs';
-import {ProDevice,ACTIONS,GAMEPAD,RATES,ZUOYA,KEY_NAMES,bindingCode,bindingLabel,encodeConfig,encodeLighting} from './protocol.mjs';
+import {ProDevice,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,GAMEPAD,RATES,ZUOYA,KEY_NAMES,actionBytes,bindingCode,bindingLabel,encodeConfig,encodeLighting,isProfileUsage} from './protocol.mjs';
+import {DISTANCE_MODES,distanceField,distanceLabel,storedDistance} from './tuning.mjs';
+import {FEATURES,actionDepthFields,actionForFeature,actionKeys,renderAdvanced} from './advanced.mjs';
 import {USAGE_NAMES,importProfile} from '../flasher/keyboard-protocol.mjs';
-import {importLighting} from '../flasher/lighting-protocol.mjs';
+import {importLighting,LED_TO_KEY} from '../flasher/lighting-protocol.mjs';
+import {
+  GAMEPAD_ACTIONS,GAMEPAD_MODES,GAMEPAD_OPPOSITION,GAMEPAD_NONE,
+  defaultGamepad,encodeGamepad,decodeGamepad,assignGamepad,
+  gamepadActionForKey,migrateLegacyGamepad
+} from './gamepad.mjs';
 const byId=id=>document.getElementById(id);
 const rows=[
   ['Esc','F1','F2','F3','F4','F5','F6'],
@@ -24,8 +34,36 @@ const defaultProfile=()=>({name:'Profile',fn2:Array(36).fill(254),gamepad:Array(
 const offline=Array.from({length:4},(_,i)=>({config:defaults(),profile:{...defaultProfile(),name:'Profile '+(i+1)}}));
 let client=null,config=offline[0].config,profile=offline[0].profile;
 let info={active:0,rate:3,scanMode:0,gamepad:false,names:offline.map(p=>p.profile.name)};
-let status=null,rgb=null,slot=0,layer=0,key=0,page='performance',view='quick',busy=false,dirty=false,generation=0,pollPending=false;
+let status=null,rgb=null,slot=0,layer=0,key=0,page=new URLSearchParams(location.search).get('page')==='gamepad'?'gamepad':'performance',view='quick',busy=false,dirty=false,generation=0,pollPending=false;
+let lightingDraft=null,paletteEdited=false;
+let advancedKind=null;
+let controller={...defaultGamepad(),mode:1},padState=null,padChoice=null,usbTransition=false;
 let autoSaveTimer, recoveryPending=false;
+let selectionOnlyDirty=false;
+let selectedKeys=new Set([key]);
+let selectionAnchor=key;
+let distancePrecision=Number(localStorage.getItem('he30-distance-precision')||0);
+if(![0,1,2].includes(distancePrecision))distancePrecision=0;
+let boardGauge=localStorage.getItem('he30-board-gauge')==='true';
+let syncRapid=localStorage.getItem('he30-sync-rapid')==='true';
+let liveTravel=false, travelPanelPosition=null, travelSelectionOnly=true;
+let lastFullStatus=0;
+let lastProfileCheck=0;
+const tuningPage=()=>page==='performance'&&['actuation','rapid'].includes(view);
+const multiKeyPage=()=>tuningPage()||page==='lighting'||page==='keymap'||(page==='performance'&&view==='switches');
+const editTargets=all=>all?KEY_NAMES.map((_,index)=>index):[...selectedKeys];
+const selectionLabel=()=>selectedKeys.size===1?KEY_NAMES[key]:selectedKeys.size+' keys';
+const visualKeyOrder=rows.flat();
+function selectKeys(indices, mode='replace', preferred=key){
+  const next=mode==='replace'?new Set():new Set(selectedKeys);
+  for(const index of indices){
+    if(mode==='remove'||mode==='toggle'&&next.has(index))next.delete(index);
+    else next.add(index);
+  }
+  if(!next.size)next.add(preferred);
+  selectedKeys=next;
+  key=next.has(preferred)?preferred:[...next][0];
+}
 let catalog=[{name:'Linear / custom',brand:'Endpoint calibration',travel:4000,coefficient:0},...ZUOYA];
 const esc=text=>String(text).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const color=(values,scale=1)=>'#'+values.map(value=>Math.round(value*scale).toString(16).padStart(2,'0')).join('');
@@ -39,7 +77,23 @@ const bindingField=(id,label,value)=>'<div class="binding-field">'+textField(id,
 const btn=(label,action,disabled=false)=>'<button type="button" class="button ghost" data-action="'+action+'" '+(disabled?'disabled':'')+'>'+label+'</button>';
 const commands=(...items)=>'<div class="commands">'+items.join('')+'</div>';
 const grid=(...items)=>'<div class="pro-grid">'+items.join('')+'</div>';
+const brightness=(id,label,value=100)=>'<label class="rgb-brightness">'+label+
+  '<input type="range" id="'+id+'" min="0" max="100" value="'+value+'"><output for="'+id+'">'+value+'%</output></label>';
 const liveOnly=!navigator.hid;
+const diagnosticSave=(active=client)=>[SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL].includes(active?.transport.device.productName);
+const recoverySave=(active=client)=>diagnosticSave(active)||['H3K13','H3K14','H3K15'].includes(active?.transport.device.productName);
+const browserRates=()=>diagnosticSave()||client?.transport.device.productName==='H3K15';
+const onboardRates=()=>[FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL].includes(client?.transport.device.productName);
+const profileKeys=()=>!client||client.supportsProfileKeys;
+const rememberedRatesKey=active=>'he30-pro-'+active.transport.device.productName.toLowerCase()+'-rates';
+function rememberedRates(){
+  try{
+    const rates=JSON.parse(localStorage.getItem(rememberedRatesKey(client)));
+    if(Number.isInteger(rates?.rate)&&RATES[rates.rate]&&Number.isInteger(rates.scanMode)&&rates.scanMode>=0&&rates.scanMode<=2)return rates;
+  }catch{}
+  return null;
+}
+const keepChanges=()=>recoverySave()?'Export this profile to keep a copy.':'Save changes to keep them after unplugging.';
 const values=id=>Number(byId(id).value);
 const checkbox=id=>byId(id).checked;
 const named=id=>byId(id).value;
@@ -52,50 +106,175 @@ function message(text,error=false){
   byId('status').textContent=text;
   byId('status').classList.toggle('error',error);
 }
-async function refresh(){
+function acceptStatus(next,selectionChanged=false){
+  // Existing firmware marks its journal dirty when only the active slot changes.
+  const sameJournal=status&&next.savedSequence===status.savedSequence;
+  const sameConfig=status&&next.configCRC===status.configCRC;
+  selectionOnlyDirty=!!(next.dirty&&sameJournal&&!dirty&&(selectionChanged||selectionOnlyDirty&&sameConfig));
+  status=next;
+  dirty=next.dirty&&!selectionOnlyDirty;
+}
+async function refresh(isCurrent=()=>true){
   const current=client;
-  if(!current)return;
-  const next=await current.capabilities(),nextConfig=await current.foundation.readConfig(),nextProfile=await current.profile();
-  const state=await current.foundation.readStatus();
-  if(current!==client)return;
-  info=next;config=nextConfig;profile=nextProfile;status=state;dirty=state.dirty;
+  if(!current)return false;
+  const valid=()=>current===client&&isCurrent();
+  for(let attempt=0;attempt<2&&valid();attempt++){
+    const next=await current.capabilities(),nextConfig=await current.foundation.readConfig(),nextProfile=await current.profile();
+    if(!valid())return false;
+    const state=await current.foundation.readStatus();
+    const nextController=current.supportsGamepad?await current.readGamepad():null;
+    const nextPadState=current.supportsGamepad?await current.gamepadStatus():null;
+    const confirmed=await current.activeProfile();
+    if(!valid())return false;
+    if(confirmed!==next.active)continue;
+    const switched=next.active!==info.active;
+    if(switched){advancedKind=null;slot=0;rgb=null;}
+    acceptStatus(state,switched);
+    info=next;config=nextConfig;profile=nextProfile;
+    if(nextController)controller=nextController;
+    padState=nextPadState;
+    padChoice=fullGamepad()?gamepadActionForKey(controller,key):null;
+    lastProfileCheck=lastFullStatus=performance.now();
+    return true;
+  }
+  if(!valid())return false;
+  throw new Error('The onboard profile changed while being read. Release the profile shortcut and try again.');
+}
+const fullGamepad=()=>!client||client.supportsGamepad;
+function controllerLabel(index){
+  if(!fullGamepad())return profile.gamepad[index]?GAMEPAD[profile.gamepad[index]]:'';
+  const action=gamepadActionForKey(controller,index);
+  return action===null?'':GAMEPAD_ACTIONS[action].label;
+}
+function controllerBindings(settings){
+  const bindings=Array(36).fill(0);
+  [...settings.analog,...settings.digital].forEach((binding,action)=>{
+    if(binding.key!==GAMEPAD_NONE)bindings[binding.key]=action+1;
+  });
+  return bindings;
+}
+function controllerForBindings(bindings,settings=controller){
+  const next=structuredClone(settings),targets=[...next.analog,...next.digital];
+  targets.forEach(binding=>{binding.key=GAMEPAD_NONE;});
+  bindings.forEach((action,index)=>{if(action)targets[action-1].key=index;});
+  return decodeGamepad(encodeGamepad(next));
 }
 async function run(task){
   if(busy)return;
-  busy=true;document.body.classList.add('working');byId('save').disabled=true;
+  busy=true;generation++;document.body.classList.add('working');
+  byId('save').disabled=true;byId('activeProfile').disabled=true;
   try{await task();}
-  catch(err){message(err.message,true);}
+  catch(err){await reportDeviceError(err);}
   finally{busy=false;document.body.classList.remove('working');render();}
 }
-function mark(text='Changes applied. Save changes to keep them after unplugging.'){
-  dirty=true;message(client?text:'Offline workspace updated.');queueAutoSave();
+async function reportDeviceError(error){
+  const failed=client;
+  if(!failed||error.name!=='HIDTimeoutError'){message(error.message,true);return;}
+  clearTimeout(autoSaveTimer);
+  client=null;generation++;status=padState=rgb=null;
+  render();
+  message(error.message+' Connection released. Select Connect keyboard to read its current settings.',true);
+  await failed.transport.close().catch(()=>{});
+}
+function mark(text='Changes applied. '+keepChanges()){
+  selectionOnlyDirty=false;dirty=true;message(client?text:'Offline workspace updated.');queueAutoSave();
 }
 function selectedUsage(idx){
   return layer===2?profile.fn2[idx]:layer===1?config.keys[idx].fnUsage:config.keys[idx].normalUsage;
 }
+function readLightingEditor(){
+  const next=structuredClone(profile.lighting);
+  Object.assign(next,{mode:values('lightMode'),order:values('colorOrder'),rate:values('waveRate'),color:channels(named('keyColor')),
+    barColor:channels(named('barColor')),barEnabled:checkbox('barEnabled')});
+  for(const id of ['keyBrightness','barBrightness']){
+    if(byId(id))next[id]=values(id);
+  }
+  if(next.mode===2&&paletteEdited){
+    const keyColor=channels(named('perKey'));
+    for(const index of selectedKeys)next.palette[index]=keyColor;
+  }
+  return next;
+}
+const physicalLedIndex=KEY_NAMES.map((_,index)=>LED_TO_KEY.indexOf(index));
+function previewKeyColor(light,index,animation){
+  let channels=[0,0,0];
+  const mode=light.mode;
+  if(mode===1||mode===3&&status?.pressed[index])channels=light.color;
+  if(mode===2)channels=light.palette[index];
+  if(mode===4){
+    const position=(animation+5*physicalLedIndex[index])%192;
+    const segment=position>>6,amplitude=(position&63)>>2;
+    channels[segment]=16-amplitude;channels[(segment+1)%3]=amplitude;
+  }
+  if(mode===5){
+    const phase=animation%192,level=Math.min(phase,192-phase);
+    channels=light.color.map(channel=>Math.floor(channel*level/96));
+  }
+  return channels.map(channel=>Math.round(channel*(light.keyBrightness??100)/100));
+}
+const keyWidths={Tab:1.5,Caps:1.75,LShift:2.25,Ctrl:1.25,Fn:1.25,Alt:1.25,Space:2.75};
 function renderBoard(){
   const board=byId('board');
   board.hidden=page==='firmware'||page==='settings'||page==='diagnostics';
   if(board.hidden)return;
-  board.innerHTML='<div class="pro-board">'+rows.map(row=>'<div class="pro-row">'+row.map(i=>'<button type="button" class="pro-key" data-key="'+i+'" data-selected="'+(i===key)+'" style="flex-grow:'+(({Tab:1.5,Caps:1.75,LShift:2.25,Ctrl:1.25,Fn:1.25,Alt:1.25,Space:2.75})[KEY_NAMES[i]]||1)+'"><span>'+esc(KEY_NAMES[i]==='Grave'?'~':KEY_NAMES[i])+'</span><small>'+esc(page==='gamepad'?GAMEPAD[profile.gamepad[i]]:bindingLabel(selectedUsage(i)))+'</small></button>').join('')+'</div>').join('')+'</div><div class="pro-bar" aria-label="Five lightbar LEDs">'+Array(5).fill('<i></i>').join('')+'</div>';
-  paintBoard();
+  const keyboard=rows.map(row=>'<div class="pro-row">'+row.map(index=>{
+    const name=KEY_NAMES[index],selected=multiKeyPage()?selectedKeys.has(index):index===key;
+    const label=page==='gamepad'?controllerLabel(index):bindingLabel(selectedUsage(index));
+    const tuning=config.keys[index],ap=distanceLabel(tuning.actuation,profile.travel[index],distancePrecision);
+    const badges=`<span class="pro-key-ap" title="Actuation point">AP ${ap}</span>${tuning.rapidTrigger?'<span class="pro-key-rt" title="Rapid Trigger">RT</span>':''}${tuning.topDeadzone||tuning.bottomDeadzone?'<span class="pro-key-dz" title="Dead zones">DZ</span>':''}`;
+    return '<button type="button" class="pro-key" data-key="'+index+'" aria-pressed="'+selected+'" data-selected="'+selected+
+      '" data-controller="'+!!controllerLabel(index)+'" style="--key-u:'+(keyWidths[name]||1)+'" title="'+esc(name+' · '+label)+'">'+
+      '<span>'+esc(name==='Grave'?'~':name)+'</span><small class="pro-key-mapping">'+esc(label)+'</small>'+badges+'<span class="calibration-adc" hidden></span></button>';
+  }).join('')+'</div>').join('');
+  board.innerHTML='<div class="pro-board">'+keyboard+'</div><div class="pro-bar" aria-label="Five lightbar LEDs">'+Array(5).fill('<i></i>').join('')+'</div>'+
+    (page==='lighting'?'<p id="rgbPreviewStatus" class="rgb-preview-status"></p>':'')+
+    (multiKeyPage()?'<div class="pro-selection-toolbar"><span>Drag to select. Shift selects a range. Ctrl/⌘ toggles keys. Alt removes keys.</span><strong>'+esc(selectionLabel())+
+      '</strong><button type="button" class="button ghost small" data-action="selectAllKeys">Select all</button><button type="button" class="button ghost small" data-action="invertKeys">Invert</button><button type="button" class="button ghost small" data-action="singleKey">Primary only</button></div>':'');
 }
 function paintBoard(){
-  for(const element of byId('board').querySelectorAll('[data-key]')){
+  const board=byId('board');
+  const lighting=page==='lighting';
+  const light=lightingDraft??profile.lighting;
+  const frame=lighting&&!lightingDraft?rgb:null;
+  const animation=Math.floor(performance.now()/10);
+  const preview=byId('rgbPreviewStatus');
+  if(preview){
+    const text=lightingDraft?'Previewing lighting changes':frame?'Live keyboard and light strip':client?'Waiting for the keyboard’s RGB frame':'Offline lighting preview';
+    if(preview.textContent!==text)preview.textContent=text;
+  }
+  const calibrating=!!client&&!!status?.calibrationPhase;
+  board.classList.toggle('calibration-active',calibrating);
+  board.classList.toggle('show-key-gauge',boardGauge&&page!=='lighting');
+  for(const element of board.querySelectorAll('[data-key]')){
     const i=Number(element.dataset.key);
+    const reading=element.querySelector('.calibration-adc');
+    reading.hidden=!calibrating;
+    if(calibrating){
+      const raw=String(status.raw[i]);
+      if(reading.textContent!==raw)reading.textContent=raw;
+      element.dataset.calibrated=status.calibrated[i];
+      element.setAttribute('aria-label',KEY_NAMES[i]+' · '+raw+' ADC'+(status.calibrated[i]?' · measured':''));
+    }else{
+      delete element.dataset.calibrated;
+      element.removeAttribute('aria-label');
+    }
     element.dataset.pressed=!!status?.pressed[i];
-    element.style.setProperty('--depth',(status?.positions[i]||0)/10+'%');
-    if(page==='lighting'){
-      const {mode,palette,color:base}=profile.lighting;
-      const preview=mode===2?palette[i]:mode===1||mode===3&&status?.pressed[i]?base:[0,0,0];
-      const actual=rgb?Array.from(rgb.slice(3*i,3*i+3)):preview;
-      element.style.borderColor=actual.some(Boolean)?color(actual,255/32):'';
+    if(boardGauge)element.style.setProperty('--depth',(status?.positions[i]||0)/10+'%');
+    if(lighting){
+      const actual=frame?Array.from(frame.subarray(3*i,3*i+3)):previewKeyColor(light,i,animation);
+      element.style.setProperty('--key-rgb',actual.some(Boolean)?color(actual,255/32):'');
     }
   }
   byId('board').querySelectorAll('.pro-bar i').forEach((led,i)=>{
-    const actual=rgb?Array.from(rgb.slice(108+3*i,111+3*i)):profile.lighting.barEnabled?profile.lighting.barColor:[0,0,0];
+    const actual=frame?Array.from(frame.subarray(108+3*i,111+3*i)):
+      light.barEnabled&&i<light.barCount?light.barColor.map(channel=>Math.round(channel*(light.barBrightness??100)/100)):[0,0,0];
     led.style.setProperty('--bar-color',actual.some(Boolean)?color(actual,255/32):'');
   });
+  paintTravelMonitor();
+  paintRuleTravel();
+  const rollover=byId('keyboardRollover');
+  if(rollover)rollover.textContent=client?.transport.device.productName===NKRO_MODEL&&status?.nkro?
+    'NKRO active · 6KRO on host boot request':'6-key rollover plus modifiers';
   const pos=status?.positions[key];
   const travel=byId('travelReading');
   if(travel)travel.textContent=pos==null?'—':(pos*profile.travel[key]/1e6).toFixed(3)+' mm estimated · '+(pos/10).toFixed(1)+'%';
@@ -108,6 +287,12 @@ function paintBoard(){
   }
   const diag=byId('scanStats');
   if(diag)diag.textContent=info.scanHz?info.scanHz.toLocaleString()+' Hz complete 36-key scans · '+(info.scanTicks/144).toFixed(1)+' µs ADC frame · '+(info.scanWorst/144).toFixed(1)+' µs worst ADC frame':'Awaiting a scan measurement';
+  const running=byId('runningRates');
+  if(running)running.textContent=client
+    ? 'Active polling rate cap '+(RATES[info.runningRate]?.toLocaleString()||'—')+' Hz · Scan '+(info.scanHz?info.scanHz.toLocaleString()+' Hz':scanModes[info.runningScanner]||'measuring')
+    : 'Connect the keyboard to read its active rates.';
+  const pad=byId('controllerStatus');
+  if(pad){const text=controllerStatus();if(pad.textContent!==text)pad.textContent=text;}
 }
 const headings={
   quick:['Quick Settings','Calibrate the sensors and set up the keyboard.'],
@@ -116,95 +301,403 @@ const headings={
   switches:['Magnetic Switches','Assign a switch curve and travel to the selected physical key.'],
   keymap:['Remap','Edit the current onboard profile’s Main, Fn1 and Fn2 layers.'],
   advanced:['Advanced Keys','Configure eight rules per profile. Actions and pairs use physical key positions.'],
-  gamepad:['Gamepad','Assign physical keys to controller buttons, triggers and opposing stick directions.'],
+  gamepad:['Gamepad','Assign physical keys to Xbox controls and tune their analog response.'],
   lighting:['RGB Settings','Set the 36-key LEDs and the five-LED lightbar.'],
-  settings:['Keyboard Settings','Choose report cadence, scan mode and USB controller visibility.'],
+  settings:['Keyboard Settings','Choose the polling rate, scan rate and USB controller visibility.'],
   profiles:['My Profiles','Four onboard slots, each with its own keymap, tuning, actions, gamepad bindings and lighting.'],
   overview:['Device Overview','See the active profile and firmware capabilities.'],
   diagnostics:['Diagnostics','Monitor complete scan frames and inspect sensor readings.'],
   firmware:['Firmware','Load HE30 Pro firmware using the HE30 recovery page.']
 };
+function controllerStatus(){
+  if(!client)return 'Offline workspace. Connect HE30 Pro v0.11 to read its controller settings.';
+  if(!client.supportsGamepad)return 'Earlier firmware uses a generic HID controller. Update to v0.11 for Xbox controls.';
+  if(!padState)return 'Reading controller status…';
+  if(!padState.usbAttached)return 'Xbox interface disabled. Enable it to expose the controller to Windows.';
+  if(!padState.mode)return 'Xbox interface enabled. Choose an input mode to start controller output.';
+  if(status?.adcError)return 'The scanner reported an error. Open Diagnostics to check the keyboard.';
+  if(status?.calibrationPhase)return 'Finish or stop calibration to resume controller input.';
+  if(status?.startupBaseline===1)return 'Release all keys while the keyboard measures its startup baseline.';
+  if(status&&!status.typingEnabled)return 'Enable typing in Quick Settings to resume key scanning for the controller.';
+  if(!padState.armed)return 'Release the assigned keys to arm controller input.';
+  const report=new DataView(padState.report.buffer,padState.report.byteOffset,padState.report.byteLength);
+  const axis=offset=>(report.getInt16(offset,true)/32768).toFixed(2);
+  return 'Firmware output · Left '+axis(6)+' / '+axis(8)+' · Right '+axis(10)+' / '+axis(12)+
+    ' · Triggers '+Math.round(padState.report[4]*100/255)+'% / '+Math.round(padState.report[5]*100/255)+'%';
+}
+function controllerActionSelect(){
+  const groups=[['Left stick',0,4],['Right stick',4,8],['Triggers',8,10],['Buttons',10,20],['D-pad',20,24]];
+  return '<label>Controller action<select id="gamepadBind"><option value="0" '+(padChoice===null?'selected':'')+'>No assignment</option>'+
+    groups.map(([label,start,end])=>'<optgroup label="'+label+'">'+GAMEPAD_ACTIONS.slice(start,end).map((action,index)=>
+      '<option value="'+(start+index+1)+'" '+(padChoice===start+index?'selected':'')+'>'+action.label+'</option>').join('')+'</optgroup>').join('')+'</select></label>';
+}
+function controllerTuning(){
+  if(padChoice===null)return '<p class="hint">Choose a controller action for this physical key. Assigned keys appear in the list.</p>';
+  const depth=(id,label,value)=>travelField(id,label,value,0,10000,'',key,10000);
+  if(padChoice>=10){
+    const binding=controller.digital[padChoice-10];
+    return grid(depth('padPress','Press depth',binding.press),depth('padRelease','Release depth',binding.release))+
+      '<p class="hint">Release depth must be shallower than press depth.</p>';
+  }
+  const binding=controller.analog[padChoice];
+  return grid(depth('padStart','Analog start',binding.start),depth('padEnd','Full output',binding.end))+
+    '<h3>Response curve</h3><p class="hint">Travel and output use percentages of the analog range.</p>'+
+    '<div class="controller-curve">'+binding.curve.x.map((value,index)=>'<div>'+field('curveX'+index,'Travel '+(index+1)+' · %',value/100,0,100,.01)+
+      field('curveY'+index,'Output '+(index+1)+' · %',binding.curve.y[index]/100,0,100,.01)+'</div>').join('')+'</div>';
+}
+function renderGamepad(){
+  if(!fullGamepad())return '<div class="controller-notice"><strong>Xbox controls need HE30 Pro v0.11</strong>'+
+    '<p>This keyboard is running '+esc(client.transport.device.productName)+'. Its existing generic HID assignments remain available below.</p><a href="../flasher/">Open firmware updater</a></div>'+
+    '<h2>'+esc(KEY_NAMES[key])+'</h2>'+grid(select('gamepadBind','Legacy controller binding',GAMEPAD,profile.gamepad[key]))+
+    commands(btn('Apply controller binding','gamepad'),btn('Controller settings','settings'))+
+    '<p>Save the controller visibility setting in Keyboard Settings, then reconnect USB to apply it.</p>';
+  const assigned=[...controller.analog,...controller.digital].filter(binding=>binding.key!==GAMEPAD_NONE).length;
+  const groups=[['Left stick',0,4],['Right stick',4,8],['Triggers',8,10],['Buttons',10,20],['D-pad',20,24]];
+  const files=['14_left_stick_left','15_left_stick_right','12_left_stick_up','13_left_stick_down',
+    '19_right_stick_left','20_right_stick_right','17_right_stick_up','18_right_stick_down','23_left_trigger','25_right_trigger',
+    '01_button_a','02_button_b','03_button_x','04_button_y','22_left_bumper','24_right_bumper','06_back','05_start',
+    '16_left_stick_press','21_right_stick_press','08_dpad_up','09_dpad_down','10_dpad_left','11_dpad_right'];
+  const current=padChoice===null?null:GAMEPAD_ACTIONS[padChoice];
+  return '<div class="gamepad-studio">'+
+    '<section class="usb-device-control"><label class="usb-device-label" for="controllerUSB"><span><strong>Xbox controller device</strong><small>Show or hide the Xbox device in Windows.</small></span><input id="controllerUSB" type="checkbox" role="switch" '+(info.gamepad?'checked':'')+'></label>'+
+    '<p>Changing this briefly reconnects the keyboard over USB. '+(recoverySave()?'The choice applies for this session.':'Save changes to keep this choice after power loss.')+'</p><p id="controllerStatus" class="readout" role="status">'+esc(controllerStatus())+'</p></section>'+
+    '<section class="profilebar"><div class="profile-name"><span>ONBOARD PROFILE</span><strong>'+esc(profile.name)+'</strong></div>'+
+    select('controllerMode','KEYBOARD OUTPUT',GAMEPAD_MODES,controller.mode)+
+    '<label><span>CONTROLLER TYPE</span><strong>Xbox / XInput</strong></label>'+
+    '<div class="profile-actions">'+btn('Apply to keyboard','gamepad')+'</div></section>'+
+    '<div class="workspace-grid"><section class="card mapping-card"><div class="card-head"><div><h2>A place for every control</h2><p>Select a keyboard key, then choose its controller action.</p></div><span class="pill">'+assigned+' assigned</span></div>'+
+    '<div id="controllerKeyboardSlot"></div><div class="keyboard-legend"><span><i class="legend-bound"></i>Assigned</span><span><i class="legend-selected"></i>Selected</span><small>Assignments refer to physical keys, independent of keyboard remaps.</small></div>'+
+    '<div class="assignment-head"><span>'+esc(KEY_NAMES[key])+'</span><div><strong>'+esc(current?.label||'Choose a controller action')+'</strong><small>Switch travel '+(profile.travel[key]/1000).toFixed(3)+' mm estimated</small></div>'+
+    '<button class="remove-assignment" data-action="clearPad" '+(gamepadActionForKey(controller,key)===null?'disabled':'')+'>Remove assignment</button></div>'+
+    '<div hidden>'+controllerActionSelect()+'</div><div class="control-picker">'+groups.map(([label,start,end])=>'<div class="control-group"><span>'+label+'</span>'+
+      GAMEPAD_ACTIONS.slice(start,end).map((action,index)=>{
+        const id=start+index,binding=id<10?controller.analog[id]:controller.digital[id-10];
+        return '<button class="control-action '+(padChoice===id?'active':binding.key!==GAMEPAD_NONE?'assigned':'')+'" data-controller-action="'+id+'" aria-pressed="'+(padChoice===id)+'"><img class="controller-icon" src="assets/controller_icons/'+files[id]+'.png" alt="" aria-hidden="true"><span>'+action.label+'</span>'+(binding.key!==GAMEPAD_NONE?'<small>'+esc(KEY_NAMES[binding.key])+'</small>':'')+'</button>';
+      }).join('')+'</div>').join('')+'</div></section>'+
+    '<section class="card tuning-card"><div class="card-head"><div><h2>Choose your travel window</h2><p>'+(current?'Adjust this control’s response through the switch travel.':'Select an assigned key or choose a controller action.')+'</p></div><span class="pill">'+esc(current?.label||'—')+'</span></div>'+
+    controllerTuning()+(padChoice!==null&&padChoice<10?controllerCurveGraph():'')+
+    '<div class="commands">'+btn('Apply to keyboard','gamepad')+'</div></section>'+
+    '<section class="card"><div class="card-head"><div><h2>Stick behavior</h2><p>Choose the gate shape and how opposing keys combine.</p></div></div><div class="stick-settings">'+
+    controller.sticks.map((stick,index)=>'<div class="stick-setting"><strong>'+(index?'Right':'Left')+' stick</strong>'+
+      select('stickShape'+index,'Gate shape',['Square','Circular'],Number(stick.circular))+
+      '<div class="setting-policy">'+select('stickOppX'+index,'Horizontal opposing keys',GAMEPAD_OPPOSITION,stick.oppositionX)+'</div>'+
+      '<div class="setting-policy">'+select('stickOppY'+index,'Vertical opposing keys',GAMEPAD_OPPOSITION,stick.oppositionY)+'</div>'+
+      '<div class="setting-deadzone">'+field('stickDeadzone'+index,'Radial dead zone · %',stick.radialDeadzone/100,0,99.99,.01)+'</div></div>').join('')+
+    '</div><p class="hint">Tuning and output mode are shared across the four profiles. Each profile keeps its own physical assignments.</p></section></div></div>';
+}
+function controllerCurveGraph(){
+  return '<figure class="curve-figure"><svg id="curveGraph" viewBox="0 0 336 176" role="group" aria-label="Analog response curve">'+
+    '<path d="M33 15H312V145H33Z M33 47.5H312 M33 80H312 M33 112.5H312 M102.75 15V145 M172.5 15V145 M242.25 15V145" class="chart-grid"/>'+
+    '<polyline id="curveLine"/>'+[0,1,2,3].map(i=>'<circle data-curve-point="'+i+'" tabindex="0" role="slider" aria-label="Curve point '+(i+1)+'" r="5"/>').join('')+
+    '<text x="25" y="18" text-anchor="end">100%</text><text x="25" y="148" text-anchor="end">0</text><text x="33" y="163">Travel 0%</text><text x="312" y="163" text-anchor="end">100%</text></svg></figure>'+
+    '<div class="curve-presets"><button type="button" data-curve-preset="linear">Linear</button><button type="button" data-curve-preset="gentle">Gentle start</button><button type="button" data-curve-preset="fast">Fast start</button></div>';
+}
+function paintControllerCurve(){
+  const graph=byId('curveGraph');
+  if(!graph)return;
+  const points=[0,1,2,3].map(i=>[values('curveX'+i),values('curveY'+i)]);
+  byId('curveLine').setAttribute('points',points.map(([x,y])=>(33+x*2.79)+','+(145-y*1.3)).join(' '));
+  graph.querySelectorAll('[data-curve-point]').forEach((node,i)=>{
+    node.setAttribute('cx',33+points[i][0]*2.79);node.setAttribute('cy',145-points[i][1]*1.3);
+    node.setAttribute('aria-valuetext',points[i][0]+'% travel, '+points[i][1]+'% output');
+  });
+}
+function bindControllerCurve(){
+  const graph=byId('curveGraph');
+  if(!graph)return;
+  paintControllerCurve();
+  for(let i=0;i<4;i++)for(const axis of ['X','Y'])byId('curve'+axis+i).addEventListener('input',paintControllerCurve);
+  graph.querySelectorAll('[data-curve-point]').forEach(node=>{
+    const i=Number(node.dataset.curvePoint);
+    const update=(x,y)=>{
+      const low=i?values('curveX'+(i-1))+.01:0,high=i<3?values('curveX'+(i+1))-.01:100;
+      byId('curveX'+i).value=Math.max(low,Math.min(high,x)).toFixed(2);
+      byId('curveY'+i).value=Math.max(0,Math.min(100,y)).toFixed(2);
+      paintControllerCurve();
+    };
+    node.addEventListener('pointerdown',event=>{if(busy)return;event.preventDefault();node.setPointerCapture(event.pointerId);});
+    node.addEventListener('pointermove',event=>{
+      if(!node.hasPointerCapture(event.pointerId)||busy)return;
+      const point=new DOMPoint(event.clientX,event.clientY).matrixTransform(graph.getScreenCTM().inverse());
+      update((point.x-33)/2.79,(145-point.y)/1.3);
+    });
+    node.addEventListener('keydown',event=>{
+      if(busy||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
+      event.preventDefault();
+      update(values('curveX'+i)+(event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0),
+        values('curveY'+i)+(event.key==='ArrowUp'?1:event.key==='ArrowDown'?-1:0));
+    });
+  });
+}
+function paintTravelMonitor(){
+  paintLiveTravel(byId('editor').querySelector('.live-press-panel'),{
+    connected:!!client, labels:KEY_NAMES, primary:key, selection:[...selectedKeys],
+    travel:profile.travel, settings:config.keys, sample:client?status:null
+  });
+}
+function setLiveTravel(show){
+  liveTravel=show;
+  const button=byId('livePressDistanceToggle');
+  if(!button)return;
+  button.setAttribute('aria-pressed',String(show));
+  button.textContent=show?'Hide live press distance':'Live press distance';
+  const slot=byId('liveTravelSlot');
+  slot.innerHTML=show?liveTravelPanel():'';
+  if(!show)return;
+  const panel=slot.firstElementChild;
+  const scope=byId('liveTravelSelectionOnly');
+  scope.checked=travelSelectionOnly;
+  scope.addEventListener('change',()=>{
+    travelSelectionOnly=scope.checked;
+    paintTravelMonitor();
+  });
+  bindLiveTravelPanel(panel,{
+    position:travelPanelPosition,
+    onMove:position=>{travelPanelPosition=position;},
+    onClose:()=>{setLiveTravel(false);button.focus();}
+  });
+  paintTravelMonitor();
+}
+function tuningRange(id,label,value,min,max,step,hint=''){
+  return '<div class="tuning-distance"><label for="'+id+'">'+label+'</label>'+
+    '<div class="tuning-range-inputs"><input type="range" data-distance-for="'+id+'" aria-label="'+label+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+value+'">'+
+    '<input type="number" id="'+id+'" aria-label="'+label+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+value+'"></div>'+
+    (hint?'<small>'+hint+'</small>':'')+'</div>';
+}
+function travelField(id,label,value,min,max,hint='',index=key,scale=1000){
+  const control=distanceField(value,profile.travel[index],distancePrecision,min,max,scale);
+  return tuningRange(id,label+' · '+control.unit,control.value,control.min,control.max,control.step,hint);
+}
+function travelValue(id){
+  const input=byId(id);
+  return num(id,Number(input.min),Number(input.max));
+}
+const tuningPreferences=()=>select('distancePrecision','Distance resolution',DISTANCE_MODES,distancePrecision)+
+  check('boardGauge','Live travel bars on keys',boardGauge);
+function tuningToggle(id,label,hint,checked){
+  return '<label class="switch-row"><span><b>'+label+'</b><small>'+hint+'</small></span>'+
+    '<input id="'+id+'" class="toggle" type="checkbox" '+(checked?'checked':'')+'></label>';
+}
 function tuning(rapid){
   const k=config.keys[key],travel=profile.travel[key]/1000;
-  const mm=(id,label,val)=>field(id,label,(val*travel/1000).toFixed(3),0,travel,0.005);
-  return '<h2>'+esc(KEY_NAMES[key])+'</h2><p class="readout" id="travelReading">—</p>'+
-    (rapid?grid(check('rapid','Rapid Trigger',k.rapidTrigger),mm('rtPress','Press movement · mm',k.rtPress),mm('rtRelease','Release movement · mm',k.rtRelease)):
-      grid(mm('act','Actuation · mm',k.actuation),mm('hys','Release hysteresis · mm',k.hysteresis),field('top','Released dead zone · %',k.topDeadzone,0,40),field('bottom','Bottom dead zone · %',k.bottomDeadzone,0,40),check('disabled','Disable this physical key',k.disabled)))+
-    commands(btn('Apply to selected key',rapid?'rapid':'tune'),btn('Apply tuning to every key',rapid?'rapidAll':'tuneAll'));
+  const main=rapid
+    ? tuningToggle('rapid','Rapid Trigger','Reactuate and reset based on switch movement.',k.rapidTrigger)+
+      check('syncRapid','Sync RT press and release',syncRapid)+
+      '<div class="rt-settings">'+travelField('rtPress','RT press',k.rtPress,5,1000,'Downstroke movement required to reactuate.')+
+      travelField('rtRelease','RT release',syncRapid?k.rtPress:k.rtRelease,5,1000,'Upstroke movement required to reset.')+'</div>'
+    : travelField('act','Actuation distance',k.actuation,10,990,'Depth of the first actuation.')+
+      travelField('hys','Release hysteresis',k.hysteresis,1,500,'Travel back toward the top required to release.')+
+      tuningToggle('disabled','Disable selected keys','Suppress input from these physical keys.',k.disabled);
+  const zones='<div class="tuning-fields">'+
+    travelField('top','Top dead zone',k.topDeadzone*10,0,400,'Ignored movement near the top.')+
+    travelField('bottom','Bottom dead zone',k.bottomDeadzone*10,0,400,'Ignored movement near full travel.')+'</div>'+
+    (profileKeys()?'':'<p class="hint">This firmware stores dead zones in 1% increments.</p>');
+  return '<section class="performance-tuning"><div class="panel-head"><div><h2>'+(rapid?'Rapid Trigger tuning':'Actuation tuning')+
+    '</h2></div><button type="button" id="livePressDistanceToggle" class="button ghost live-press-toggle" aria-pressed="false">Live press distance</button></div>'+
+    '<div class="tuning-preferences">'+tuningPreferences()+'</div><div class="selected-key-card"><b>'+esc(KEY_NAMES[key])+'</b><span>'+esc(selectionLabel())+' selected<small>'+
+    travel.toFixed(3)+' mm switch travel</small></span></div>'+
+    '<div class="actuation-tuning-columns"><section class="tuning-column"><div class="tuning-column-head"><h3>'+(rapid?'Movement sensitivity':'Actuation & release')+
+    '</h3></div>'+main+'</section><section class="tuning-column"><div class="tuning-column-head"><h3>Dead zones</h3></div>'+
+    (rapid?'<p>Dead zones apply to both actuation and Rapid Trigger.</p>':'')+zones+'</section></div>'+
+    commands(btn('Apply to selected keys',rapid?'rapid':'tune'),btn('Copy tuning to every key',rapid?'rapidAll':'tuneAll'))+
+    '<div id="liveTravelSlot"></div></section>';
+}
+const scanModes=['Compatibility','DMA balanced','DMA fast'];
+// Estimate using the default bank settling delays and a complete 36-key ADC scan.
+const estimatedScanRates=[600,10000,15000];
+function scanOptions(){
+  return scanModes.map((name,mode)=>{
+    const rate=mode===info.runningScanner&&info.scanHz?info.scanHz:estimatedScanRates[mode];
+    return name+' · ≈'+rate.toLocaleString()+' Hz';
+  });
+}
+const displayedAction=()=>advancedKind===null?profile.actions[slot]:
+  actionForFeature(advancedKind,key,visualKeyOrder[(visualKeyOrder.indexOf(key)+1)%KEY_NAMES.length]);
+
+function showRule(index){
+  slot=index;
+  advancedKind=null;
+  const rule=profile.actions[index];
+  if(rule.kind)selectKeys([rule.key],'replace',rule.key);
+  render();
+}
+
+function chooseFeature(kind){
+  const existing=profile.actions.findIndex(rule=>rule.kind===kind&&actionKeys(rule).includes(key));
+  if(existing>=0){showRule(existing);return;}
+  const available=profile.actions.findIndex(rule=>!rule.kind);
+  if(available<0){message('All assignment slots are used. Remove a rule before adding another.',true);return;}
+  slot=available;
+  advancedKind=kind;
+  render();
+  byId('hostKey').focus();
+}
+
+function ruleDepths(rule,index){
+  return rule.depth.map((depth,i)=>byId('depth'+i)?.closest('.tuning-distance')?
+    storedDistance(travelValue('depth'+i),profile.travel[index],distancePrecision,0,1000):depth);
+}
+
+function paintRuleTravel(){
+  const panel=byId('ruleTravel');
+  if(!panel?.open)return;
+  const index=values('hostKey'),travel=profile.travel[index];
+  const toDepth=id=>storedDistance(byId(id).valueAsNumber,travel,distancePrecision,0,1000);
+  const shallow=toDepth('depth0'),deep=toDepth('depth1');
+  const position=client&&!status?.calibrationPhase?status?.positions[index]:null;
+  const valid=shallow>0&&deep>shallow;
+  panel.style.setProperty('--rule-shallow',valid?shallow/10+'%':'0%');
+  panel.style.setProperty('--rule-deep',valid?deep/10+'%':'0%');
+  panel.style.setProperty('--rule-position',(position??0)/10+'%');
+  const stage=position>=deep?'Deep':position>=shallow?'Shallow':'Below shallow threshold';
+  const label=!valid?'Set a shallow threshold above zero and a deeper second threshold.':
+    position==null?'Connect and press the selected key to preview travel.':
+    distanceLabel(position,travel,distancePrecision)+' · '+stage;
+  const output=byId('ruleTravelStage');
+  if(output.textContent!==label)output.textContent=label;
 }
 function renderEditor(which){
   if(which==='quick')return '<h2>Switch calibration</h2><p id="calState" aria-live="polite"></p><progress id="calProgress" max="36" value="0"></progress>'+
     '<div class="commands">'+btn('Begin calibration','begin',!client||!!status?.calibrationPhase)+'<button id="finish" class="button ghost" data-action="finish" disabled>Finish calibration</button>'+btn('Abort','abort',!client||!status?.calibrationPhase)+
-    btn(status?.typingEnabled?'Disable typing':'Enable typing',status?.typingEnabled?'disable':'enable',!client||!!status?.calibrationPhase)+'</div><p>With all keys released, begin calibration. Then fully press and release every physical key.</p>';
+    btn(status?.typingEnabled?'Disable typing':'Enable typing',status?.typingEnabled?'disable':'enable',!client||!!status?.calibrationPhase)+'</div><p>Begin with all keys released. The keyboard preview shows live ADC readings and highlights each key once its travel is measured.</p>';
   if(which==='actuation'||which==='rapid')return tuning(which==='rapid');
-  if(which==='keymap')return '<h2>'+esc(KEY_NAMES[key])+'</h2>'+grid(select('layer','Layer',['Main','Fn1','Fn2'],layer),bindingField('binding','Binding',bindingLabel(selectedUsage(key))))+commands(btn('Apply binding','bind'))+
-    '<p>Bind a Main-layer key to Fn1 or Fn2 to momentarily activate that layer. Transparent falls back to Main.</p>';
+  if(which==='keymap')return renderRemap(remapOptions());
   if(which==='switches'){
     const chosen=catalog.findIndex(x=>x.coefficient===profile.coefficient[key]&&x.travel===profile.travel[key]);
     return '<h2>'+esc(KEY_NAMES[key])+'</h2>'+grid(select('switchModel','Switch',catalog.map(x=>x.brand+' · '+x.name),Math.max(0,chosen)),
-      field('travel','Nominal travel · mm',profile.travel[key]/1000,.5,6,.005),field('coefficient','Hall curve coefficient',profile.coefficient[key],0,65535))+
-      commands(btn('Apply to selected key','switch'),btn('Apply to all keys','switchAll'))+
+      field('travel','Nominal travel · mm',profile.travel[key]/1000,.5,6,distancePrecision===0?.01:.005),field('coefficient','Hall curve coefficient',profile.coefficient[key],0,65535))+
+      commands(btn('Apply to selected keys','switch'),btn('Apply to all keys','switchAll'))+
       '<p>Zuoya fits and AE64 catalog entries are starting curves. Calibrate the installed switches. Displayed millimeters are estimates.</p>';
   }
   if(which==='lighting'){
     const light=profile.lighting;
+    const adjustable=!client||client.lighting.supportsBrightness;
     return '<h2>Keyboard and lightbar</h2>'+grid(select('lightMode','Keyboard effect',['Off','Solid','Per key','Reactive','Color wave','Breathing'],light.mode),
       '<label>Keyboard color<input id="keyColor" type="color" value="'+color(light.color,255/32)+'"></label>',
+      adjustable?brightness('keyBrightness','Keyboard brightness',light.keyBrightness):'',
       check('barEnabled','Enable lightbar',light.barEnabled),
       '<label>Lightbar color<input id="barColor" type="color" value="'+color(light.barColor,255/32)+'"></label>',
-      '<label>'+esc(KEY_NAMES[key])+' color<input id="perKey" type="color" value="'+color(light.palette[key],255/32)+'"></label>',
+      adjustable?brightness('barBrightness','Light strip brightness',light.barBrightness):'',
+      '<label>Selected key color<input id="perKey" type="color" value="'+color(light.palette[key],255/32)+'"></label>',
       select('colorOrder','Channel order',['GRB','RGB'],light.order),select('waveRate','LED data rate',['Original','Half rate'],light.rate))+
-      commands(btn('Apply lighting','rgb'),btn('Identify selected LED','identify',!client));
+      commands(btn('Apply lighting','rgb'),btn('Identify selected LED','identify',!client||selectedKeys.size!==1))+
+      (adjustable?'':'<p class="hint">Update to HE30 Pro v0.13 for separate keyboard and light strip brightness.</p>');
   }
-  if(which==='gamepad')return '<h2>'+esc(KEY_NAMES[key])+'</h2>'+grid(select('gamepadBind','Controller binding',GAMEPAD,profile.gamepad[key]))+
-    commands(btn('Apply controller binding','gamepad'),btn('Controller settings','settings'))+
-    '<p>Controller interface '+(info.gamepadAttached?'connected':'off')+'. Controller bindings suppress that physical key’s ordinary output while the interface is enabled.</p><p id="padStatus" class="readout"></p>';
-  if(which==='advanced'){
-    const a=profile.actions[slot];
-    return '<h2>'+esc(ACTIONS[a.kind])+'</h2>'+grid(select('actionSlot','Rule slot',profile.actions.map((item,i)=>(i+1)+' · '+ACTIONS[item.kind]),slot),
-      select('actionKind','Action',ACTIONS,a.kind),select('hostKey','Physical key',KEY_NAMES,a.key),
-      select('otherKey','Other key',KEY_NAMES,a.other),select('pairMode','Pair policy',['Neutral / no hysteresis','Key A / retain priority','Key B','Last pressed'],a.mode),
-      ...a.usage.map((u,i)=>bindingField('output'+i,['Output 1','Output 2','Output 3','Output 4'][i],bindingLabel(u))),
-      ...a.depth.map((d,i)=>field('depth'+i,['Depth 1 or time','Depth 2','Depth 3'][i],d,0,1000)))+
-      '<p>Depth uses 0–1000 of travel. Mod Tap, Macro and End Key use the first field in milliseconds. DKS outputs run in shallow press, deep press, deep release, shallow release order.</p>'+commands(btn('Apply rule','rule'));
-  }
+  if(which==='gamepad')return renderGamepad();
+  if(which==='advanced')return '<div class="tuning-preferences">'+tuningPreferences()+'</div>'+renderAdvanced({action:displayedAction(),rules:profile.actions,slot,creating:advancedKind!==null,
+    select,field,travelField,bindingField,esc});
   if(which==='settings'||which==='profiles')return '<h2>'+(which==='profiles'?'Onboard profiles':'USB and scanner')+'</h2>'+
-    (which==='settings'?grid(select('polling','Report cadence',RATES.map(rate=>rate+' Hz'),info.rate),
-      select('scan','Scanner',['Compatibility','ADC DMA · 13.5 cycles','ADC DMA · 7.5 cycles'],info.scanMode),check('enablePad','Expose USB gamepad after reconnect',info.gamepad))+
-      commands(btn('Apply device settings','device'),btn('Restart scanner','retry',!client))+
-      '<p>Save and reconnect to change report cadence or USB gamepad visibility. DMA modes require a hardware scan and noise check.</p>':
+    (which==='settings'?grid(select('polling','Polling rate',RATES.map(rate=>rate+' Hz'),info.rate),
+      select('scan','Scan rate',scanOptions(),info.scanMode),
+      tuningPreferences(),
+      fullGamepad()?'<p class="hint">Xbox controller visibility is available on the Gamepad page.</p>':check('enablePad','Expose USB gamepad after reconnect',info.gamepad))+
+      (browserRates()||onboardRates()
+        ? commands(btn('Apply polling rate','applyPolling',!!status?.calibrationPhase),btn('Apply scan mode','applyScanner',!!status?.calibrationPhase),
+          onboardRates()?btn('Apply and save device settings','device',!!status?.calibrationPhase):btn('Remember active rates','rememberRates',!!status?.calibrationPhase),
+          onboardRates()?'':btn('Forget remembered rates','forgetRates',!rememberedRates()),
+          browserRates()&&!diagnosticSave()?btn('Install startup rates via recovery','rateImage',!!status?.calibrationPhase):'')
+        : commands(btn('Apply for this session','sessionRates',!!status?.calibrationPhase),(recoverySave()?btn('Install startup rates via recovery','rateImage',!!status?.calibrationPhase):btn('Apply and save device settings','device',!!status?.calibrationPhase)),btn('Restart scanner','retry',!client||!!status?.calibrationPhase)))+
+      '<p id="runningRates"></p><p>'+(onboardRates()
+        ? 'Polling applies immediately. Changing scan mode restarts Hall scanning. Save changes keeps pending settings on the keyboard.'
+        : browserRates()
+        ? 'Polling applies immediately. Changing scan mode restarts Hall scanning. Remember active rates reapplies your settings when this browser reconnects. '+(diagnosticSave()?'Export profiles to keep a copy of other edits.':'Recovery installs rates on the keyboard and clears profiles and calibration.')
+        : recoverySave()?'Recovery installs the selected startup rates with factory profiles and clears calibration. Export profiles first.':'Apply and save writes all pending changes to the keyboard.')+' Scan rates describe complete 36-key scans and vary with device activity.</p>':
       grid(textField('profileName','Current profile name',profile.name))+commands(btn('Rename profile','renameProfile'),btn('Export current profile','exportProfile'))+
       '<label>Restore profile or earlier HE30 settings<input type="file" id="restoreProfile" accept="application/json,.json"></label>');
   if(which==='firmware')return '<h2>Firmware & recovery</h2><p>The recovery page checks the firmware hash and tracks the USB transition.</p>'+
     commands(btn('Enter recovery','recovery',!client||recoveryPending),'<a href="../flasher/" class="button ghost linked-button">Open flasher</a>');
   if(which==='diagnostics')return '<h2>Scan diagnostics</h2><p id="scanStats">Awaiting a scan measurement</p><p id="travelReading"></p><pre id="rawData"></pre>';
   return '<h2>Epomaker HE30</h2><p>'+(client?client.transport.device.productName+' connected':'Offline workspace')+' · 36 Hall sensors · 4 onboard profiles · 3 layers</p>'+
-    '<p>Current profile '+esc(profile.name)+'. USB gamepad '+(info.gamepadAttached?'enabled':'disabled')+'.</p><p id="scanStats"></p>'+commands(btn('Calibration','quick'));
+    '<p>Current profile '+esc(profile.name)+'. USB gamepad '+(info.gamepadAttached?'enabled':'disabled')+'.</p>'+
+    (client?'<p id="keyboardRollover"></p>':'')+
+    '<div class="controller-selected"><h3>Selected key · '+esc(KEY_NAMES[key])+'</h3><p>Keyboard '+esc(bindingLabel(selectedUsage(key)))+
+    ' · Controller '+esc(controllerLabel(key)||'Unassigned')+'</p></div><p id="scanStats"></p>'+commands(btn('Calibration','quick'));
+}
+function paintSaveState(){
+  byId('save').disabled=!client||busy||usbTransition||recoveryPending||!dirty||!!status?.calibrationPhase;
+  byId('revert').disabled=!client||busy||usbTransition||!status?.savedValid||!dirty||recoveryPending||!!status?.calibrationPhase;
+  byId('dirtyStatus').textContent=dirty?(recoverySave()?'Changes applied for this session':'Changes pending save'):'No pending changes';
 }
 function render(){
   const which=page==='performance'?view:page==='settings'&&view==='profiles'?'profiles':page;
   const [title,description]=headings[which]||headings.overview;
   byId('pageTitle').innerHTML='<h1>'+title+'</h1><p>'+description+'</p>';
+  closeRemapPicker();
+  lightingDraft=null;paletteEdited=false;
+  if(page!=='lighting')rgb=null;
+  byId('editor').before(byId('board'));
   byId('editor').innerHTML=renderEditor(which);
+  document.querySelector('.pro-content').dataset.page=page;
   byId('activeProfile').replaceChildren(...info.names.map((name,i)=>{
     const o=document.createElement('option');o.value=String(i);o.textContent=name||'Profile '+(i+1);o.selected=i===info.active;return o;
   }));
   byId('activeProfile').disabled=busy||!!status?.calibrationPhase;
-  byId('save').disabled=!client||busy||!dirty||!!status?.calibrationPhase;
+  byId('save').textContent=recoverySave()?'Export profile':'Save changes';
+  paintSaveState();
   byId('connect').textContent=client?'Disconnect':'Connect keyboard';
-  byId('revert').disabled=!client||busy||!status?.savedValid||!dirty||recoveryPending||!!status?.calibrationPhase;
-  byId('autoApplyToggle').disabled=!client||recoveryPending;
+  byId('autoApplyToggle').disabled=!client||recoverySave()||recoveryPending||usbTransition;
+  byId('autoApplyToggle').title=recoverySave()?'Live flash saves can stop this firmware from responding.':'';
+  if(byId('controllerUSB'))byId('controllerUSB').disabled=busy||usbTransition||!!status?.calibrationPhase;
   byId('connectionStatus').textContent=client?'Connected':'Offline';
-  byId('dirtyStatus').textContent=dirty?'Changes pending save':'No pending changes';
   byId('connect').disabled=busy||liveOnly;
   byId('connectionLabel').textContent=client?client.transport.device.productName+' connected':'Offline workspace';
   document.querySelectorAll('[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page&&(!el.dataset.view||el.dataset.view===view)));
   renderBoard();
+  paintBoard();
+  byId('ruleTravel')?.addEventListener('toggle',paintRuleTravel);
+  if(byId('controllerKeyboardSlot'))byId('controllerKeyboardSlot').append(byId('board'));
+  bindControllerCurve();
+  if(tuningPage())setLiveTravel(liveTravel);
+  if(which==='keymap'){
+    byId('editor').querySelector('.layer-bar').after(byId('board'));
+    bindRemap(remapOptions());
+  }
 }
 async function editConfig(edit){
   const next=structuredClone(config);edit(next);encodeConfig(next);
-  if(client)config=await client.foundation.applyConfig(next);
+  if(client){await requireActiveProfile();config=await client.foundation.applyConfig(next);}
   else offline[info.active].config=config=next;
+  mark();
+}
+async function applyRemap(code){
+  if(isProfileUsage(code)&&!profileKeys())throw new Error('Profile keys require HE30 Pro v0.20.');
+  const codes=code instanceof Map?code:new Map(editTargets(false).map(index=>[index,code]));
+  if(layer<2)await editConfig(next=>{
+    for(const [index,value] of codes)next.keys[index][layer?'fnUsage':'normalUsage']=value;
+  });
+  else{
+    for(const [index,value] of codes){
+      if(client){await requireActiveProfile();await client.fn2(index,value);}
+      profile.fn2[index]=value;
+      if(client)dirty=true;
+    }
+    mark();
+  }
+}
+async function requireActiveProfile(){
+  if(!client)return;
+  if((await client.activeProfile())!==info.active){
+    await refresh();
+    throw new Error('The onboard profile changed. Review the new profile before applying changes.');
+  }
+}
+function remapOptions(){
+  return {root:byId('editor'),keyName:selectionLabel(),layer,usage:selectedUsage(key),profileKeys:profileKeys(),
+    onLayer:next=>{if(!busy){layer=next;render();}},
+    onPick:code=>{if(!busy)run(()=>applyRemap(code));},
+    onReset:()=>{if(!busy)run(()=>applyRemap(new Map(editTargets(false).map(index=>[index,layer?254:codeFor(KEY_NAMES[index])]))));}};
+}
+async function writeRule(index,rule){
+  const requested=actionBytes(rule);
+  if(client){
+    await requireActiveProfile();
+    await client.action(index,rule);
+    const observed=(await client.profile()).actions[index];
+    await requireActiveProfile();
+    if(!actionBytes(observed).every((byte,i)=>byte===requested[i]))
+      throw new Error('The keyboard returned different assignment data.');
+  }
+  profile.actions[index]=rule;
   mark();
 }
 const actions={
@@ -215,78 +708,212 @@ const actions={
   },
   async tune(all,rapid){
     const input=rapid?['rtPress','rtRelease']:['act','hys'];
-    const max=profile.travel[key]/1000;
-    const requested=input.map(id=>num(id,0,max));
-    const top=rapid?0:num('top',0,40),bottom=rapid?0:num('bottom',0,40);
+    const requested=input.map(travelValue);
+    if(rapid&&syncRapid)requested[1]=requested[0];
+    const top=travelValue('top'),bottom=travelValue('bottom');
     const flag=checkbox(rapid?'rapid':'disabled');
     await editConfig(next=>{
-      for(let i=0;i<36;i++)if(all||i===key){
-        const k=next.keys[i],norm=(n,minimum,maximum)=>Math.max(minimum,Math.min(maximum,Math.round(n*1e6/profile.travel[i])));
+      for(const i of editTargets(all)){
+        const k=next.keys[i],norm=(n,minimum,maximum)=>storedDistance(n,profile.travel[i],distancePrecision,minimum,maximum);
+        const zone=value=>profileKeys()?norm(value,0,400)/10:Math.round(norm(value,0,400)/10);
+        Object.assign(k,{topDeadzone:zone(top),bottomDeadzone:zone(bottom)});
         if(rapid) Object.assign(k,{rtPress:norm(requested[0],5,1000),rtRelease:norm(requested[1],5,1000),rapidTrigger:flag});
-        else Object.assign(k,{actuation:norm(requested[0],10,990),hysteresis:norm(requested[1],1,500),topDeadzone:Math.round(top),bottomDeadzone:Math.round(bottom),disabled:flag});
+        else Object.assign(k,{actuation:norm(requested[0],10,990),hysteresis:norm(requested[1],1,500),disabled:flag});
       }
     });
   },
   async switch(all){
     const travel=Math.round(num('travel',.5,6)*1000),coefficient=Math.round(num('coefficient',0,65535));
-    for(let i=0;i<36;i++)if(all||i===key){
-      if(client)await client.switch(i,travel,coefficient);
+    for(const i of editTargets(all)){
+      if(client){await requireActiveProfile();await client.switch(i,travel,coefficient);}
       profile.travel[i]=travel;profile.coefficient[i]=coefficient;
+      if(client)dirty=true;
     }
     mark();
   },
   async rule(){
-    const kind=values('actionKind'),a={kind,key:values('hostKey'),other:values('otherKey'),mode:values('pairMode'),
-      usage:Array.from({length:4},(_,i)=>bindingCode(named('output'+i),0)),depth:Array.from({length:3},(_,i)=>Math.round(num('depth'+i,0,1000)))};
-    if(client)await client.action(slot,a);
-    else {const {actionBytes}=await import('./protocol.mjs');actionBytes(a);}
-    profile.actions[slot]=a;mark();
+    const a=structuredClone(displayedAction()),feature=FEATURES[a.kind];
+    a.key=values('hostKey');
+    if(a.kind<=2){a.other=values('otherKey');a.mode=values('pairMode');}
+    feature.outputs?.forEach((_,i)=>{a.usage[i]=bindingCode(named('output'+i),0);});
+    if(feature.outputs&&!a.usage.some(Boolean))throw new Error('Choose at least one output for this feature.');
+    a.depth=ruleDepths(a,a.key);
+    if(feature.time)a.depth[0]=Math.round(travelValue('depth0'));
+    await writeRule(slot,a);
+    advancedKind=null;
+    selectKeys([a.key],'replace',a.key);
+  },
+  async removeRule(index){
+    await writeRule(index,blankAction());
+    if(slot===index)advancedKind=null;
   },
   async rgb(){
-    const next=structuredClone(profile.lighting);
-    Object.assign(next,{mode:values('lightMode'),order:values('colorOrder'),rate:values('waveRate'),color:channels(named('keyColor')),
-      barColor:channels(named('barColor')),barEnabled:checkbox('barEnabled')});
-    next.palette[key]=channels(named('perKey'));encodeLighting(next);
-    if(client)await client.lighting.apply(next);
-    profile.lighting=next;rgb=null;mark();
+    const next=readLightingEditor();
+    encodeLighting(next);
+    await requireActiveProfile();
+    const applied=client?await client.lighting.apply(next):null;
+    profile.lighting=applied?.config||next;rgb=null;
+    mark(applied?.error?'Colors accepted. The keyboard reported an LED transfer error.':'Lighting applied. '+keepChanges());
   },
   async gamepad(){
-    const binding=values('gamepadBind');
-    if(client)await client.mapping(key,binding);
-    profile.gamepad[key]=binding;mark();
+    await requireActiveProfile();
+    if(!fullGamepad()){
+      const binding=values('gamepadBind');
+      await client.mapping(key,binding);
+      profile.gamepad[key]=binding;mark();return;
+    }
+    const choice=values('gamepadBind')-1;
+    const next=assignGamepad(controller,key,choice<0?null:choice);
+    next.mode=values('controllerMode');
+    for(let i=0;i<2;i++)Object.assign(next.sticks[i],{
+      circular:!!values('stickShape'+i),radialDeadzone:Math.round(num('stickDeadzone'+i,0,99.99)*100),
+      oppositionX:values('stickOppX'+i),oppositionY:values('stickOppY'+i)
+    });
+    const normalized=id=>storedDistance(travelValue(id),profile.travel[key],distancePrecision,0,10000,10000);
+    if(choice>=0&&choice<10){
+      const binding=next.analog[choice];
+      binding.start=normalized('padStart');binding.end=normalized('padEnd');
+      binding.curve={x:[],y:[]};
+      for(let point=0;point<4;point++){
+        binding.curve.x.push(Math.round(num('curveX'+point,0,100)*100));
+        binding.curve.y.push(Math.round(num('curveY'+point,0,100)*100));
+      }
+    }else if(choice>=10){
+      Object.assign(next.digital[choice-10],{press:normalized('padPress'),release:normalized('padRelease')});
+    }
+    encodeGamepad(next);
+    controller=client?await client.applyGamepad(next):next;
+    profile.gamepad=controllerBindings(controller);
+    padChoice=gamepadActionForKey(controller,key);
+    if(client)padState=await client.gamepadStatus();
+    mark();
   },
-  async device(){
-    const rate=values('polling'),scanMode=values('scan'),gamepad=checkbox('enablePad');
-    if(client)await client.deviceSettings(rate,scanMode,gamepad);
-    Object.assign(info,{rate,scanMode,gamepad});
-    mark('Settings applied. Save changes, then reconnect USB for the new cadence and gamepad interface.');
+  async clearPad(){
+    await requireActiveProfile();
+    const next=assignGamepad(controller,key,null);
+    controller=client?await client.applyGamepad(next):next;
+    profile.gamepad=controllerBindings(controller);padChoice=null;mark();
+  },
+  async applyRates(active,before,rate,scanMode,gamepad,scope='both'){
+    const changed=before.rate!==rate||before.scanMode!==scanMode||before.gamepad!==gamepad;
+    const restartScanner=scope!=='polling'&&(before.runningScanner!==scanMode||!!status?.adcError);
+    if(changed){
+      await active.deviceSettings(rate,scanMode,gamepad);
+      dirty=true;
+    }
+    if(restartScanner){
+      try{await active.foundation.control(10);}
+      catch(error){
+        if(client===active&&error.name!=='HIDTimeoutError'&&!active.transport.closed){
+          await active.deviceSettings(before.rate,before.scanMode,before.gamepad);
+          await active.foundation.control(10);
+        }
+        throw error;
+      }
+    }
+    const applied=changed||restartScanner?await active.capabilities():before;
+    if(client!==active)throw new Error('Keyboard disconnected while applying rates.');
+    if(applied.active!==info.active)await refresh();
+    else info=applied;
+    if(applied.rate!==rate||applied.scanMode!==scanMode||applied.gamepad!==gamepad||
+       (scope!=='polling'&&applied.runningScanner!==scanMode)||
+       (scope==='polling'&&applied.runningRate!==rate)){
+      throw new Error('The keyboard did not confirm the requested rates.');
+    }
+    return applied;
+  },
+  async device(save=true,scope='both'){
+    let rate=values('polling'),scanMode=values('scan');
+    const active=client;
+    if(!active){Object.assign(info,{rate,scanMode});mark();return;}
+    if(status?.calibrationPhase)throw new Error('Finish or stop calibration before changing device settings.');
+    clearTimeout(autoSaveTimer);
+    const before=await active.capabilities();
+    if(scope==='polling')scanMode=before.scanMode;
+    if(scope==='scanner')rate=before.rate;
+    const gamepad=fullGamepad()?before.gamepad:checkbox('enablePad');
+    const applied=await actions.applyRates(active,before,rate,scanMode,gamepad,scope);
+    if(!save||recoverySave(active)){
+      message(scope==='polling'?'Polling rate applied.':scope==='scanner'?'Scanner mode applied.':'Rates applied for this session.');
+      return;
+    }
+    await active.foundation.control(8);
+    const saved=await active.foundation.readStatus();
+    if(client!==active)return;
+    acceptStatus(saved);
+    if(!saved.savedValid||saved.dirty||saved.storeStatus===2){
+      throw new Error('The keyboard did not confirm the save.');
+    }
+    message(info.runningRate===rate?'Polling and scan rates applied and saved.':'Rates saved. Reconnect USB to activate the polling rate on this firmware.');
+  },
+  async rememberRates(){
+    const active=client;
+    if(!active||!browserRates()||status?.calibrationPhase)return;
+    const {runningRate:rate,runningScanner:scanMode}=await active.capabilities();
+    if(client!==active)return;
+    if(!RATES[rate]||scanMode<0||scanMode>2)throw new Error('The keyboard did not report valid active rates.');
+    localStorage.setItem(rememberedRatesKey(active),JSON.stringify({rate,scanMode}));
+    message('Active rates remembered in this browser.');
+  },
+  forgetRates(){
+    if(!browserRates())return;
+    localStorage.removeItem(rememberedRatesKey(client));
+    message('Remembered rates removed from this browser.');
   },
   async renameProfile(){
     const label=named('profileName').trim();
     if(!/^[ -~]{1,15}$/.test(label))throw new Error('Use 1–15 printable ASCII characters.');
-    if(client)await client.rename(label);
+    if(client){await requireActiveProfile();await client.rename(label);}
     profile.name=label;info.names[info.active]=label;mark();
   },
   async control(op,text){
-    if(!client)return;
-    await client.foundation.control(op);await refresh();message(text);
+    const active=client;
+    if(!active)return;
+    await active.foundation.control(op);
+    if([5,6,7].includes(op))dirty=true;
+    if([4,11].includes(op)){
+      const next=await active.foundation.readStatus();
+      if(client!==active)return;
+      acceptStatus(next);
+    }else await refresh();
+    message(text);
     if(dirty&&!status?.calibrationPhase)queueAutoSave();
   }
 };
 async function saveChanges(){
-  if(!client||recoveryPending||!dirty)return;
+  if(!client||recoveryPending||usbTransition||!dirty)return;
+  if(recoverySave()){downloadProfile();return;}
   await client.foundation.control(8);
   await refresh();
+  if(!status?.savedValid||status.dirty||status.storeStatus!==1)throw new Error('The keyboard did not confirm the save.');
   message('All four profile slots and device settings saved.');
 }
 function queueAutoSave(){
   clearTimeout(autoSaveTimer);
-  if(client&&dirty&&byId('autoApplyToggle').checked&&!recoveryPending){
+  if(client&&!recoverySave()&&dirty&&byId('autoApplyToggle').checked&&!recoveryPending&&!usbTransition){
     autoSaveTimer=setTimeout(()=>{
       if(busy){queueAutoSave();return;}
       if(!status?.calibrationPhase)run(saveChanges);
     },2500);
   }
+}
+async function setControllerUSB(enabled){
+  if(!client){info.gamepad=enabled;mark();return;}
+  const previous=client;
+  usbTransition=true;clearTimeout(autoSaveTimer);
+  try{
+    await previous.gamepadUSB(enabled);
+    const device=previous.transport.device;
+    client=null;generation++;status=padState=rgb=null;
+    await previous.transport.close().catch(()=>{});
+    info.gamepad=enabled;dirty=true;
+    message('Updating the USB controller. Waiting for the keyboard to reconnect…');
+    const next=await ProDevice.reconnect(device,enabled);
+    if(!next){message('USB controller setting applied. Select Connect keyboard to restore the web connection.');return;}
+    client=next;generation++;
+    await refresh();
+    message('Xbox controller '+(enabled?'enabled':'disabled')+'.'+(dirty?' '+(recoverySave()?'The choice applies for this session.':'Save changes to keep this setting after power loss.') :''));
+  }finally{usbTransition=false;queueAutoSave();}
 }
 async function recover(){
   const active=client;
@@ -326,7 +953,8 @@ function openPicker(inputId){
     groups,current,allowClear:true,onSelect:code=>{input.value=bindingLabel(code);},onClear:()=>{input.value='None';}});
 }
 function downloadProfile(){
-  const blob=new Blob([JSON.stringify({format:'he30-pro-profile-v1',config,profile},null,2)],{type:'application/json'});
+  const saved=fullGamepad()?{format:'he30-pro-profile-v2',config,profile,controller}:{format:'he30-pro-profile-v1',config,profile};
+  const blob=new Blob([JSON.stringify(saved,null,2)],{type:'application/json'});
   const link=document.createElement('a');
   const url=URL.createObjectURL(blob);
   link.href=url;link.download='HE30-Pro-'+(info.active+1)+'.json';link.click();
@@ -340,7 +968,7 @@ async function restoreProfile(file){
     const validated=importProfile(saved);
     if(client)config=await client.foundation.applyConfig(validated);
     else offline[info.active].config=config=validated;
-    mark('Earlier keyboard settings restored to the current slot. Save changes to keep them.');
+    mark('Earlier keyboard settings restored to the current slot. '+keepChanges());
     return;
   }
   if(saved.format==='he30-lighting-profile-v1'){
@@ -349,19 +977,33 @@ async function restoreProfile(file){
     if(client)await client.lighting.apply(validated);
     profile.lighting=validated;rgb=null;mark();return;
   }
-  if(saved.format!=='he30-pro-profile-v1')throw new Error('Choose a HE30 profile JSON.');
-  const {actionBytes}=await import('./protocol.mjs');
+  if(!['he30-pro-profile-v1','he30-pro-profile-v2'].includes(saved.format))throw new Error('Choose a HE30 profile JSON.');
+  if(saved.format==='he30-pro-profile-v2'&&!fullGamepad())throw new Error('Update to HE30 Pro v0.11 before importing an Xbox controller profile.');
   const next=structuredClone(saved.profile),nextCfg=structuredClone(saved.config);
   encodeConfig(nextCfg);encodeLighting(next.lighting);
+  client?.lighting.checkBrightness(next.lighting);
   if(!/^[ -~]{1,15}$/.test(next.name)||next.lighting.barCount>5||next.actions?.length!==8||
      !['fn2','gamepad','travel','coefficient'].every(name=>Array.isArray(next[name])&&next[name].length===36))
     throw new Error('Invalid profile structure.');
   next.actions.forEach(actionBytes);
+  if(!profileKeys()&&next.fn2.some(isProfileUsage))throw new Error('This profile uses shortcuts that require HE30 Pro v0.20.');
   for(let i=0;i<36;i++){
     if(![next.fn2[i],next.gamepad[i],next.travel[i],next.coefficient[i]].every(Number.isInteger)||
        bindingCode(bindingLabel(next.fn2[i]),2)!==next.fn2[i]||next.gamepad[i]<0||next.gamepad[i]>26||
        next.travel[i]<500||next.travel[i]>6000||next.coefficient[i]<0||next.coefficient[i]>65535)
       throw new Error('Invalid profile field for '+KEY_NAMES[i]+'.');
+  }
+  let nextController=null,migrationWarnings=[];
+  if(fullGamepad()){
+    if(saved.format==='he30-pro-profile-v2'){
+      nextController=decodeGamepad(encodeGamepad(saved.controller));
+      const bindings=controllerBindings(nextController);
+      if(bindings.some((binding,index)=>binding!==next.gamepad[index]))throw new Error('Controller assignments differ between the exported profile and settings.');
+    }else{
+      const migrated=migrateLegacyGamepad(next.gamepad,{mode:controller.mode});
+      nextController=migrated.config;migrationWarnings=migrated.warnings;
+      next.gamepad=controllerBindings(nextController);
+    }
   }
   if(client){
     try{
@@ -369,34 +1011,78 @@ async function restoreProfile(file){
       await client.lighting.apply(next.lighting);
       for(let i=0;i<36;i++){
         if(next.fn2[i]!==profile.fn2[i])await client.fn2(i,next.fn2[i]);
-        if(next.gamepad[i]!==profile.gamepad[i])await client.mapping(i,next.gamepad[i]);
+        if(!nextController&&next.gamepad[i]!==profile.gamepad[i])await client.mapping(i,next.gamepad[i]);
         if(next.travel[i]!==profile.travel[i]||next.coefficient[i]!==profile.coefficient[i])
           await client.switch(i,next.travel[i],next.coefficient[i]);
       }
       for(let i=0;i<8;i++)await client.action(i,next.actions[i]);
+      if(nextController)await client.applyGamepad(nextController);
       await client.rename(next.name);
       await refresh();
     }catch(error){await refresh().catch(()=>{});throw new Error('Restore was interrupted. Review the keyboard settings before saving. '+error.message);}
   }else{
     offline[info.active]={config:nextCfg,profile:next};config=nextCfg;profile=next;info.names[info.active]=next.name;
+    if(nextController)controller=nextController;
   }
-  rgb=null;mark();
+  padChoice=fullGamepad()?gamepadActionForKey(controller,key):null;
+  rgb=null;mark(migrationWarnings.length?'Profile imported. '+migrationWarnings.join(' ')+' '+keepChanges():undefined);
 }
 const actionMap={
+  selectAllKeys:()=>selectKeys(visualKeyOrder),
+  invertKeys:()=>selectKeys(visualKeyOrder,'toggle'),
+  singleKey:()=>{selectionAnchor=key;selectKeys([key]);},
   bind:actions.bind,tune:()=>actions.tune(false,false),tuneAll:()=>actions.tune(true,false),
   rapid:()=>actions.tune(false,true),rapidAll:()=>actions.tune(true,true),
-  switch:()=>actions.switch(false),switchAll:()=>actions.switch(true),rule:actions.rule,rgb:actions.rgb,gamepad:actions.gamepad,
-  device:actions.device,renameProfile:actions.renameProfile,exportProfile:downloadProfile,identify:()=>client?.lighting.identify(key),
-  begin:()=>actions.control(4,'Calibration started.'),finish:()=>actions.control(5,'Calibration finished. Save changes to keep the measured endpoints.'),
-  abort:()=>actions.control(11,'Calibration stopped.'),enable:()=>actions.control(6,'Typing enabled. Release all keys, then save.'),
+  switch:()=>actions.switch(false),switchAll:()=>actions.switch(true),rule:actions.rule,rgb:actions.rgb,gamepad:actions.gamepad,clearPad:actions.clearPad,
+  rateImage:()=>{location.assign('../flasher/?polling='+values('polling')+'&scanner='+values('scan'));},
+  device:actions.device,sessionRates:()=>actions.device(false),applyPolling:()=>actions.device(false,'polling'),applyScanner:()=>actions.device(false,'scanner'),
+  rememberRates:actions.rememberRates,forgetRates:actions.forgetRates,
+  renameProfile:actions.renameProfile,exportProfile:downloadProfile,identify:()=>client?.lighting.identify(key),
+  begin:()=>actions.control(4,'Calibration started.'),finish:()=>actions.control(5,'Calibration finished. '+keepChanges()),
+  abort:()=>actions.control(11,'Calibration stopped.'),enable:()=>actions.control(6,'Typing enabled. Release all keys. '+keepChanges()),
   disable:()=>actions.control(7,'Typing disabled.'),retry:()=>actions.control(10,'Scanner restarted. Check live depth and scan rate.'),
   recovery:recover,quick:()=>{page='performance';view='quick';},settings:()=>{page='settings';view='settings';}
 };
 document.addEventListener('click',e=>{
   const el=e.target.closest('button');if(!el||busy||el.disabled)return;
-  if(el.dataset.page){page=el.dataset.page;view=el.dataset.view||'quick';render();}
-  if(el.dataset.key!==undefined){key=Number(el.dataset.key);render();}
+  if(el.dataset.page){
+    page=el.dataset.page;view=el.dataset.view||'quick';
+    if(!multiKeyPage()){selectedKeys=new Set([key]);selectionAnchor=key;}
+    render();
+  }
+  if(el.id==='livePressDistanceToggle')setLiveTravel(!liveTravel);
+  if(el.dataset.key!==undefined){
+    const index=Number(el.dataset.key);
+    const modified=e.shiftKey||e.ctrlKey||e.metaKey||e.altKey;
+    if(multiKeyPage()&&e.shiftKey){
+      const a=visualKeyOrder.indexOf(selectionAnchor),b=visualKeyOrder.indexOf(index);
+      selectKeys(visualKeyOrder.slice(Math.min(a,b),Math.max(a,b)+1),e.ctrlKey||e.metaKey?'add':'replace',index);
+    }else{
+      const mode=multiKeyPage()&&e.altKey?'remove':multiKeyPage()&&(e.ctrlKey||e.metaKey)?'toggle':'replace';
+      selectKeys([index],mode,index);
+      selectionAnchor=key;
+    }
+    padChoice=fullGamepad()?gamepadActionForKey(controller,key):null;
+    if(page==='advanced'){
+      const existing=profile.actions.findIndex(rule=>actionKeys(rule).includes(key));
+      if(existing>=0){showRule(existing);return;}
+      if(advancedKind===null)slot=Math.max(0,profile.actions.findIndex(rule=>!rule.kind));
+    }
+    render();
+    if(page==='keymap'&&!modified)openRemapPicker(remapOptions());
+  }
+  if(el.dataset.controllerAction!==undefined){
+    padChoice=Number(el.dataset.controllerAction);render();
+  }
+  if(el.dataset.curvePreset){
+    const presets={linear:[0,33.33,66.67,100],gentle:[0,10,40,100],fast:[0,60,90,100]};
+    [0,1,2,3].forEach(i=>{byId('curveX'+i).value=[0,33.33,66.67,100][i];byId('curveY'+i).value=presets[el.dataset.curvePreset][i];});
+    paintControllerCurve();
+  }
   if(el.dataset.picker)openPicker(el.dataset.picker);
+  if(el.dataset.advancedKind!==undefined)chooseFeature(Number(el.dataset.advancedKind));
+  if(el.dataset.ruleSlot!==undefined)showRule(Number(el.dataset.ruleSlot));
+  if(el.dataset.removeRule!==undefined)run(()=>actions.removeRule(Number(el.dataset.removeRule)));
   if(el.dataset.action)run(actionMap[el.dataset.action]);
 });
 byId('backHomeButton').onclick=showWelcome;
@@ -410,28 +1096,110 @@ byId('cancelInitialization').onclick=showWelcome;
 byId('toggleSidebar').onclick=()=>{const node=document.documentElement;node.dataset.sidebar=node.dataset.sidebar==='compact'?'':'compact';};
 byId('sidebarThemeSelect').onchange=e=>{document.documentElement.dataset.theme=e.target.value;};
 byId('rename').onclick=()=>{page='settings';view='profiles';render();byId('profileName').focus();};
+byId('editor').addEventListener('input',event=>{
+  const input=event.target;
+  if(input.id==='perKey'){byId('lightMode').value='2';paletteEdited=true;}
+  if(input.id==='barColor')byId('barEnabled').checked=true;
+  if(input.id==='keyColor'&&![1,3,5].includes(values('lightMode')))byId('lightMode').value='1';
+  if(page==='lighting'){
+    const output=input.parentElement.querySelector('output');
+    if(output)output.value=input.value+'%';
+    lightingDraft=readLightingEditor();
+    paintBoard();
+  }
+  if(input.dataset.distanceFor)byId(input.dataset.distanceFor).value=input.value;
+  else if(input.id){
+    const slider=byId('editor').querySelector('[data-distance-for="'+CSS.escape(input.id)+'"]');
+    if(slider)slider.value=input.value;
+  }
+  const rtField=input.dataset.distanceFor||input.id;
+  if(rtField==='depth0'||rtField==='depth1')paintRuleTravel();
+  if(syncRapid&&['rtPress','rtRelease'].includes(rtField)){
+    const other=rtField==='rtPress'?'rtRelease':'rtPress';
+    byId(other).value=input.value;
+    byId('editor').querySelector('[data-distance-for="'+other+'"]').value=input.value;
+  }
+});
+bindBoardSelection(byId('board'),()=>!busy&&multiKeyPage(),(keys,mode)=>{
+  selectKeys(keys,mode,mode==='replace'?keys[0]:key);
+  selectionAnchor=key;
+  render();
+});
 byId('editor').addEventListener('change',e=>{
+  if(e.target.id==='distancePrecision'){
+    distancePrecision=Number(e.target.value);
+    localStorage.setItem('he30-distance-precision',String(distancePrecision));render();
+  }
+  if(e.target.id==='boardGauge'){
+    boardGauge=e.target.checked;
+    localStorage.setItem('he30-board-gauge',String(boardGauge));paintBoard();
+  }
+  if(e.target.id==='syncRapid'){
+    syncRapid=e.target.checked;
+    localStorage.setItem('he30-sync-rapid',String(syncRapid));
+    if(syncRapid)byId('rtPress').dispatchEvent(new Event('input',{bubbles:true}));
+  }
   if(e.target.id==='restoreProfile')run(()=>restoreProfile(e.target.files[0]));
   if(e.target.id==='layer'){layer=values('layer');render();}
-  if(e.target.id==='actionSlot'){slot=values('actionSlot');render();}
+  if(e.target.id==='actionSlot'){
+    const next=values('actionSlot');
+    if(profile.actions[next].kind)showRule(next);
+    else{slot=next;render();}
+  }
+  if(e.target.id==='hostKey'&&byId('ruleDepths')){
+    const fields=byId('ruleDepths'),action=displayedAction(),next=values('hostKey');
+    try{
+      fields.innerHTML=actionDepthFields({...action,key:next,depth:ruleDepths(action,Number(fields.dataset.keyIndex))},travelField);
+      fields.dataset.keyIndex=next;
+      paintRuleTravel();
+    }catch(error){e.target.value=fields.dataset.keyIndex;message(error.message,true);}
+  }
+  if(e.target.id==='gamepadBind'&&fullGamepad()){
+    const choice=values('gamepadBind')-1;
+    padChoice=choice<0?null:choice;render();
+  }
+  if(e.target.id==='controllerUSB')run(()=>setControllerUSB(e.target.checked));
   if(e.target.id==='switchModel'){
     const s=catalog[values('switchModel')];byId('travel').value=s.travel/1000;byId('coefficient').value=s.coefficient;
   }
 });
 byId('activeProfile').onchange=()=>run(async()=>{
   const next=values('activeProfile');
-  if(client){await client.select(next);await refresh();mark('Profile selected. Save changes to keep this slot active after unplugging.');}
-  else{info.active=next;({config,profile}=offline[next]);}
-  rgb=null;
+  if(client){
+    await client.select(next);
+    if(await refresh())message(profile.name+' active on the keyboard.');
+  }else{
+    advancedKind=null;slot=0;rgb=null;
+    info.active=next;({config,profile}=offline[next]);
+    controller=controllerForBindings(profile.gamepad);padChoice=gamepadActionForKey(controller,key);
+  }
 });
-const connectKeyboard=()=>run(async()=>{
-  if(client){clearTimeout(autoSaveTimer);const old=client;client=null;generation++;await old.transport.close();status=rgb=null;message('Keyboard disconnected.');return;}
-  const next=await ProDevice.connect();if(!next)return;
+const connectKeyboard=authorizedProduct=>run(async()=>{
+  if(client){
+    clearTimeout(autoSaveTimer);
+    const old=client;
+    client=null;generation++;status=padState=rgb=null;
+    await old.transport.close();
+    message('Keyboard disconnected.');
+    return;
+  }
+  const next=await ProDevice.connect(authorizedProduct);if(!next)return;
   client=next;generation++;
-  try{await refresh();showWorkspace();message('Connected to '+next.transport.device.productName+'.');}
+  try{
+    await refresh();
+    if(client!==next)return;
+    showWorkspace();
+    const remembered=browserRates()&&!status.calibrationPhase&&rememberedRates();
+    if(remembered){
+      try{
+        await actions.applyRates(next,info,remembered.rate,remembered.scanMode,info.gamepad);
+        if(client===next)message('Connected. Rates restored from this browser.');
+      }catch(error){await reportDeviceError(error);}
+    }else message('Connected to '+next.transport.device.productName+'.');
+  }
   catch(err){client=null;await next.transport.close().catch(()=>{});throw err;}
 });
-byId('connect').onclick=connectKeyboard;
+byId('connect').onclick=()=>connectKeyboard();
 byId('heroConnect').onclick=()=>{
   connectKeyboard().then(()=>{
     if(!client)byId('initializeStatus').textContent=byId('status').textContent;
@@ -442,40 +1210,65 @@ byId('revert').onclick=()=>run(async()=>{
   clearTimeout(autoSaveTimer);
   await client.foundation.control(12);
   await refresh();rgb=null;
-  message('Saved settings restored.');
+  if(client?.supportsGamepad&&info.gamepad!==info.gamepadAttached)await setControllerUSB(info.gamepad);
+  else message('Saved settings restored.');
 });
 byId('autoApplyToggle').onchange=queueAutoSave;
 navigator.hid?.addEventListener('disconnect',event=>{
   if(event.device!==client?.transport.device)return;
   clearTimeout(autoSaveTimer);
   client.transport.disconnected();client=null;generation++;status=rgb=null;
+  padState=null;
   message('Keyboard disconnected. Reconnect HE30 Pro to read saved settings.');render();
 });
 window.addEventListener('pagehide',()=>client?.transport.close().catch(()=>{}));
 async function poll(){
-  const active=client,stamp=generation;
-  if(active&&!busy&&!pollPending&&!recoveryPending){
+  const active=client,stamp=generation,pageAtStart=page,viewAtStart=view;
+  const start=performance.now();
+  const fast=!!active&&(tuningPage()&&liveTravel||byId('ruleTravel')?.open||boardGauge&&!byId('board').hidden&&page!=='lighting')&&!document.hidden;
+  const lighting=page==='lighting'&&!document.hidden;
+  if(active&&!document.hidden&&!active.transport.closed&&!busy&&!pollPending&&!recoveryPending&&!usbTransition){
     pollPending=true;
+    const current=()=>stamp===generation&&client===active&&!busy&&page===pageAtStart&&view===viewAtStart;
     try{
-      const next=await active.foundation.readStatus();
-      const extra=page==='diagnostics'||page==='overview'?await active.capabilities():null;
-      const live=page==='lighting'?await active.liveRGB():null;
-      if(stamp===generation&&client===active&&!busy){
-        status=next;dirty=next.dirty;
-        if(extra)Object.assign(info,extra);
-        rgb=live;paintBoard();
-        if(byId('rawData'))byId('rawData').textContent=KEY_NAMES.map((k,i)=>k.padEnd(7)+String(next.raw[i]).padStart(5)+' ADC   '+(next.positions[i]/10).toFixed(1)+'%').join('\n');
-        byId('save').disabled=!dirty||!!status.calibrationPhase;
+      const full=(!fast&&!lighting)||!status||start-lastFullStatus>=(lighting?200:1000);
+      const next=full?await active.foundation.readStatus():fast?await active.foundation.readTravel():null;
+      const extra=full&&current()&&['diagnostics','overview','settings'].includes(page)?await active.capabilities():null;
+      const checkProfile=full||start-lastProfileCheck>=200;
+      const observed=extra?.active??(checkProfile&&current()?await active.activeProfile():info.active);
+      if(current()&&checkProfile)lastProfileCheck=start;
+      if(current()&&observed!==info.active){
+        if(await refresh(current)){
+          render();
+          message(profile.name+' active on the keyboard.');
+        }
+      }else if(current()){
+        if(full){
+          lastFullStatus=start;
+          acceptStatus(next);
+          paintSaveState();
+          if(extra)Object.assign(info,extra);
+          const scan=byId('scan');
+          if(scan)scanOptions().forEach((label,index)=>{scan.options[index].textContent=label;});
+          if(byId('rawData'))byId('rawData').textContent=KEY_NAMES.map((k,i)=>k.padEnd(7)+String(next.raw[i]).padStart(5)+' ADC   '+(next.positions[i]/10).toFixed(1)+'%').join('\n');
+          if(page==='gamepad'&&active.supportsGamepad){
+            const controllerLive=await active.gamepadStatus();
+            if(current())padState=controllerLive;
+          }
+        }else if(next)status={...status,...next};
+        if(lighting&&current()&&!lightingDraft){
+          const frame=await active.liveRGB();
+          if(current())rgb=frame;
+        }
+        if(current())paintBoard();
       }
-    }catch(error){if(client===active&&!busy)message(error.message,true);}
+    }catch(error){if(current())await reportDeviceError(error);}
     finally{pollPending=false;}
-  }
-  const pad=byId('padStatus');
-  if(pad){
-    const found=Array.from(navigator.getGamepads?.()||[]).filter(Boolean);
-    pad.textContent=found.length?found.map(p=>p.id+' · '+p.axes.map(v=>v.toFixed(2)).join(' / ')).join(' | '):'Press a controller binding to activate the browser tester.';
-  }
-  setTimeout(poll,200);
+  }else if(lighting&&!busy)paintBoard();
+  const live=!!client&&(tuningPage()&&liveTravel||byId('ruleTravel')?.open||boardGauge&&!byId('board').hidden&&page!=='lighting')&&!document.hidden;
+  const calibrating=!!client&&page==='performance'&&view==='quick'&&!!status?.calibrationPhase&&!document.hidden;
+  const interval=live?1000/60:page==='lighting'&&!document.hidden?1000/30:calibrating?50:200;
+  setTimeout(poll,Math.max(4,interval-(performance.now()-start)));
 }
 for(const label of [...USAGE_NAMES.values(),'Fn1','Fn2']){
   const option=document.createElement('option');option.value=label;byId('keyCodes').append(option);
@@ -488,3 +1281,11 @@ byId('heroKeyboard').querySelectorAll('button').forEach(button=>{
 });
 if(!navigator.hid)byId('heroConnect').disabled=true;
 poll();
+const handoff=new URL(location.href);
+const authorizedProduct=handoff.searchParams.get('connect');
+if(authorizedProduct&&navigator.hid){
+  handoff.searchParams.delete('connect');
+  history.replaceState(null,'',handoff);
+  showWorkspace();
+  connectKeyboard(authorizedProduct);
+}

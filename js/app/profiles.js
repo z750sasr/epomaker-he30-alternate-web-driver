@@ -163,6 +163,12 @@ async function connectKeyboard() {
     log("info", `Profile ${profileIndex + 1} loaded; in-browser recovery backup created`);
     showToast(`${state.identity.name} connected. Profile ${profileIndex + 1} is ready.`);
   } catch (error) {
+    if (error.proProduct) {
+      const url = new URL(document.querySelector('a[href*="pro/?page=gamepad"]').href);
+      url.search = new URLSearchParams({connect:error.proProduct});
+      location.assign(url.href);
+      return;
+    }
     log("error", "Connection failed", error.message);
     showToast(error.message, true);
     if (state.driver) { try { await state.driver.close(); } catch (_) { /* no-op */ } }

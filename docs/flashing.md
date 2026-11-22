@@ -1,6 +1,10 @@
 # HE30 recovery and firmware page
 
-Use **Load v0.10 HE30 Pro** for the [current experimental firmware](../firmware/custom/he30-v0.10/README.md). After H3K10 reconnects, open [HE30 Pro](../pro/). Leave all keys released at startup so the firmware can learn the idle positions. A full image clears onboard settings. Export profiles you want to keep and restore them from **My Profiles** after updating.
+Use **Load v0.15 HE30 Pro** for the [current experimental firmware](../firmware/custom/he30-v0.15/README.md). After H3K15 reconnects, open [HE30 Pro](../pro/). Leave all keys released at startup so the firmware can learn the idle positions. A full image clears onboard settings. Export profiles you want to keep and restore them from **My Profiles** after updating.
+
+To install startup rates via recovery, select the polling and scan rates before choosing **Load v0.15 HE30 Pro**, then review and flash. The flasher verifies the original image, adds a factory settings record, and displays the hash of the resulting image. Current profiles and calibration are replaced.
+
+If the firmware version query (0x55/0x03) times out, select **Enter recovery only** or **Connect & enter recovery**. When AF22 appears, authorize it if needed and review the retained image. Use **Check connected devices** to repeat application verification after reconnecting.
 
 **Latest build (November20,2026):** [v0.6 RGB foundation](../firmware/custom/he30-v0.6/README.md) supersedes the v0.5-current notes below. The load button now selects H3K06/0600. Confirmed hardware:PB15 to36 key LEDs in `wiring.json` order, PB5 to5 bar LEDs. New nonblocking SPI/DMA lighting includes solid/per-key/reactive keys, independent bar, LED identification and persisted colors. Dim key lighting starts on boot, bar defaults off. `/flasher/keyboard.html` accepts H3K05/H3K06 and shows RGB controls only for H3K06.30 browser tests, compiled-instruction/model checks and smoke pass; no v0.6 physical result or flash in development. Export key and lighting profiles before reflashing:the full image clears journal pages. Electrical protocol/timing/colors remain unverified despite confirmed wiring.
 

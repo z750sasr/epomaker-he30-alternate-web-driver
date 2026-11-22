@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HE30 USB recovery lab</title>
+<style>
+  body { color-scheme: dark; background: #101822; color: #e7edf4; font: 16px/1.6 system-ui, sans-serif; max-width: 850px; margin: 3rem auto; padding: 0 1.2rem; }
+  section { background: #182331; border: 1px solid #344557; border-radius: 12px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  h1, h2 { line-height: 1.2; }
+  h2 { font-size: 1.15rem; margin-top: 0; }
+  button { padding: .65rem .85rem; font: inherit; border: 1px solid #55738b; border-radius: 7px; background: #233a4c; color: inherit; margin: .2rem .3rem .2rem 0; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 25rem; overflow: auto; }
+  code { color: #a5e8d1; }
+</style>
+<main>
+  <h1>HE30 USB recovery lab</h1>
+  <p><a href="./matrix.html" style="color:#a5e8d1">Open the Hall key mapper</a></p>
+  <p>Identify an Epomaker HE30, read its firmware version, and check whether it can enter its USB bootloader. This tool never sends bootloader erase or application-image write commands.</p>
+  <section>
+    <h2>1. Identify your keyboard</h2>
+    <p>Connect one HE30, close other keyboard configurators, and select it below. Supported application IDs are <code>19F5:FB27</code> and <code>19F5:FB4C</code>.</p>
+    <button id="select" disabled>Select HE30</button>
+    <button id="info" disabled>Read firmware version</button>
+    <p id="device" aria-live="polite">No device selected.</p>
+  </section>
+  <section>
+    <h2>2. Check recovery entry</h2>
+    <p>The keyboard stops typing in bootloader mode. Related firmware stores a boot flag in flash, and return to normal mode after unplugging is unverified on the HE30. A matching recovery image is currently unavailable. Use the version check first.</p>
+    <button id="enter" disabled>Enter bootloader only</button>
+    <button id="check" disabled>Select bootloader to confirm</button>
+  </section>
+  <section>
+    <h2>USB activity</h2>
+    <p id="status" role="status"></p>
+    <pre id="log" tabindex="0"></pre>
+    <button id="save">Save session log</button>
+  </section>
+</main>
+<script type="module" src="./lab.js"></script>

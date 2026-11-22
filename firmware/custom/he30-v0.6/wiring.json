@@ -1,9 +1,0 @@
-{
-  "evidence": "Owner multimeter tracing and physical chain order, November20,2026. Pin routing/count do not prove serial waveform or color format.",
-  "keyPin": "PB15", "keyCount": 36, "barPin": "PB5", "barCount": 5,
-  "ledOrder": ["Esc","F1","F2","F3","F4","F5","F6","6","5","4","3","2","1","Grave","Tab","Q","W","E","R","T","G","F","D","S","A","Caps","LShift","Z","X","C","V","B","Space","Alt","Fn","Ctrl"],
-  "ledToHall": [23,0,1,2,3,4,5,12,18,19,21,20,22,6,13,14,15,16,17,35,24,30,31,33,32,34,25,26,27,28,29,11,7,9,8,10],
-  "keyTransport": "SPI2 MOSI / DMA1 channel5",
-  "barTransport": "remapped SPI1 MOSI / DMA1 channel3",
-  "unverified": ["Addressable LED chip/model and electrical protocol","GRB vs RGB color order","Clock-derived waveform timing","Any independent RGB power/enable circuitry"]
-}

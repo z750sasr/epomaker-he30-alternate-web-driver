@@ -15,8 +15,15 @@
   </section>
   <section class="panel"><h2>2. Firmware image</h2><label class="file">Choose a .bin file<input id="file" type="file" accept=".bin,application/octet-stream"></label>
     <div id="image" aria-live="polite">No firmware selected.</div>
-    <div class="buttons"><button id="loadCustom" class="secondary">Load v0.10 HE30 Pro</button><a href="../pro/">HE30 Pro →</a><a href="keyboard.html">Keyboard & RGB setup →</a><a href="hardware.html">v0.4 mapping & RGB tests →</a><a href="startup.html">Startup diagnostics →</a></div>
-    <p class="warning">v0.10 starts typing after a stable startup baseline and initializes all four profiles with the physical layout and transparent Fn layers. RGB uses the working v0.6 power sequence. Hardware testing is pending. <a href="../firmware/custom/he30-v0.10/README.md">Build and test notes</a></p>
+    <fieldset><legend>HE30 Pro startup rates</legend>
+      <label>Polling rate <select id="imagePolling"><option value="">Firmware default</option><option value="0">125 Hz</option><option value="1">250 Hz</option><option value="2">500 Hz</option><option value="3">1,000 Hz</option><option value="4">2,000 Hz</option><option value="5">4,000 Hz</option><option value="6">8,000 Hz</option></select></label>
+      <label>Scan rate <select id="imageScanner"><option value="0">Conservative</option><option value="1">Fast</option><option value="2">Fastest</option></select></label>
+      <p>Choose rates before loading the bundled image. A full flash installs factory profiles and clears calibration.</p>
+    </fieldset>
+    <div class="buttons"><button id="loadCustom" class="secondary">Load v0.15 HE30 Pro</button><a href="../pro/">HE30 Pro →</a><a href="keyboard.html">Keyboard & RGB setup →</a><a href="hardware.html">v0.4 mapping & RGB tests →</a><a href="startup.html">Startup diagnostics →</a></div>
+    <p class="warning">v0.15 changes polling and scanning separately and uses page programming for settings. Export settings before flashing and release all keys during startup. <a href="../firmware/custom/he30-v0.15/README.md">Build and test notes</a></p>
+    <p class="hint"><a href="../firmware/custom/he30-v0.20/Epomaker-HE30-EXPERIMENTAL-v0.20-Profile-Keys.bin" download>Download v0.20 profile-key test build</a>. Select the downloaded file above. Export each profile you want to keep before installing.</p>
+    <p class="hint"><a href="../firmware/custom/he30-v0.21/Epomaker-HE30-EXPERIMENTAL-v0.21-NKRO.bin" download>Download v0.21 NKRO test build</a> · <a href="../firmware/custom/he30-v0.21/README.md">Build and test notes</a></p>
     <p class="hint">Before reflashing a calibrated custom build, export its key profile and lighting profile. A full-image flash clears the custom journal. <a href="../firmware/custom/he30-v0.5/Epomaker-HE30-EXPERIMENTAL-v0.5-Foundation.bin" download>Previous v0.5 without RGB</a></p>
     <p class="hint">For the earlier manual RGB diagnostic page, <a href="../firmware/custom/he30-v0.4/Epomaker-HE30-EXPERIMENTAL-v0.4-Mapping-RGB.bin" download>download v0.4</a> and select it above. That page uses H3M04; it cannot control v0.5.</p>
     <p class="hint">Previous v0.2 and v0.2b returned to recovery in hardware tests. v0.3 has now answered its dedicated status command. A loader acknowledgement alone still does not confirm application startup. <a href="../docs/failed-flash-2026-11-19.md">Previous investigation</a></p>

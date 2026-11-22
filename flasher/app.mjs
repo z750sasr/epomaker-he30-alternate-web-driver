@@ -1,3 +1,4 @@
+import {imageWithRates} from './rate-image.mjs';
 import { VID, APP_PID, BOOT_PID, DONOR_PID, hex, usbId, modeOf, connectionCandidates, connectionFilters, HIDTransport, versionPacket, inspectImage, flashImage, readStartupStatus } from './protocol.mjs';
 import { readKeyboardStatus } from './keyboard-protocol.mjs';
 import {FoundationClient} from './keyboard-protocol.mjs';
@@ -67,14 +68,15 @@ async function setImage(bytes, name, restored = false) {
   log(restored ? 'Recovered the selected firmware from browser storage.' : 'Firmware inspected.', { name, ...info });
   await cache(); render();
 }
-async function attach(device, { recoveryOnly = false } = {}) {
+async function attach(device, { recoveryOnly = false, reprobe = false } = {}) {
   if (attaching || state.writing || !modeOf(device)) return;
-  if (state.transport?.device === device && !state.transport.closed) { await maybeFlash(); return; }
+  if (state.transport?.device === device && !state.transport.closed && !reprobe) { await maybeFlash(); return; }
   attaching = true;
   render();
+  let transport;
   try {
     if (state.transport) await state.transport.close().catch(() => {});
-    const transport = new HIDTransport(device, log);
+    transport = new HIDTransport(device, log);
     await transport.open();
     state.transport = transport;
     $('authorize').hidden = true;
@@ -83,15 +85,28 @@ async function attach(device, { recoveryOnly = false } = {}) {
     if (recoveryOnly) {
       status('HE30 configuration interface opened for recovery.');
     } else if (modeOf(device) !== 'recovery') {
-      const reply = await transport.request(versionPacket(), { kind: 'version' });
+      let reply;
+      try {
+        reply = await transport.request(versionPacket(), { kind: 'version' });
+      } catch (error) {
+        const result = state.awaitingApplication ? 'The application returned, but firmware verification is still pending.' : 'Firmware version unavailable. The version query does not write firmware.';
+        if (!transport.closed && state.transport === transport) {
+          status(`${result} ${error.message} You can enter recovery from this page.`);
+        } else if (state.transport === transport) {
+          await transport.close().catch(() => {});
+          state.transport = null;
+          status(`${result} ${error.message} Use Connect & enter recovery to open the recovery path directly.`);
+        }
+        return;
+      }
       const version = reply[8] | reply[9] << 8;
       log(`Firmware field: 0x${hex(version)}`);
       let startup, foundation;
-      if (['H3K05','H3K06','H3K07','H3K09','H3K10'].includes(device.productName)) {
-        if (version !== {H3K05:0x0500,H3K06:0x0600,H3K07:0x0700,H3K09:0x0900,H3K10:0x1000}[device.productName]) throw new Error(`${device.productName} returned an unexpected firmware version.`);
+      if (['H3K05','H3K06','H3K07','H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21'].includes(device.productName)) {
+        if (version !== {H3K05:0x0500,H3K06:0x0600,H3K07:0x0700,H3K09:0x0900,H3K10:0x1000,H3K11:0x1100,H3K12:0x1200,H3K13:0x1300,H3K14:0x1400,H3K15:0x1500,H3K16:0x1600,H3K17:0x1700,H3K18:0x1800,H3K19:0x1900,H3K20:0x2000,H3K21:0x2100}[device.productName]) throw new Error(`${device.productName} returned an unexpected firmware version.`);
         foundation = await readKeyboardStatus(transport);
         log('H3K1 foundation firmware confirmed.', foundation);
-        if(['H3K06','H3K07','H3K09','H3K10'].includes(device.productName))log('H3L1 RGB extension confirmed.',await new LightingClient(new FoundationClient(transport)).readStatus());
+        if(['H3K06','H3K07','H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21'].includes(device.productName))log('H3L1 RGB extension confirmed.',await new LightingClient(new FoundationClient(transport)).readStatus());
       }
       if (['H3B03', 'H3M04'].includes(device.productName)) {
         startup = await readStartupStatus(transport);
@@ -102,9 +117,9 @@ async function attach(device, { recoveryOnly = false } = {}) {
         const match = expected.some(x => x.pid === device.productId && x.release === version);
         state.awaitingApplication = false; state.stage = 'returned';
         $('progress').value = 100;
-        status(foundation ? device.productName==='H3K10' ? 'H3K10 is responding. Release all keys while the startup baseline is captured. Open HE30 Pro to configure the four profiles.' : device.productName==='H3K09' ? 'H3K09 is responding. Open HE30 Pro to calibrate and configure the four onboard profiles.' : device.productName==='H3K07' ? 'v0.7 PA10 power test USB, H3K1 and H3L1 are responding. Open Keyboard setup for the10-second weak pull-up/down tests. PA10 starts floating and RGB data is paused until a test.' : device.productName==='H3K06' ? 'v0.6 foundation USB, H3K1 and H3L1 are responding. Open Keyboard setup for calibration and the36-key/5-bar RGB controls. Calibrate, Enable typing and Save; physical behavior still needs testing.' : 'v0.5 foundation USB and H3K1 are responding. Open Keyboard setup, calibrate all36 keys, then Enable typing and Save. RGB is disabled. Physical key behavior still needs testing.' : startup ? device.productName === 'H3M04' ? 'v0.4 diagnostic USB is responding. Close this connection and open Mapping & RGB tests. Connecting there starts sensor capture automatically; RGB tests remain manual.' : 'v0.3 USB startup diagnostic is responding. Open Startup diagnostics to save its status. This test build does not type or scan keys.' : match ? 'Update sequence finished and the application identity/version matches the image. Test keys and recalibrate as needed.' : 'Application reconnected. Its identity/version was not confirmed against the image; check the log and test the keyboard.');
+        status(foundation ? ['H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21'].includes(device.productName) ? device.productName+' is responding. Release all keys while the startup baseline is captured. Open HE30 Pro to configure the four profiles.' : device.productName==='H3K09' ? 'H3K09 is responding. Open HE30 Pro to calibrate and configure the four onboard profiles.' : device.productName==='H3K07' ? 'v0.7 PA10 power test USB, H3K1 and H3L1 are responding. Open Keyboard setup for the10-second weak pull-up/down tests. PA10 starts floating and RGB data is paused until a test.' : device.productName==='H3K06' ? 'v0.6 foundation USB, H3K1 and H3L1 are responding. Open Keyboard setup for calibration and the36-key/5-bar RGB controls. Calibrate, Enable typing and Save; physical behavior still needs testing.' : 'v0.5 foundation USB and H3K1 are responding. Open Keyboard setup, calibrate all36 keys, then Enable typing and Save. RGB is disabled. Physical key behavior still needs testing.' : startup ? device.productName === 'H3M04' ? 'v0.4 diagnostic USB is responding. Close this connection and open Mapping & RGB tests. Connecting there starts sensor capture automatically; RGB tests remain manual.' : 'v0.3 USB startup diagnostic is responding. Open Startup diagnostics to save its status. This test build does not type or scan keys.' : match ? 'Update sequence finished and the application identity/version matches the image. Test keys and recalibrate as needed.' : 'Application reconnected. Its identity/version was not confirmed against the image; check the log and test the keyboard.');
         await cache();
-      } else if (!state.armed) status(['H3K09','H3K10'].includes(device.productName) ? device.productName+' connected. Open HE30 Pro for configuration.' : foundation ? `${device.productName} connected and H3K1 confirmed. Open Keyboard setup for calibration, bindings and saved settings.${device.productName==='H3K07'?' PA10 power tests are available; the pin starts floating.':device.productName==='H3K06'?' RGB extension H3L1 confirmed.':' RGB is disabled.'}` : startup ? `${device.productName} diagnostic connected and H3B1 confirmed. Open ${device.productName === 'H3M04' ? 'Mapping & RGB tests' : 'Startup diagnostics'}; recovery entry remains experimental.` : 'Keyboard connected. Select an image, or enter recovery without flashing.');
+      } else if (!state.armed) status(['H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21'].includes(device.productName) ? device.productName+' connected. Open HE30 Pro for configuration.' : foundation ? `${device.productName} connected and H3K1 confirmed. Open Keyboard setup for calibration, bindings and saved settings.${device.productName==='H3K07'?' PA10 power tests are available; the pin starts floating.':device.productName==='H3K06'?' RGB extension H3L1 confirmed.':' RGB is disabled.'}` : startup ? `${device.productName} diagnostic connected and H3B1 confirmed. Open ${device.productName === 'H3M04' ? 'Mapping & RGB tests' : 'Startup diagnostics'}; recovery entry remains experimental.` : 'Keyboard connected. Select an image, or enter recovery without flashing.');
     } else if (transition) {
       const disconnected = transition.disconnected;
       transition = null;
@@ -117,18 +132,20 @@ async function attach(device, { recoveryOnly = false } = {}) {
       await cache();
     } else if (!state.armed) status('HE30 recovery is connected. Review the selected image before flashing.');
   } catch (error) {
-    await state.transport?.close().catch(() => {});
+    await transport?.close().catch(() => {});
     state.transport = null;
-    status(error.message);
+    status(error.name==='HIDTimeoutError'&&modeOf(device)==='application'
+      ? `${error.message} Application verification is incomplete. Select Check connected devices to read again, or Connect & enter recovery for recovery access.`
+      : error.message);
   } finally { attaching = false; render(); }
   await maybeFlash();
 }
-async function scan() {
+async function scan({reprobe = false} = {}) {
   if (!navigator.hid || state.writing || attaching || (transition && !transition.sent)) return;
   const devices = await navigator.hid.getDevices();
   const candidates = connectionCandidates(devices, { includeDonor: $('donor').checked, recoveryOnly: state.armed || !!transition });
-  if (!state.armed && state.transport && !state.transport.closed && candidates.includes(state.transport.device)) return;
-  if (candidates.length === 1) return attach(candidates[0]);
+  if (!reprobe && !state.armed && state.transport && !state.transport.closed && candidates.includes(state.transport.device)) return;
+  if (candidates.length === 1) return attach(candidates[0], {reprobe:reprobe&&modeOf(candidates[0])!=='recovery'});
   if (candidates.length > 1) { status('Several configuration-capable keyboards are authorized. Use Connect keyboard, or Connect & enter recovery, to select the intended keyboard.'); return; }
   if (state.armed || transition) {
     $('authorize').hidden = false;
@@ -207,14 +224,19 @@ async function maybeFlash() {
 }
 $('connect').onclick = () => choose();
 $('authorize').onclick = () => choose(true);
-$('rescan').onclick = () => scan().catch(e => status(e.message));
+$('rescan').onclick = () => scan({reprobe:true}).catch(e => status(e.message));
 $('experimental').onchange = render;
 $('donor').onchange = render;
+const requestedRates=new URLSearchParams(globalThis.location?.search);
+if(/^[0-6]$/.test(requestedRates.get('polling'))&&/^[0-2]$/.test(requestedRates.get('scanner'))){
+  $('imagePolling').value=requestedRates.get('polling');
+  $('imageScanner').value=requestedRates.get('scanner');
+}
 $('loadCustom').onclick = async () => {
   if (state.writing || state.armed || state.preparing) return;
   state.preparing = true; state.image = null; state.bytes = null; render();
   try {
-    const base = '../firmware/custom/he30-v0.10/';
+    const base = '../firmware/custom/he30-v0.15/';
     const metadata = await fetch(`${base}manifest.json`, { cache: 'no-store' });
     if (!metadata.ok) throw new Error('Custom firmware manifest could not be loaded.');
     const manifest = await metadata.json();
@@ -223,8 +245,15 @@ $('loadCustom').onclick = async () => {
     const bytes = new Uint8Array(await response.arrayBuffer());
     const inspection = await inspectImage(bytes);
     if (inspection.sha256 !== manifest.sha256) throw new Error('Custom image hash does not match its build manifest.');
-    await setImage(bytes, manifest.name);
-    status('v0.10 HE30 Pro loaded. Review before flashing. Export your current settings first if you want to keep them.');
+    const polling=$('imagePolling').value, scanner=Number($('imageScanner').value||0);
+    if((polling!=null&&polling!=='')||scanner!==0){
+      const rate=polling===''?3:Number(polling);
+      const template=await fetch(base+'factory-journal.bin',{cache:'no-store'});
+      if(!template.ok)throw new Error('Could not load factory settings.');
+      const configured=imageWithRates(bytes,new Uint8Array(await template.arrayBuffer()),rate,scanner);
+      await setImage(configured,manifest.name.replace('.bin','-'+(125*(2**rate))+'Hz-scan'+scanner+'.bin'));
+    }else await setImage(bytes, manifest.name);
+    status('v0.15 HE30 Pro loaded. Review before flashing. Export your current settings first if you want to keep them.');
   } catch (error) { state.image = null; state.bytes = null; $('image').textContent = error.message; status(error.message); }
   finally { state.preparing = false; render(); }
 };

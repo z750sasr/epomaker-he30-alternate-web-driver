@@ -602,10 +602,10 @@ assertOrderedAssets(jsonEditorHtml, [...protocolFiles, ...appFiles], "script", "
 if (!appSource.includes('const APP_ROOT_URL = new URL("../../", APP_SCRIPT_URL)')) throw new Error("Nested app modules do not resolve assets from the site root.");
 for (const [source, label] of [[htmlSource, "live driver"], [jsonEditorHtml, "JSON editor"]]) {
   const diagnosticsPosition = source.indexOf('data-page="diagnostics"');
-  const gamepadPosition = source.indexOf('href="https://github.com/z750sasr/he-kb-analog-mapper"');
+  const gamepadPosition = source.indexOf('pro/?page=gamepad');
   const aboutPosition = source.indexOf('data-page="about"');
   if (aboutPosition < 0 || aboutPosition < diagnosticsPosition) throw new Error(`About me must appear below Diagnostics in the ${label} navigation.`);
-  if (gamepadPosition < diagnosticsPosition || gamepadPosition > aboutPosition || !source.includes('class="external-nav-link"') || !source.includes('Gamepad Mode')) throw new Error(`The external Gamepad Mode link must appear between Diagnostics and About me in the ${label} navigation.`);
+  if (gamepadPosition < diagnosticsPosition || gamepadPosition > aboutPosition || !source.includes('class="external-nav-link"') || !source.includes('Gamepad Mode')) throw new Error(`The HE30 Pro Gamepad Mode link must appear between Diagnostics and About me in the ${label} navigation.`);
 }
 if (!styleSource.includes(".sidebar nav button, .sidebar nav a") || !styleSource.includes(".sidebar nav button:hover, .sidebar nav a:hover")) throw new Error("External sidebar links must share the navigation button styling.");
 for (const fragment of ["ABOUT_ME_HTML", "ABOUT ME: START CUSTOM HTML", "ABOUT ME: END CUSTOM HTML", "renderAboutMe", "about: renderAboutMe", '${ABOUT_ME_HTML}']) {

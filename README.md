@@ -15,7 +15,11 @@ Use it to change key mappings, Hall-effect settings, lighting, profiles, macros,
 
 ## HE30 Pro firmware and driver
 
-The [HE30 Pro workspace](pro/) uses the AE64 Pro welcome flow, navigation, keyboard editor and key picker. It provides four onboard profiles, Main/Fn1/Fn2, per-key Hall tuning, advanced actions, an optional HID gamepad, and lighting for the keyboard and lightbar. [HE30 Pro v0.10](firmware/custom/he30-v0.10/README.md) enables typing with the 36-key factory layout after capturing a released baseline at startup. Load the image from [Recovery & firmware](flasher/).
+The [HE30 Pro workspace](pro/) configures four onboard profiles, Main/Fn1/Fn2, Hall tuning, advanced actions and RGB for the keyboard and light strip. [HE30 Pro v0.15](firmware/custom/he30-v0.15/README.md) provides independent polling and scan controls and a page-based settings writer. Load it from [Recovery & firmware](flasher/). Open [Gamepad Mode](pro/?page=gamepad) to enable the Xbox-compatible controller and assign physical keys.
+
+The [v0.20 test build](firmware/custom/he30-v0.20/README.md) adds onboard profile shortcuts and finer dead zones while retaining the v0.19 Save path. The updated Pro workspace also works with v0.19 for Advanced Keys, Remap, selection and distance display. See the [Zuoya V115 settings analysis](docs/zuoya-v115-stability.md) for the comparison with its scanner.
+
+The [v0.21 test build](firmware/custom/he30-v0.21/README.md) adds NKRO with automatic 6KRO when the host requests HID Boot Protocol. See the [libhmk comparison](docs/libhmk-comparison.md) for the report layout and advanced feature differences.
 
 GitHub Pages publishes the repository root from `main`. The workspace, stock driver and flasher use relative paths so they also run under the GitHub Pages project URL.
 
@@ -49,7 +53,7 @@ Bonus: here is the picture of the HE30's pcb:
 <table><tr><img src="images\W_pcb.jpg" alt="White Epomaker HE30 keyboard" width="60%"></tr></table>
 
 > [!IMPORTANT]
-> Firmware updates and bootloader flashing are not supported (for now).
+> The stock workspace edits profiles. Use [Recovery & firmware](flasher/) for application firmware updates.
 
 ## Open the Driver
 
@@ -99,7 +103,7 @@ Firefox and Safari do not currently support WebHID, but they can still be used w
 
 The separate [Recovery & firmware page](flasher/) supports the verified HE30 recovery-entry request and an experimental OEM-style firmware update sequence. It retains the selected image across USB re-enumeration, supports recovery-device authorization without refreshing, and saves logs. Read [flashing notes](docs/flashing.md) before use. Full live flashing and recovery after an incompatible image remain unvalidated; profile JSON is not a firmware/calibration backup.
 
-The current diagnostic build is [v0.7 PA10 power test](firmware/custom/he30-v0.7/README.md), with a separate [Keyboard & RGB setup page](flasher/keyboard.html). On v0.6 the owner measured USB5V but RGB VCC0.13V, then traced PA10/pin43 through components to that supply. v0.7 leaves PA10 floating at boot and offers ten-second weak input pull-up/down tests to establish the control behavior; RGB data waits for a test. This is not a confirmed LED fix or a permanent enable-level assumption. It retains the earlier key/calibration/tuning/settings features. Export key/lighting profiles before a full-image reflash, which clears the journal. [v0.6 RGB foundation](firmware/custom/he30-v0.6/README.md), [v0.5 without RGB](firmware/custom/he30-v0.5/README.md) and [v0.4 hardware diagnostics](firmware/custom/he30-v0.4/README.md) remain separately available.
+Earlier diagnostic images are available for board and RGB work, including [v0.6 RGB foundation](firmware/custom/he30-v0.6/README.md), [v0.5 without RGB](firmware/custom/he30-v0.5/README.md) and [v0.4 hardware diagnostics](firmware/custom/he30-v0.4/README.md). Export profiles before a full-image reflash, which clears the journal.
 
 - The original driver exposes travel resolution only for device types `101`, `102`, `103`, and `105`. Type `104` keeps its stored precision bits but does not expose an editor in either the original interface or this app.
 - The available resolution steps are `0.01 mm`, `0.005 mm`, and `0.001 mm` for types `102`, `103`, and `105`; type `101` omits `0.001 mm`.

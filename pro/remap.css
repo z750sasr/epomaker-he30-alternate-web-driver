@@ -1,0 +1,24 @@
+/* AE64 Pro keymap workspace styles adapted to the three HE30 layers. */
+.he30-remap{display:grid;gap:1rem}
+.he30-remap .layer-tabs{grid-template-columns:repeat(3,minmax(5rem,1fr))}
+.he30-remap .layer-bar{flex-wrap:wrap}
+.he30-remap .mapping-groups{display:flex;gap:.4rem;flex-wrap:wrap}
+.he30-remap .mapping-groups button{border:1px solid var(--line);background:var(--control-bg);border-radius:8px;color:var(--muted);padding:.6rem .9rem;font:inherit;cursor:pointer}
+.he30-remap .mapping-groups button:hover,.he30-remap .mapping-groups button.active{border-color:var(--mint);color:var(--mint)}
+.remap-selected-card{display:flex;align-items:center;gap:1rem;padding:1rem;border:1px solid var(--line);border-radius:10px;background:var(--panel-3)}
+.remap-selected-card kbd{display:grid;place-items:center;min-width:3rem;min-height:3rem;border:1px solid var(--key-border);border-radius:8px;background:var(--key-start);color:var(--key-text);font:800 1rem inherit}
+.remap-selected-card>span{display:grid;gap:.3rem;color:var(--muted);font-size:.8rem}
+.remap-selected-card strong{color:var(--text);font-size:1rem}
+.remap-workspaces{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:1rem;align-items:start}
+.remap-profile-panel{padding:1rem;border:1px solid var(--line);border-radius:10px;background:var(--panel-3)}
+.remap-profile-panel h2{margin:0}
+.remap-profile-keys{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
+@media(max-width:780px){.remap-workspaces{grid-template-columns:minmax(0,1fr)}}
+#mappingPickerDialog .mapping-picker-list{max-height:45svh;min-height:12rem}
+#mappingPickerDialog .mapping-picker-catalog{align-content:start}
+#mappingPickerDialog input{width:100%;box-sizing:border-box}
+#mappingPickerDialog .mapping-picker-list button b{font-size:.8rem}
+#mappingPickerDialog .mapping-picker-list button small{font-size:.65rem}
+#mappingPickerDialog .mapping-picker-groups button,#mappingPickerDialog .mapping-keyboard-groups button{font-size:.8rem}
+#mappingPickerDialog .mapping-picker-summary small{font-size:.75rem}
+@media(max-width:650px){#mappingPickerDialog .mapping-picker-shell{grid-template-columns:minmax(0,1fr)}#mappingPickerDialog .mapping-picker-sidebar{border-right:0;border-bottom:1px solid var(--line)}#mappingPickerDialog .mapping-picker-groups{grid-template-columns:repeat(2,minmax(0,1fr))}#mappingPickerDialog .mapping-picker-list{grid-template-columns:repeat(2,minmax(0,1fr))}.he30-remap .keymap-workspace-head{align-items:start}}

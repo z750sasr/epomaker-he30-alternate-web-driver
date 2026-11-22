@@ -40,9 +40,44 @@ test('foundation configuration rejects bad routing, ranges, flags and reserved d
   const bytes=encodeConfig(configuration());bytes[160+13]=1;assert.throws(()=>decodeConfig(bytes),/reserved/);bytes[173]=0;bytes[12]=0x80;assert.throws(()=>decodeConfig(bytes),/flag/);
   assert.equal(parseUsage('Left Shift'),0xe1);assert.equal(parseUsage('0x5F'),0x5f);assert.equal(parseUsage('transparent',true),0xfe);assert.equal(parseUsage('Fn'),0xff);assert.throws(()=>parseUsage('Transparent'));assert.equal(parseUsage(usageLabel(0x5f)),0x5f);
 });
+test('v0.20 profile keys and tenth-percent dead zones round-trip without writing to earlier firmware',async()=>{
+  const config=configuration();
+  Object.assign(config.keys[0],{normalUsage:0xf0,fnUsage:0xf3,rapidTrigger:true,topDeadzone:25.7,bottomDeadzone:39.9});
+  Object.assign(config.keys[1],{topDeadzone:7,bottomDeadzone:12});
+  const bytes=encodeConfig(config);
+  assert.deepEqual([...bytes.slice(168,173)],[0xf0,0xf3,29,1,143]);
+  assert.deepEqual([...bytes.slice(184,187)],[0,7,12]);
+  assert.deepEqual(decodeConfig(bytes),config);
+  const transport=new DeviceTransport();
+  transport.device.productName='H3K19';
+  const client=new FoundationClient(transport);
+  await assert.rejects(client.applyConfig(config),/require HE30 Pro v0.20/);
+  assert.equal(transport.requests.length,0);
+  transport.device.productName='H3K20';
+  assert.deepEqual(await client.applyConfig(config),config);
+  transport.device.productName='H3K21';
+  assert.deepEqual(await client.applyConfig(config),config);
+});
 test('foundation status decodes all36 raw/position slots and mask high bits',()=>{
   const decoded=decodeStatus(statusBytes());assert.equal(decoded.signature,'H3K1');assert.equal(decoded.frames,54321);assert.equal(decoded.savedSequence,6);assert.deepEqual(decoded.groupOutputs,[2,0,1]);assert.equal(decoded.raw[0],1543);assert.equal(decoded.raw[35],4000);assert.equal(decoded.positions[35],999);assert.deepEqual(decoded.calibrated.map((v,i)=>v?i:-1).filter(v=>v>=0),[0,31,32,35]);assert.equal(decoded.pressed[35],true);assert.equal(decoded.releaseInterlock,true);assert.equal(decoded.acceptedReports,1234);assert.equal(decoded.configCRC,0x12345678);
   const wrong=statusBytes();wrong[0]=0;assert.throws(()=>decodeStatus(wrong),/H3K1/);wrong[0]=0x48;wrong[201]=35;assert.throws(()=>decodeStatus(wrong));
+  const protocol=statusBytes();
+  protocol[185]=1;
+  assert.equal(decodeStatus(protocol).rollover,true);
+  assert.equal(decodeStatus(protocol).nkro,false);
+  protocol[185]=2;
+  assert.equal(decodeStatus(protocol).nkro,true);
+  assert.equal(decodeStatus(protocol).rollover,false);
+});
+test('live travel reads positions and pressed keys in two reports and preserves device serialization',async()=>{
+  const transport=new DeviceTransport(),client=new FoundationClient(transport);
+  const [sample,status]=await Promise.all([client.readTravel(),client.readStatus()]);
+  assert.deepEqual(sample.positions,status.positions);
+  assert.deepEqual(sample.pressed,status.pressed);
+  assert.deepEqual(transport.requests.slice(0,2).map(request=>[request.operation,request.offset,request.length]),[
+    [0,104,56],[0,160,24]
+  ]);
+  assert.equal(transport.maxActive,1);
 });
 test('foundation request bounds, checksum and zero control payloads are exact',()=>{
   const packet=encodeRequest(2,{length:3,offset:512,data:Uint8Array.of(1,2,3)});assert.deepEqual(Array.from(packet.slice(0,11)),[0x55,0xd0,2,11,3,0,2,0,1,2,3]);assert.ok(packet.slice(11).every(n=>n===0));
@@ -58,7 +93,7 @@ test('foundation client stages all bytes, commits CRC, reads back and serializes
   assert.equal(transport.requests.at(-2).operation,0,'Every control begins with attestation');
 });
 test('foundation controls cannot touch stock firmware or pass failed attestation/acks',async()=>{
-  const wrong=new DeviceTransport();wrong.device.productName='H3M04';assert.throws(()=>new FoundationClient(wrong),/H3K05/);assert.equal(wrong.requests.length,0);
+  const wrong=new DeviceTransport();wrong.device.productName='H3M04';assert.throws(()=>new FoundationClient(wrong),/supported foundation firmware/);assert.equal(wrong.requests.length,0);
   const transport=new DeviceTransport(),client=new FoundationClient(transport);transport.status[0]=0;await assert.rejects(client.control(6),/signature/);assert.deepEqual(transport.requests.map(r=>r.operation),[0]);
   transport.status=statusBytes();transport.failOperation=4;await assert.rejects(client.control(4),error=>error instanceof KeyboardProtocolError&&error.code===7);assert.equal(transport.requests.at(-1).operation,4);
   transport.failOperation=-1;transport.badChecksum=true;await assert.rejects(client.readStatus(),/checksum/);

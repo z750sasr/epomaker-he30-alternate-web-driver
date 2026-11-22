@@ -77,12 +77,20 @@ export async function inspectImage(bytes, cryptoProvider = globalThis.crypto) {
     if (!identities.some(x => x.vid === vid && x.pid === pid && x.release === release)) identities.push({ vid, pid, release, offset: i });
   }
   const exactIdentity = identities.length === 1 && identities[0].pid === APP_PID;
-  const diagnosticProduct = ['H3D02', 'H3B03', 'H3M04', 'H3K05', 'H3K06', 'H3K07', 'H3K08', 'H3K09', 'H3K10'].find(name => {
+  const diagnosticProduct = ['H3D02', 'H3B03', 'H3M04', 'H3K05', 'H3K06', 'H3K07', 'H3K08', 'H3K09', 'H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21'].find(name => {
     const descriptor = [12, 3, ...Array.from(name).flatMap(c => [c.charCodeAt(0), 0])];
     return bytes.some((_, i) => descriptor.every((v, j) => bytes[i + j] === v));
   }) || null;
   const sha256 = Array.from(new Uint8Array(await cryptoProvider.subtle.digest('SHA-256', bytes)), n => hex(n, 2).toLowerCase()).join('');
   return { bytes: bytes.length, sha256, recognizable, identities, diagnosticProduct, experimental: !recognizable || !exactIdentity || !!diagnosticProduct };
+}
+
+const closingDevices = new WeakMap();
+const openingDevices = new WeakMap();
+function withDeadline(pending, timeout, error) {
+  let timer;
+  const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(error), timeout); });
+  return Promise.race([pending, deadline]).finally(() => clearTimeout(timer));
 }
 
 export class HIDTransport {
@@ -101,6 +109,10 @@ export class HIDTransport {
       if (this.waiter.kind === 'matrix' && !(bytes[0] === 0xaa && bytes[1] === 0xdb)) return;
       if (this.waiter.kind === 'control' && !(bytes[0] === 0xaa && bytes[1] === 0xdd)) return;
       if (this.waiter.kind === 'keyboard' && !(bytes[0] === 0xaa && bytes[1] === 0xd0)) return;
+      const request=this.waiter.request;
+      if(this.waiter.kind==='keyboard'&&bytes[2]===0&&
+         (request[2]<=1?(bytes[4]!==request[4]||bytes[5]!==request[5]||bytes[6]!==request[6]):bytes[4]!==0))return;
+      if (this.waiter.kind === 'gamepad' && !(bytes[0] === 0xaa && bytes[1] === 0xd3)) return;
       if (this.waiter.kind === 'profiles' && !(bytes[0] === 0xaa && bytes[1] === 0xd2)) return;
       if (this.waiter.kind === 'lighting' && !(bytes[0] === 0xaa && bytes[1] === 0xd1)) return;
       if (this.waiter.kind === 'boot' && [0xa0, 0xa1].includes(bytes[0])) return;
@@ -108,11 +120,21 @@ export class HIDTransport {
     };
   }
   async open() {
-    if (!this.device.opened) await this.device.open();
+    const closing = closingDevices.get(this.device);
+    if (closing) await withDeadline(closing, 2000, new Error('The previous USB connection is still closing. Unplug and reconnect the keyboard if it stays busy.'));
+    if (!this.device.opened || openingDevices.has(this.device)) {
+      if (!openingDevices.has(this.device)) {
+        const opening = Promise.resolve().then(() => this.device.open()).finally(() => openingDevices.delete(this.device));
+        openingDevices.set(this.device, opening);
+      }
+      await withDeadline(openingDevices.get(this.device), 2500, new Error('USB connection timed out. Unplug and reconnect the keyboard, then try again.'));
+    }
+    if (this.closed) throw new Error('Connection closed.');
     this.device.addEventListener('inputreport', this.received);
   }
   disconnected() {
     this.closed = true;
+    this.device.removeEventListener('inputreport', this.received);
     if (this.waiter?.allowDisconnect) {
       this.waiter.disconnected = true;
       if (this.waiter.sent) this.waiter.resolve(null);
@@ -120,43 +142,54 @@ export class HIDTransport {
     else this.waiter?.reject(new Error('Keyboard disconnected during a command. Update stopped.'));
   }
   async close() {
+    this.closed = true;
     this.device.removeEventListener('inputreport', this.received);
     this.waiter?.reject(new Error('Connection closed.'));
-    this.closed = true;
-    if (this.device.opened) await this.device.close();
+    const opening = openingDevices.get(this.device);
+    if (!closingDevices.has(this.device) && (this.device.opened || opening)) {
+      const closing = Promise.resolve(opening).catch(() => {}).then(() => {
+        if (this.device.opened) return this.device.close();
+      }).finally(() => closingDevices.delete(this.device));
+      closingDevices.set(this.device, closing);
+    }
+    const closing = closingDevices.get(this.device);
+    if (closing) await withDeadline(closing, 2000, new Error('USB disconnect timed out. Unplug and reconnect the keyboard if it stays busy.'));
   }
   async request(bytes, { kind = 'boot', timeout = 2500, allowDisconnect = false } = {}) {
     if (this.closed || this.waiter) throw new Error('Connection is closed or a command is already running.');
     const full = new Uint8Array(this.shape.size);
     if (bytes.length > full.length) throw new Error('Report is larger than the selected interface permits.');
     full.set(bytes);
-    let timer;
-    const response = new Promise((resolve, reject) => {
-      const finish = (callback, value) => { clearTimeout(timer); this.waiter = null; callback(value); };
-      this.waiter = { kind, allowDisconnect, sent: false, resolve: v => finish(resolve, v), reject: e => finish(reject, e) };
-      timer = setTimeout(() => this.waiter?.reject(new Error(`No acknowledgement for command 0x${hex(bytes[0], 2)}. Update stopped; no automatic retry.`)), timeout);
+    const response = new Promise(resolve => {
+      this.waiter = { kind, request:bytes, allowDisconnect, sent: false, resolve };
     });
-    // Observe rejection immediately even if sendReport itself fails or stalls.
-    response.catch(() => {});
+    const waiter = this.waiter;
+    const cancelled = new Promise((_, reject) => { waiter.reject = reject; });
+    const sent = Promise.resolve().then(() => {
+      if (this.closed) throw new Error('Connection closed.');
+      return this.device.sendReport(0, full);
+    }).then(() => {
+      waiter.sent = true;
+      if (allowDisconnect && waiter.disconnected) waiter.resolve(null);
+    });
+    const operation = kind === 'version' ? 'firmware version query (0x55/0x03)' : `command 0x${hex(bytes[0], 2)}${bytes[0] === 0x55 ? '/0x'+hex(bytes[1],2) : ''}`;
+    const detail=kind==='keyboard'?` (operation ${bytes[2]}, offset ${bytes[5]|bytes[6]<<8})`:'';
+    const timeoutError=new Error(`No acknowledgement for ${operation}${detail}.`);
+    timeoutError.name='HIDTimeoutError';
     try {
-      await this.device.sendReport(0, full);
-      if (this.waiter) {
-        this.waiter.sent = true;
-        if (this.waiter.allowDisconnect && this.waiter.disconnected) this.waiter.resolve(null);
-      }
-    } catch (error) {
-      this.waiter?.reject(error);
-      await response.catch(() => {});
-      throw error;
+      const [, reply] = await withDeadline(Promise.race([Promise.all([sent, response]), cancelled]), timeout,
+        timeoutError);
+      if (kind === 'boot' && reply) checkBootAck(reply);
+      return reply;
+    } finally {
+      this.waiter = null;
+      if (!waiter.sent) this.closed = true;
     }
-    const reply = await response;
-    if (kind === 'boot' && reply) checkBootAck(reply);
-    return reply;
   }
   async enterRecovery() {
     if (!['application', 'experimental'].includes(modeOf(this.device))) throw new Error('Select the keyboard in application mode first.');
     // Entry normally disconnects before replying. It is not an image write.
-    await this.device.sendReport(0, recoveryPacket());
+    await withDeadline(this.device.sendReport(0, recoveryPacket()), 2500, new Error('USB recovery request timed out.'));
   }
 }
 

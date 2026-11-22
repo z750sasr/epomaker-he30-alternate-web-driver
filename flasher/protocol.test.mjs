@@ -88,6 +88,32 @@ test('missing replies stop commands; zero statuses pass but AA is not accepted a
   assert.equal(t.waiter, null); assert.equal(d.sent.length, 1); await t.close();
   checkBootAck(new Uint8Array(512)); assert.throws(() => checkBootAck(Uint8Array.of(0xaa, 0)), /rejected/);
 });
+test('a stalled HID write times out even while sendReport is pending', async () => {
+  const device=new FakeDevice(),transport=new HIDTransport(device);
+  device.sendReport=()=>new Promise(()=>{});
+  await transport.open();
+  await assert.rejects(transport.request(dataPacket(0x82,0,new Uint8Array(4)),{timeout:15}),/No acknowledgement/);
+  assert.equal(transport.waiter,null);
+  assert.equal(transport.closed,true);
+  await transport.close();
+});
+test('disconnect cancels an in-flight request and a new transport reopens cleanly', async () => {
+  const device=new FakeDevice(),transport=new HIDTransport(device);
+  let release;
+  device.sendReport=()=>new Promise(resolve=>{release=resolve;});
+  await transport.open();
+  const pending=transport.request(dataPacket(0x82,0,new Uint8Array(4)));
+  await Promise.resolve();
+  const closed=assert.rejects(pending,/Connection closed/);
+  await transport.close();
+  await closed;
+  const next=new HIDTransport(device);
+  device.sendReport=FakeDevice.prototype.sendReport;
+  await next.open();
+  release();
+  await next.request(dataPacket(0x82,0,new Uint8Array(4)));
+  await next.close();
+});
 test('only final reboot may disconnect, including before sendReport resolves', async () => {
   const d = new FakeDevice({ detachFinal: true }), t = new HIDTransport(d); d.detach = () => t.disconnected(); await t.open();
   await flashImage(t, image().slice(0, 64)); assert.equal(d.sent.at(-1)[0], 0x84);

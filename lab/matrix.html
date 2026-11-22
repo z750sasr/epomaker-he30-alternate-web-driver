@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HE30 Hall key mapper</title>
+<style>
+  body { color-scheme: dark; background:#101822; color:#e7edf4; font:16px/1.5 system-ui,sans-serif; max-width:820px; margin:2rem auto; padding:0 1rem; }
+  button { color:inherit; font:inherit; background:#233a4c; border:1px solid #55738b; border-radius:6px; padding:.5rem .65rem; margin:.15rem; }
+  button:disabled { opacity:.5; }
+  button[aria-pressed=true] { outline:2px solid #9ee8cc; }
+  .row { display:flex; flex-wrap:wrap; }
+  .row button { min-width:4rem; }
+  small { display:block; opacity:.8; }
+  pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+  a { color:#9ee8cc; }
+</style>
+<main>
+  <p><a href="./">USB recovery lab</a></p>
+  <h1>HE30 Hall key mapper</h1>
+  <p>Use the stock driver’s live Hall display to start the stream. This page listens to the HE30’s incoming reports and sends no commands.</p>
+  <ol>
+    <li>In a separate tab, connect to the <a href="https://z750sasr.github.io/epomaker-he30-alternate-web-driver/" target="_blank" rel="noopener">alternate HE30 driver</a> and turn on its live Hall travel monitor. Leave that tab open.</li>
+    <li>Choose <strong>Listen to HE30</strong>. Select a key below, press and release only that physical key, then choose <strong>Save key sample</strong>. Use the mouse or another keyboard to operate the page.</li>
+    <li>Download the samples, then stop the monitor in the driver that started it so it can restore its setting.</li>
+  </ol>
+  <p>Slots come from the alternate driver's layout. The capture records Hall report identities so you can check that layout on your unit. Electrical sensor coordinates require separate evidence.</p>
+  <button id="listen" disabled>Listen to HE30</button>
+  <button id="close" disabled>Stop listening</button>
+  <p id="status" role="status">No device open.</p>
+  <div id="keys" aria-label="Physical keys"></div>
+  <p id="selection">Select a physical key to start a sample.</p>
+  <button id="commit" disabled>Save key sample</button>
+  <button id="export" disabled>Download key map JSON</button>
+  <pre id="sample" aria-label="Sample summary"></pre>
+</main>
+<script type="module" src="./matrix.js"></script>
