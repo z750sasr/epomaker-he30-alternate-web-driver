@@ -5,11 +5,19 @@ __attribute__((section(".early"),noinline)) static void gp_profile_bindings(void
  Profile *profile=current_profile();
  for(u32 i=0;i<10;i++)G->config.analog[i].key=GP_NONE;
  for(u32 i=0;i<14;i++)G->config.digital[i].key=GP_NONE;
+#ifdef HE30_INPUT_BUDGET
+ G->bound_count=0;
+#endif
  for(u32 i=0;i<N;i++){
   const u8 binding=profile->gamepad[i];
   if(!binding||binding>24)continue;
   u8 *key=binding<=10?&G->config.analog[binding-1].key:&G->config.digital[binding-11].key;
-  if(*key==GP_NONE)*key=i;
+  if(*key==GP_NONE){
+   *key=i;
+#ifdef HE30_INPUT_BUDGET
+   G->bound_keys[G->bound_count++]=i;
+#endif
+  }
   else profile->gamepad[i]=0;
  }
  G->config_crc=crc32(&G->config,GP_CONFIG_BYTES);
@@ -23,7 +31,11 @@ static int gp_keyboard_only(u32 key){
 }
 
 static void gp_queue_usb(void){
- if(G->usb_switch!=3)G->usb_switch=S->library.gamepad!=(MM8(0x20000104)==3);
+ if(G->usb_switch==3)return;
+ G->usb_switch=S->library.gamepad!=(MM8(0x20000104)==3);
+#ifdef HE30_INPUT_BUDGET
+ G->usb_switch|=FN_LIGHT.mouse_disabled!=G->mouse_disabled;
+#endif
 }
 
 #ifdef HE30_GAMEPAD_CLOCK_FIX
@@ -104,7 +116,12 @@ __attribute__((section(".early"),noinline)) static void gamepad_request(const u8
      u8 key=i<10?G->config.analog[i].key:G->config.digital[i-10].key;
      if(key!=GP_NONE)profile->gamepad[key]=i+1;
     }
-    G->config_crc=get32(data);S->dirty=1;all_released();
+#ifdef HE30_INPUT_BUDGET
+    gp_profile_bindings();
+#else
+    G->config_crc=get32(data);
+#endif
+    S->dirty=1;all_released();
    }
   }
  }else if(op==4&&offset==0&&count==1&&data[0]<=1){

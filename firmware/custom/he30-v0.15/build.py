@@ -63,8 +63,9 @@ def factory_settings(path):
  struct.pack_into('<II',fn,0,0x314c4e46,zlib.crc32(fn[8:]))
  return bytes(journal),bytes(fn).ljust(768,b'\xff')
 
-def build(toolchain, output=HERE, diagnostics=False, base=None, lock_fix=False, user_mode_save=False, flash_resident_save=False, profile_keys=False, nkro=False, fn_rgb=False, adc_rgb_fix=False, calibration_qol=False, desktop_keys=False, usb_lighting_fix=False, defaults=None, gamepad_clock_fix=False):
+def build(toolchain, output=HERE, diagnostics=False, base=None, lock_fix=False, user_mode_save=False, flash_resident_save=False, profile_keys=False, nkro=False, fn_rgb=False, adc_rgb_fix=False, calibration_qol=False, desktop_keys=False, usb_lighting_fix=False, defaults=None, gamepad_clock_fix=False, input_budget=False):
  output.mkdir(parents=True,exist_ok=True)
+ gamepad_clock_fix=gamepad_clock_fix or input_budget
  usb_lighting_fix=usb_lighting_fix or gamepad_clock_fix
  desktop_keys=desktop_keys or usb_lighting_fix
  calibration_qol=calibration_qol or desktop_keys
@@ -77,10 +78,10 @@ def build(toolchain, output=HERE, diagnostics=False, base=None, lock_fix=False, 
  lock_fix=lock_fix or user_mode_save
  diagnostics=diagnostics or lock_fix
  sram_writer=diagnostics and not flash_resident_save
- release='27' if gamepad_clock_fix else '26' if usb_lighting_fix else '25' if desktop_keys else '24' if calibration_qol else '23' if adc_rgb_fix else '22' if fn_rgb else '21' if nkro else '20' if profile_keys else '19' if flash_resident_save else '18' if user_mode_save else '17' if lock_fix else '16' if diagnostics else '15'
+ release='28' if input_budget else '27' if gamepad_clock_fix else '26' if usb_lighting_fix else '25' if desktop_keys else '24' if calibration_qol else '23' if adc_rgb_fix else '22' if fn_rgb else '21' if nkro else '20' if profile_keys else '19' if flash_resident_save else '18' if user_mode_save else '17' if lock_fix else '16' if diagnostics else '15'
  product='H3K'+release
  version_byte=int(release,16)
- variant='Gamepad-Reconnect' if gamepad_clock_fix else 'USB-Media-Lighting' if usb_lighting_fix else 'Lighting-Mouse' if desktop_keys else 'Primed-ADC-Calibration' if calibration_qol else 'Scanner-RGB-Fix' if adc_rgb_fix else 'Fn-RGB-DMA' if fn_rgb else 'NKRO' if nkro else 'Profile-Keys' if profile_keys else 'Onboard-Save' if user_mode_save else 'Live-Save-Test' if lock_fix else 'Save-Diagnostics' if diagnostics else 'Pro'
+ variant='Input-Controls' if input_budget else 'Gamepad-Reconnect' if gamepad_clock_fix else 'USB-Media-Lighting' if usb_lighting_fix else 'Lighting-Mouse' if desktop_keys else 'Primed-ADC-Calibration' if calibration_qol else 'Scanner-RGB-Fix' if adc_rgb_fix else 'Fn-RGB-DMA' if fn_rgb else 'NKRO' if nkro else 'Profile-Keys' if profile_keys else 'Onboard-Save' if user_mode_save else 'Live-Save-Test' if lock_fix else 'Save-Diagnostics' if diagnostics else 'Pro'
  name=f'Epomaker-HE30-EXPERIMENTAL-v0.{release}-{variant}.bin'
  gcc=toolchain/'bin/riscv-none-elf-gcc.exe';objcopy=toolchain/'bin/riscv-none-elf-objcopy.exe';objdump=toolchain/'bin/riscv-none-elf-objdump.exe';nm=toolchain/'bin/riscv-none-elf-nm.exe'
  env=os.environ.copy();env['PATH']=str(toolchain/'bin')+os.pathsep+env.get('PATH','')
@@ -97,6 +98,7 @@ def build(toolchain, output=HERE, diagnostics=False, base=None, lock_fix=False, 
  if desktop_keys:command+=['-DHE30_DESKTOP_KEYS']
  if usb_lighting_fix:command+=['-DHE30_USB_LIGHTING_FIX']
  if gamepad_clock_fix:command+=['-DHE30_GAMEPAD_CLOCK_FIX']
+ if input_budget:command+=['-DHE30_INPUT_BUDGET']
  command+=['-T',str(HERE/'link.ld'),str(HERE/'firmware.c'),str(HERE/'usb-hook.S'),'-o','foundation.elf']
  subprocess.run(command,cwd=output,env=env,check=True)
  code_sections=['-j','.text','-j','.flashwriter']+(['-j','.ramflash'] if sram_writer else [])
@@ -229,6 +231,9 @@ def build(toolchain, output=HERE, diagnostics=False, base=None, lock_fix=False, 
  if gamepad_clock_fix:
   result['gamepad_clock_fix']=True
   result['features'].append('Preserve the free-running SysTick across both halves of an Xbox USB reconnect')
+ if input_budget:
+  result.update(input_budget=True, advanced_slots=10)
+  result['features']+=['Independent USB mouse visibility with consumer control retained', 'Change-driven gamepad processing', 'Ten advanced action slots per profile']
  if defaults:
   result.update(factory_defaults=True,factory_source_sha256=sha(defaults.read_bytes()))
  (output/name).write_bytes(image);(output/'manifest.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
@@ -251,8 +256,9 @@ if __name__=='__main__':
  variant.add_argument('--desktop-keys',action='store_true')
  variant.add_argument('--usb-lighting-fix',action='store_true')
  variant.add_argument('--gamepad-clock-fix',action='store_true')
+ variant.add_argument('--input-budget',action='store_true')
  p.add_argument('--factory-defaults',type=Path)
  args=p.parse_args()
- output=args.output or (HERE.with_name('he30-v0.27') if args.gamepad_clock_fix else HERE.with_name('he30-v0.26') if args.usb_lighting_fix else HERE.with_name('he30-v0.25') if args.desktop_keys else HERE.with_name('he30-v0.24') if args.calibration_qol else HERE.with_name('he30-v0.23') if args.adc_rgb_fix else HERE.with_name('he30-v0.22') if args.fn_rgb else HERE.with_name('he30-v0.21') if args.nkro else HERE.with_name('he30-v0.20') if args.profile_keys else HERE.with_name('he30-v0.19') if args.flash_resident_save else HERE.with_name('he30-v0.18') if args.user_mode_save else HERE.with_name('he30-v0.17') if args.live_save_fix else HERE.with_name('he30-v0.16') if args.save_diagnostics else HERE)
- if args.factory_defaults and not (args.usb_lighting_fix or args.gamepad_clock_fix):p.error('--factory-defaults requires v0.26 or later')
- build(args.toolchain.resolve(),output.resolve(),args.save_diagnostics,args.base,args.live_save_fix,args.user_mode_save,args.flash_resident_save,args.profile_keys,args.nkro,args.fn_rgb,args.adc_rgb_fix,args.calibration_qol,args.desktop_keys,args.usb_lighting_fix,args.factory_defaults,args.gamepad_clock_fix)
+ output=args.output or (HERE.with_name('he30-v0.28') if args.input_budget else HERE.with_name('he30-v0.27') if args.gamepad_clock_fix else HERE.with_name('he30-v0.26') if args.usb_lighting_fix else HERE.with_name('he30-v0.25') if args.desktop_keys else HERE.with_name('he30-v0.24') if args.calibration_qol else HERE.with_name('he30-v0.23') if args.adc_rgb_fix else HERE.with_name('he30-v0.22') if args.fn_rgb else HERE.with_name('he30-v0.21') if args.nkro else HERE.with_name('he30-v0.20') if args.profile_keys else HERE.with_name('he30-v0.19') if args.flash_resident_save else HERE.with_name('he30-v0.18') if args.user_mode_save else HERE.with_name('he30-v0.17') if args.live_save_fix else HERE.with_name('he30-v0.16') if args.save_diagnostics else HERE)
+ if args.factory_defaults and not (args.usb_lighting_fix or args.gamepad_clock_fix or args.input_budget):p.error('--factory-defaults requires v0.26 or later')
+ build(args.toolchain.resolve(),output.resolve(),args.save_diagnostics,args.base,args.live_save_fix,args.user_mode_save,args.flash_resident_save,args.profile_keys,args.nkro,args.fn_rgb,args.adc_rgb_fix,args.calibration_qol,args.desktop_keys,args.usb_lighting_fix,args.factory_defaults,args.gamepad_clock_fix,args.input_budget)

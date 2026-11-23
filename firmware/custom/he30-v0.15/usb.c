@@ -19,6 +19,10 @@
 #define USB_MOUSE_REPORT_BYTES 79
 #define USB_XINPUT_INTERFACE 2
 #define USB_MOUSE_PACKET_BYTES 5
+#ifdef HE30_INPUT_BUDGET
+#define USB_POINTER_REPORT_BYTES 54
+#define USB_CONSUMER_REPORT_BYTES (USB_MOUSE_REPORT_BYTES-USB_POINTER_REPORT_BYTES)
+#endif
 #else
 #define USB_MOUSE_REPORT_BYTES 52
 #define USB_XINPUT_INTERFACE 3
@@ -99,12 +103,23 @@ __attribute__((section(".spare_data"))) static const u8 usb_ms_compatible[40]={
  0,0,0,0,0,0,0,0
 };
 
+#ifdef HE30_INPUT_BUDGET
+__attribute__((section(".slow"),noinline))
+#endif
 static void usb_gamepad_setup(u8 enabled){
  /* The native initialized configuration occupies only 91 bytes. Leave its
   * following data intact. The setup hook serves the larger descriptor. */
  MM8(USB_CONFIG_RAM+2)=enabled?106:66;
  MM8(USB_CONFIG_RAM+3)=0;
  MM8(USB_CONFIG_RAM+4)=enabled?3:2;
+#ifdef HE30_INPUT_BUDGET
+ G->mouse_disabled=FN_LIGHT.mouse_disabled;
+ if(G->mouse_disabled){
+  const u8 *configuration=enabled?usb_xinput_configuration:usb_mouse_configuration;
+  bytes_copy(G->usb_configuration,configuration,enabled?USB_GAMEPAD_CONFIG_BYTES:USB_BASE_CONFIG_BYTES);
+  G->usb_configuration[enabled?122:82]=USB_CONSUMER_REPORT_BYTES;
+ }
+#endif
 }
 
 #ifdef HE30_USB_LIGHTING_FIX
@@ -116,6 +131,9 @@ __attribute__((used,noinline)) int usb_gamepad_control(void){
  const u8 type=MM8(USB_SETUP_TYPE),request=MM8(USB_SETUP_REQUEST);
  const u16 value=MM16(USB_SETUP_VALUE),index=MM16(USB_SETUP_INDEX);
  const u8 enabled=MM8(USB_CONFIG_RAM+4)==3;
+#ifdef HE30_INPUT_BUDGET
+ const u8 mouse_disabled=G->mouse_disabled;
+#endif
  const u8 *descriptor;
  u16 length;
  u8 descriptor_type=0;
@@ -124,7 +142,11 @@ __attribute__((used,noinline)) int usb_gamepad_control(void){
 #else
  const u8 mouse_index=2;
 #endif
- if(enabled&&type==0x80&&request==6&&value==0x0100&&index==0){
+ if((enabled
+#ifdef HE30_INPUT_BUDGET
+     ||mouse_disabled
+#endif
+     )&&type==0x80&&request==6&&value==0x0100&&index==0){
   /* Windows caches OS descriptor support by VID, PID and USB revision. */
   descriptor=(const u8 *)0x172c4;
   length=18;descriptor_type=1;
@@ -132,9 +154,15 @@ __attribute__((used,noinline)) int usb_gamepad_control(void){
 #ifdef HE30_DESKTOP_KEYS
  else if(index==mouse_index&&type==0x81&&request==6&&value==0x2200){
   descriptor=mouse_descriptor;length=sizeof(mouse_descriptor);
+#ifdef HE30_INPUT_BUDGET
+  if(mouse_disabled){descriptor+=USB_POINTER_REPORT_BYTES;length=USB_CONSUMER_REPORT_BYTES;}
+#endif
  }else if(index==mouse_index&&type==0x81&&request==6&&value==0x2100){
 #ifdef HE30_USB_LIGHTING_FIX
   descriptor=enabled?usb_xinput_configuration+115:usb_mouse_configuration+75;
+#ifdef HE30_INPUT_BUDGET
+  if(mouse_disabled)descriptor=G->usb_configuration+(enabled?115:75);
+#endif
 #else
   descriptor=usb_xinput_configuration+75;
 #endif
@@ -146,6 +174,9 @@ __attribute__((used,noinline)) int usb_gamepad_control(void){
  else if(type==0x80&&request==6&&(value==0x0200||value==0x0700)&&index==0){
 #ifdef HE30_USB_LIGHTING_FIX
   descriptor=enabled?usb_xinput_configuration:usb_mouse_configuration;
+#ifdef HE30_INPUT_BUDGET
+  if(mouse_disabled)descriptor=G->usb_configuration;
+#endif
 #else
   descriptor=usb_xinput_configuration;
 #endif
@@ -161,7 +192,11 @@ __attribute__((used,noinline)) int usb_gamepad_control(void){
  const u16 count=length>64?64:length;
  bytes_copy((void *)USB_EP0_BUFFER,descriptor,count);
  if(descriptor_type==1){
+#ifdef HE30_INPUT_BUDGET
+  if(count>12)MM8(USB_EP0_BUFFER+12)=enabled+2*mouse_disabled;
+#else
   if(count>12)MM8(USB_EP0_BUFFER+12)=1;
+#endif
  }else if(descriptor_type){
   if(count>1)MM8(USB_EP0_BUFFER+1)=descriptor_type;
   if(count>2)MM8(USB_EP0_BUFFER+2)=enabled?USB_GAMEPAD_CONFIG_BYTES:USB_BASE_CONFIG_BYTES;

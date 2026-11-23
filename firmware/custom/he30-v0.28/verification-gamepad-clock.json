@@ -1,0 +1,12 @@
+{
+  "sha256": "056f009497ca8d2c505250bad7bb0dbe2791a0a9100d6700b901766a53b8ce7d",
+  "passed": [
+    "vendor reply before detach",
+    "repeated Xbox enable and disable",
+    "SysTick restored after both donor calls",
+    "deadline wraparound",
+    "correct interface selection",
+    "no flash writes"
+  ],
+  "hardware_tested": false
+}

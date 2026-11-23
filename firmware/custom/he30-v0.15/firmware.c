@@ -27,6 +27,12 @@ typedef signed int i32;
 #define KEYBOARD_REPORT_BYTES 8
 #endif
 #define ACTION_COUNT 8
+#ifdef HE30_INPUT_BUDGET
+#define EXTRA_ACTIONS 2
+#define TOTAL_ACTIONS (ACTION_COUNT+EXTRA_ACTIONS)
+#else
+#define TOTAL_ACTIONS ACTION_COUNT
+#endif
 #define RECORD_MAGIC 0x35434648u
 #define COMMIT 0x5ac3d17eu
 #ifndef FIRMWARE_VERSION
@@ -80,6 +86,10 @@ typedef struct {
 #ifdef HE30_USB_LIGHTING_FIX
  LightingPreferences preferences[PROFILE_COUNT];
 #endif
+#ifdef HE30_INPUT_BUDGET
+ Action extra_actions[PROFILE_COUNT][EXTRA_ACTIONS];
+ u8 mouse_disabled,reserved[3];
+#endif
 } FnLighting;
 _Static_assert(__builtin_offsetof(FnLighting,colors)==16&&sizeof(FnLighting)<=FN_RGB_RECORD_BYTES,"Fn lighting journal layout");
 #endif
@@ -99,11 +109,11 @@ typedef struct {
  u8 rgb_state,rgb_path,rgb_error,rgb_pending,identify,bar_sent_count;
  u32 rgb_started,key_frames,bar_frames,identify_until,reactive_lo,reactive_hi;
  u32 rgb_retry_next;u8 rgb_retry_left;
- u8 action_prev[ACTION_COUNT],action_state[ACTION_COUNT],winner[ACTION_COUNT],overflow[N];
- u32 action_time[ACTION_COUNT];
+ u8 action_prev[TOTAL_ACTIONS],action_state[TOTAL_ACTIONS],winner[TOTAL_ACTIONS],overflow[N];
+ u32 action_time[TOTAL_ACTIONS];
  u32 gain[N],deadzone_gain[N];
  u16 curve[N][33];
- u8 action_queue[ACTION_COUNT],running_fast;
+ u8 action_queue[TOTAL_ACTIONS],running_fast;
  u32 scan_ticks,scan_worst,scan_sample_start,scan_sample_frames,config_crc;
  u8 config_crc_stale, startup_frames;
  u16 startup_rest[N];
@@ -123,7 +133,9 @@ typedef struct {
  u8 rgb_activity,rgb_asleep,media_pressed,media_sent;
 #endif
 #ifdef HE30_FN_RGB
+#ifndef HE30_INPUT_BUDGET
  FnLighting fn_light;
+#endif
  u8 fn_rgb_draft[FN_RGB_FIRST_CHUNK],fn_rgb_target,rendered_fn,scan_trial,scan_order;
 #endif
 } App;
@@ -133,8 +145,18 @@ typedef struct {
  GpState state;
  u8 coverage[(GP_CONFIG_BYTES+7)/8], staging, usb_switch;
  u32 usb_deadline, config_crc;
+#ifdef HE30_INPUT_BUDGET
+ u16 depth[N];
+ u8 bound_keys[24],bound_count,mouse_disabled,action_limit,usb_configuration[131];
+ FnLighting fn_light;
+#endif
 } GamepadApp;
 #define G ((GamepadApp *)0x20003700u)
+#ifdef HE30_INPUT_BUDGET
+#define FN_LIGHT (G->fn_light)
+#else
+#define FN_LIGHT (S->fn_light)
+#endif
 _Static_assert(sizeof(GamepadApp)<=0x900,"gamepad SRAM reservation");
 static void gp_profile_bindings(void);
 static int gp_keyboard_only(u32 key);
@@ -325,7 +347,12 @@ static void add_usage(u8 usage){
  if(usage>=0xc0&&usage<=0xcf){if(!S->media_pressed)S->media_pressed=usage;return;}
 #endif
 #ifdef HE30_DESKTOP_KEYS
- if(usage>=0xb0&&usage<=0xba){S->mouse_inputs|=1u<<(usage-0xb0);return;}
+ if(usage>=0xb0&&usage<=0xba){
+#ifdef HE30_INPUT_BUDGET
+  if(G->mouse_disabled)return;
+#endif
+  S->mouse_inputs|=1u<<(usage-0xb0);return;
+ }
 #endif
  if(usage>=0xe0&&usage<=0xe7){S->report[0]|=1u<<(usage-0xe0);return;}
 #ifdef HE30_NKRO
@@ -484,7 +511,7 @@ static u8 stored_byte(u32 offset);
 #ifdef HE30_FN_RGB
 static u8 flash_record_byte(const u8 *record,u32 offset){
  if(record==(const u8 *)&S->library)return stored_byte(offset);
- return offset<sizeof(S->fn_light)?record[offset]:255;
+ return offset<sizeof(FN_LIGHT)?record[offset]:255;
 }
 #else
 #define flash_record_byte(record,offset) stored_byte(offset)
@@ -534,7 +561,7 @@ __attribute__((noipa,externally_visible))
 u32 flash_writer(u32 address,const u8*record,u32 erase){
 #ifdef HE30_FN_RGB
  const int library=(address==PAGE_A||address==PAGE_B)&&record==(const u8 *)&S->library;
- const int palette=(address==FN_PAGE_A||address==FN_PAGE_B)&&record==(const u8 *)&S->fn_light;
+ const int palette=(address==FN_PAGE_A||address==FN_PAGE_B)&&record==(const u8 *)&FN_LIGHT;
  if(!(library||palette)||erase!=1)return FLASH;
  const u32 size=library?4096:FN_RGB_RECORD_BYTES;
 #else
@@ -639,7 +666,15 @@ __attribute__((section(".slow_data"))) static const u16 media_usages[16]={
  0xcd,0xb6,0xb5,0xb7,0xe2,0xe9,0xea,0x6f,0x70,0x221,0x223,0x224,0x225,0x192,0x2a2,0x29f
 };
 #endif
-__attribute__((section(".extra"),noinline)) static void mouse_service(void){
+#ifdef HE30_INPUT_BUDGET
+__attribute__((section(".slow"),noinline))
+#else
+__attribute__((section(".extra"),noinline))
+#endif
+static void mouse_service(void){
+#ifdef HE30_INPUT_BUDGET
+ if(!S->mouse_down&&!S->mouse_wheel&&!S->mouse_sent&&S->media_pressed==S->media_sent)return;
+#endif
  if(!usb_ready()){
   S->mouse_sent=0;
 #ifdef HE30_USB_LIGHTING_FIX
@@ -661,6 +696,9 @@ __attribute__((section(".extra"),noinline)) static void mouse_service(void){
   if(upload(4,consumer,3,1)==1){S->media_sent=media;S->mouse_ticks=now;}
   return;
  }
+#endif
+#ifdef HE30_INPUT_BUDGET
+ if(G->mouse_disabled)return;
 #endif
  if(buttons==S->mouse_sent&&!((down&0x780)||S->mouse_wheel))return;
  const i32 speed=1+(S->light.bar_on>>1);

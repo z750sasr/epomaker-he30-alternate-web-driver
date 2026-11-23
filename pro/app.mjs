@@ -1,6 +1,7 @@
 import {bindBoardSelection} from './board-selection.mjs';
 import {liveTravelPanel,bindLiveTravelPanel,paintLiveTravel} from './live-travel.mjs';
-import {renderRemap,bindRemap,openRemapPicker,closeRemapPicker,layerTabs} from './remap.mjs';
+import {renderRemap,bindRemap,layerTabs,remapIcon} from './remap.mjs';
+import {startGamepadTester} from './gamepad-tester.mjs';
 import {openAdvancedKeyPicker} from './key-picker.mjs';
 import {beginRecovery} from '../flasher/recovery.mjs';
 import {ProDevice,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,DESKTOP_PRODUCTS,FN_RGB_PRODUCTS,GAMEPAD,RATES,ZUOYA,KEY_NAMES,actionBytes,bindingCode,bindingLabel,encodeConfig,encodeLighting,isProfileUsage,isDesktopUsage,isMediaUsage} from './protocol.mjs';
@@ -31,12 +32,13 @@ const defaults=()=>({
 });
 const blankFnLighting=()=>Array.from({length:2},()=>({enabled:false,palette:Array.from({length:36},()=>[0,0,0])}));
 const defaultProfile=()=>({name:'Profile',fn2:Array(36).fill(254),fnLighting:blankFnLighting(),gamepad:Array(36).fill(0),travel:Array(36).fill(4000),coefficient:Array(36).fill(0),
-  actions:Array.from({length:8},blankAction),lighting:{version:1,mode:1,order:0,rate:0,barCount:5,barEnabled:true,color:[16,16,16],barColor:[16,16,16],palette:Array.from({length:36},()=>[0,0,0])}});
+  actions:Array.from({length:10},blankAction),lighting:{version:1,mode:1,order:0,rate:0,barCount:5,barEnabled:true,color:[16,16,16],barColor:[16,16,16],palette:Array.from({length:36},()=>[0,0,0])}});
 const offline=Array.from({length:4},(_,i)=>({config:defaults(),profile:{...defaultProfile(),name:'Profile '+(i+1)}}));
 let client=null,config=offline[0].config,profile=offline[0].profile;
-let info={active:0,rate:3,scanMode:0,gamepad:false,names:offline.map(p=>p.profile.name)};
+let info={active:0,rate:3,scanMode:0,gamepad:false,mouse:true,names:offline.map(p=>p.profile.name)};
 let status=null,rgb=null,slot=0,layer=0,key=0,page=new URLSearchParams(location.search).get('page')==='gamepad'?'gamepad':'performance',view='quick',busy=false,dirty=false,generation=0,pollPending=false;
 let lightingDraft=null,barDraft=null,paletteEdited=false,lightingLayer=0;
+let lightingArea='keyboard',controllerView='setup',showSwitchAdc=false;
 let advancedKind=null;
 let controller={...defaultGamepad(),mode:1},padState=null,padChoice=null,usbTransition=false;
 let autoSaveTimer, recoveryPending=false;
@@ -48,7 +50,8 @@ let liveTravel=false, travelPanelPosition=null, travelSelectionOnly=true;
 let lastFullStatus=0;
 let lastProfileCheck=0;
 const tuningPage=()=>page==='performance'&&['actuation','rapid'].includes(view);
-const multiKeyPage=()=>tuningPage()||page==='lighting'||page==='keymap'||(page==='performance'&&view==='switches');
+const switchAdcVisible=()=>showSwitchAdc&&page==='performance'&&view==='switches';
+const multiKeyPage=()=>tuningPage()||page==='lighting'&&lightingArea==='keyboard'||page==='keymap'||(page==='performance'&&view==='switches');
 const editTargets=all=>all?KEY_NAMES.map((_,index)=>index):[...selectedKeys];
 const selectionLabel=()=>selectedKeys.size===1?KEY_NAMES[key]:selectedKeys.size+' keys';
 const visualKeyOrder=rows.flat();
@@ -286,8 +289,9 @@ function previewKeyColor(light,index,animation){
 const keyWidths={Tab:1.5,Caps:1.75,LShift:2.25,Ctrl:1.25,Fn:1.25,Alt:1.25,Space:2.75};
 function renderBoard(){
   const board=byId('board');
-  board.hidden=page==='firmware'||page==='settings'||page==='diagnostics';
+  board.hidden=page==='firmware'||page==='settings'||page==='diagnostics'||page==='gamepad'&&fullGamepad()&&controllerView!=='setup';
   if(board.hidden)return;
+  board.classList.toggle('lightbar-only',page==='lighting'&&lightingArea==='bar');
   const keyboard=rows.map(row=>'<div class="pro-row">'+row.map(index=>{
     const name=KEY_NAMES[index],selected=multiKeyPage()?selectedKeys.has(index):index===key;
     const label=page==='gamepad'?controllerLabel(index):bindingLabel(selectedUsage(index));
@@ -295,9 +299,10 @@ function renderBoard(){
     const badges=`<span class="pro-key-ap" title="Actuation point">AP ${ap}</span>${tuning.rapidTrigger?'<span class="pro-key-rt" title="Rapid Trigger">RT</span>':''}${tuning.topDeadzone||tuning.bottomDeadzone?'<span class="pro-key-dz" title="Dead zones">DZ</span>':''}`;
     return '<button type="button" class="pro-key" data-key="'+index+'" aria-pressed="'+selected+'" data-selected="'+selected+
       '" data-controller="'+!!controllerLabel(index)+'" style="--key-u:'+(keyWidths[name]||1)+'" title="'+esc(name+' · '+label)+'">'+
-      '<span>'+esc(name==='Grave'?'~':name)+'</span><small class="pro-key-mapping">'+esc(label)+'</small>'+badges+'<span class="calibration-adc" hidden></span></button>';
+      '<span>'+esc(name==='Grave'?'~':name)+'</span><small class="pro-key-mapping">'+(page==='keymap'?remapIcon(selectedUsage(index),label)||esc(label):esc(label))+'</small>'+badges+'<span class="calibration-adc" hidden></span></button>';
   }).join('')+'</div>').join('');
-  board.innerHTML='<div class="pro-board">'+keyboard+'</div><div class="pro-bar" aria-label="Five lightbar LEDs">'+Array(5).fill('<i></i>').join('')+'</div>'+
+  board.innerHTML=(page==='lighting'&&lightingArea==='bar'?'':'<div class="pro-board">'+keyboard+'</div>')+
+    (page==='lighting'?'<div class="pro-bar" aria-label="Five lightbar LEDs">'+Array(5).fill('<i></i>').join('')+'</div>':'')+
     (page==='lighting'?'<p id="rgbPreviewStatus" class="rgb-preview-status"></p>':'')+
     (multiKeyPage()?'<div class="pro-selection-toolbar"><span>Drag to select. Shift selects a range. Ctrl/⌘ toggles keys. Alt removes keys.</span><strong>'+esc(selectionLabel())+
       '</strong><button type="button" class="button ghost small" data-action="selectAllKeys">Select all</button><button type="button" class="button ghost small" data-action="invertKeys">Invert</button><button type="button" class="button ghost small" data-action="singleKey">Primary only</button></div>':'');
@@ -311,27 +316,31 @@ function paintBoard(){
   const animation=Math.floor(performance.now()*lightingPreferences().speed/500);
   const preview=byId('rgbPreviewStatus');
   if(preview){
-    const text=layerPalette?`Fn${lightingLayer} palette preview · ${layerPalette.enabled?'enabled':'disabled'}`:
+    const text=lightingArea==='bar'?(barDraft?'Lightbar preview':rgb?'Live lightbar':'Lightbar preview'):
+      layerPalette?`Fn${lightingLayer} palette preview · ${layerPalette.enabled?'enabled':'disabled'}`:
       lightingDraft?'Previewing lighting changes':frame?'Live keyboard and light strip':client?'Waiting for the keyboard’s RGB frame':'Offline lighting preview';
     if(preview.textContent!==text)preview.textContent=text;
   }
   const calibrating=!!client&&!!status?.calibrationPhase;
+  const adcVisible=!!client&&!!status?.raw&&(calibrating||switchAdcVisible());
   board.classList.toggle('calibration-active',calibrating);
+  board.classList.toggle('show-adc-readings',adcVisible);
   board.classList.toggle('show-key-gauge',boardGauge&&page!=='lighting');
   for(const element of board.querySelectorAll('[data-key]')){
     const i=Number(element.dataset.key);
     const reading=element.querySelector('.calibration-adc');
-    reading.hidden=!calibrating;
-    if(calibrating){
+    reading.hidden=!adcVisible;
+    if(adcVisible){
       const raw=String(status.raw[i]);
       if(reading.textContent!==raw)reading.textContent=raw;
+      element.setAttribute('aria-label',KEY_NAMES[i]+' · '+raw+' ADC'+(calibrating&&status.calibrated[i]?' · measured':''));
+    }else element.removeAttribute('aria-label');
+    if(calibrating){
       element.dataset.calibrated=status.calibrated[i];
       if(partialCalibration())element.dataset.calibrationState=status.calibrated[i]?'captured':config.calibrated[i]?'previous':'missing';
-      element.setAttribute('aria-label',KEY_NAMES[i]+' · '+raw+' ADC'+(status.calibrated[i]?' · measured':''));
     }else{
       delete element.dataset.calibrated;
       delete element.dataset.calibrationState;
-      element.removeAttribute('aria-label');
     }
     element.dataset.pressed=!!status?.pressed[i];
     if(boardGauge)element.style.setProperty('--depth',(status?.positions[i]||0)/10+'%');
@@ -378,7 +387,7 @@ const headings={
   rapid:['Rapid Trigger','Set the minimum movement needed to press and release again.'],
   switches:['Magnetic Switches','Assign a switch curve and travel to the selected physical key.'],
   keymap:['Remap','Edit the current onboard profile’s Main, Fn1 and Fn2 layers.'],
-  advanced:['Advanced Keys','Configure eight rules per profile. Actions and pairs use physical key positions.'],
+  advanced:['Advanced Keys','Configure actions and pairs using physical key positions.'],
   gamepad:['Gamepad','Assign physical keys to Xbox controls and tune their analog response.'],
   lighting:['RGB Settings','Set the 36-key LEDs and the five-LED lightbar.'],
   settings:['Keyboard Settings','Choose the polling rate, scan rate and USB controller visibility.'],
@@ -436,23 +445,25 @@ function renderGamepad(){
     '01_button_a','02_button_b','03_button_x','04_button_y','22_left_bumper','24_right_bumper','06_back','05_start',
     '16_left_stick_press','21_right_stick_press','08_dpad_up','09_dpad_down','10_dpad_left','11_dpad_right'];
   const current=padChoice===null?null:GAMEPAD_ACTIONS[padChoice];
-  return '<div class="gamepad-studio">'+
+  return '<div class="gamepad-studio reloaded-gamepad">'+
+    '<nav class="reloaded-segments" aria-label="Gamepad sections">'+[['setup','Setup'],['configuration','Configuration'],['tester','Gamepad Tester']].map(([id,name])=>`<button type="button" data-controller-view="${id}" aria-pressed="${id===controllerView}">${name}</button>`).join('')+'</nav>'+
+    '<div class="reloaded-gamepad-setup" data-controller-panel="setup" '+(controllerView==='setup'?'':'hidden')+'>'+
     '<section class="usb-device-control"><label class="usb-device-label" for="controllerUSB"><span><strong>Xbox controller device</strong><small>Show or hide the Xbox device in Windows.</small></span><input id="controllerUSB" type="checkbox" role="switch" '+(info.gamepad?'checked':'')+'></label>'+
     '<p>Changing this briefly reconnects the keyboard over USB. '+(recoverySave()?'The choice applies for this session.':'Save changes to keep this choice after power loss.')+'</p><p id="controllerStatus" class="readout" role="status">'+esc(controllerStatus())+'</p></section>'+
     '<section class="profilebar"><div class="profile-name"><span>ONBOARD PROFILE</span><strong>'+esc(profile.name)+'</strong></div>'+
     select('controllerMode','KEYBOARD OUTPUT',GAMEPAD_MODES,controller.mode)+
     '<label><span>CONTROLLER TYPE</span><strong>Xbox / XInput</strong></label>'+
     '<div class="profile-actions">'+btn('Apply to keyboard','gamepad')+'</div></section>'+
-    '<div class="workspace-grid"><section class="card mapping-card"><div class="card-head"><div><h2>A place for every control</h2><p>Select a keyboard key, then choose its controller action.</p></div><span class="pill">'+assigned+' assigned</span></div>'+
+    '<section class="card mapping-card"><div class="card-head"><div><h2>Controller mapping</h2><p>Select a physical key and choose a controller action, or drag an action onto a key.</p></div><span class="pill">'+assigned+' assigned</span></div>'+
     '<div id="controllerKeyboardSlot"></div><div class="keyboard-legend"><span><i class="legend-bound"></i>Assigned</span><span><i class="legend-selected"></i>Selected</span><small>Assignments refer to physical keys, independent of keyboard remaps.</small></div>'+
     '<div class="assignment-head"><span>'+esc(KEY_NAMES[key])+'</span><div><strong>'+esc(current?.label||'Choose a controller action')+'</strong><small>Switch travel '+(profile.travel[key]/1000).toFixed(3)+' mm estimated</small></div>'+
     '<button class="remove-assignment" data-action="clearPad" '+(gamepadActionForKey(controller,key)===null?'disabled':'')+'>Remove assignment</button></div>'+
     '<div hidden>'+controllerActionSelect()+'</div><div class="control-picker">'+groups.map(([label,start,end])=>'<div class="control-group"><span>'+label+'</span>'+
       GAMEPAD_ACTIONS.slice(start,end).map((action,index)=>{
         const id=start+index,binding=id<10?controller.analog[id]:controller.digital[id-10];
-        return '<button class="control-action '+(padChoice===id?'active':binding.key!==GAMEPAD_NONE?'assigned':'')+'" data-controller-action="'+id+'" aria-pressed="'+(padChoice===id)+'"><img class="controller-icon" src="assets/controller_icons/'+files[id]+'.png" alt="" aria-hidden="true"><span>'+action.label+'</span>'+(binding.key!==GAMEPAD_NONE?'<small>'+esc(KEY_NAMES[binding.key])+'</small>':'')+'</button>';
-      }).join('')+'</div>').join('')+'</div></section>'+
-    '<section class="card tuning-card"><div class="card-head"><div><h2>Choose your travel window</h2><p>'+(current?'Adjust this control’s response through the switch travel.':'Select an assigned key or choose a controller action.')+'</p></div><span class="pill">'+esc(current?.label||'—')+'</span></div>'+
+        return '<button type="button" draggable="true" class="control-action '+(padChoice===id?'active':binding.key!==GAMEPAD_NONE?'assigned':'')+'" data-controller-action="'+id+'" aria-pressed="'+(padChoice===id)+'"><img draggable="false" class="controller-icon" src="assets/controller_icons/'+files[id]+'.png" alt="" aria-hidden="true"><span>'+action.label+'</span>'+(binding.key!==GAMEPAD_NONE?'<small>'+esc(KEY_NAMES[binding.key])+'</small>':'')+'</button>';
+      }).join('')+'</div>').join('')+'</div></section></div>'+
+    '<div class="reloaded-gamepad-config" data-controller-panel="configuration" '+(controllerView==='configuration'?'':'hidden')+'><section class="card tuning-card"><div class="card-head"><div><h2>Control response</h2><p>'+(current?'Adjust the response across the switch travel.':'Choose a controller action in Setup.')+'</p></div><span class="pill">'+esc(current?.label||'—')+'</span></div>'+
     controllerTuning()+(padChoice!==null&&padChoice<10?controllerCurveGraph():'')+
     '<div class="commands">'+btn('Apply to keyboard','gamepad')+'</div></section>'+
     '<section class="card"><div class="card-head"><div><h2>Stick behavior</h2><p>Choose the gate shape and how opposing keys combine.</p></div></div><div class="stick-settings">'+
@@ -461,7 +472,8 @@ function renderGamepad(){
       '<div class="setting-policy">'+select('stickOppX'+index,'Horizontal opposing keys',GAMEPAD_OPPOSITION,stick.oppositionX)+'</div>'+
       '<div class="setting-policy">'+select('stickOppY'+index,'Vertical opposing keys',GAMEPAD_OPPOSITION,stick.oppositionY)+'</div>'+
       '<div class="setting-deadzone">'+field('stickDeadzone'+index,'Radial dead zone · %',stick.radialDeadzone/100,0,99.99,.01)+'</div></div>').join('')+
-    '</div><p class="hint">Tuning and output mode are shared across the four profiles. Each profile keeps its own physical assignments.</p></section></div></div>';
+    '</div><p class="hint">Tuning and output mode are shared across the four profiles. Each profile keeps its own physical assignments.</p></section></div>'+
+    (controllerView==='tester'?'<section class="card gamepad-tester" id="gamepadTester"><h2>Test Gamepad</h2><p role="status">Press a mapped controller button or move a stick to show input.</p><div class="tester-signals"></div></section>':'')+'</div>';
 }
 function controllerCurveGraph(){
   return '<figure class="curve-figure"><svg id="curveGraph" viewBox="0 0 336 176" role="group" aria-label="Analog response curve">'+
@@ -647,7 +659,8 @@ function renderEditor(which){
   if(which==='keymap')return renderRemap(remapOptions());
   if(which==='switches'){
     const chosen=catalog.findIndex(x=>x.coefficient===profile.coefficient[key]&&x.travel===profile.travel[key]);
-    return '<h2>'+esc(KEY_NAMES[key])+'</h2>'+grid(select('switchModel','Switch',catalog.map(x=>x.brand+' · '+x.name),Math.max(0,chosen)),
+    return '<div class="switches-header"><h2>'+esc(KEY_NAMES[key])+'</h2>'+check('showSwitchAdc','Show raw ADC on keys',showSwitchAdc)+'</div>'+
+      (showSwitchAdc&&!client?'<p class="hint">Connect the keyboard to read raw ADC values.</p>':'')+grid(select('switchModel','Switch',catalog.map(x=>x.brand+' · '+x.name),Math.max(0,chosen)),
       field('travel','Nominal travel · mm',profile.travel[key]/1000,.5,6,distancePrecision===0?.01:.005),field('coefficient','Hall curve coefficient',profile.coefficient[key],0,65535))+
       commands(btn('Apply to selected keys','switch'),btn('Apply to all keys','switchAll'))+
       '<p>Zuoya fits and AE64 catalog entries are starting curves. Calibrate the installed switches. Displayed millimeters are estimates.</p>';
@@ -655,15 +668,16 @@ function renderEditor(which){
   if(which==='lighting'){
     const light=profile.lighting;
     const adjustable=!client||client.lighting.supportsBrightness;
-    const layers=profile.fnLighting?'<div class="layer-bar">'+layerTabs(lightingLayer,'lighting')+'</div>':'';
+    const layers=profile.fnLighting&&lightingArea==='keyboard'?layerTabs(lightingLayer,'lighting'):'';
+    const toolbar='<div class="rgb-reloaded-toolbar"><nav class="reloaded-segments" aria-label="Lighting area">'+
+      [['keyboard','Keyboard'],['bar','Lightbar']].map(([id,name])=>`<button type="button" data-lighting-area="${id}" aria-pressed="${id===lightingArea}">${name}</button>`).join('')+'</nav>'+layers+'</div>';
     const fn=lightingLayer?profile.fnLighting?.[lightingLayer-1]:null;
     const fixedKeyRate=[ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,...DESKTOP_PRODUCTS].includes(client?.transport.device.productName);
-    const keyboard=fn?'<h2>Fn'+lightingLayer+' key lighting</h2>'+grid(
+    const keyboard=fn?'<h2>Key overrides</h2>'+grid(
       check('fnRgbEnabled','Use this palette while Fn is held',fn.enabled),
       '<label>Selected key color<input id="perKey" type="color" value="'+color(fn.palette[key],255/32)+'"></label>')+
       commands(btn('Apply Fn lighting','rgb')):
-      '<h2>Keyboard lighting</h2>'+grid(
-        select('lightMode','Keyboard effect',['Off','Solid','Per key','Reactive','Color wave','Breathing'],light.mode),
+      '<h2>Colors</h2>'+grid(
         '<label>Keyboard color<input id="keyColor" type="color" value="'+color(light.color,255/32)+'"></label>',
         '<label>Selected key color<input id="perKey" type="color" value="'+color(light.palette[key],255/32)+'"></label>',
         adjustable?brightness('keyBrightness','Keyboard brightness',light.keyBrightness):'',
@@ -685,7 +699,11 @@ function renderEditor(which){
       field('rgbSleepSeconds','Idle seconds',preferences.sleep%60,0,59),
       check('rgbKeepBar','Keep lightbar on while keyboard LEDs sleep',preferences.keepBar))+
       '<p>Set both idle fields to zero to keep the LEDs on.</p>'+commands(btn('Apply animation and sleep','lightingTiming'))+'</section>':'';
-    return layers+'<div class="lighting-settings"><section>'+keyboard+'</section><section data-lightbar>'+bar+'</section>'+timing+'</div>';
+    const effects=['Off','Solid','Per key','Reactive','Color wave','Breathing'];
+    const modes='<section class="rgb-effects"><h2>Keyboard effects</h2><div hidden>'+select('lightMode','Keyboard effect',effects,light.mode)+'</div><div class="rgb-effect-list">'+
+      effects.map((name,i)=>`<button type="button" data-light-mode="${i}" aria-pressed="${i===light.mode}"><i></i>${name}</button>`).join('')+'</div></section>';
+    return toolbar+'<div class="lighting-settings rgb-reloaded-editors">'+
+      (lightingArea==='bar'?'<section data-lightbar>'+bar+'</section>':(fn?'':modes)+'<section>'+keyboard+'</section>')+timing+'</div>';
   }
   if(which==='gamepad')return renderGamepad();
   if(which==='advanced')return '<div class="tuning-preferences">'+tuningPreferences()+'</div>'+renderAdvanced({action:displayedAction(),rules:profile.actions,slot,creating:advancedKind!==null,
@@ -695,6 +713,7 @@ function renderEditor(which){
       select('scan','Scan rate',scanOptions(),info.scanMode),
       tuningPreferences(),
       desktopKeys()?field('pointerSpeed','Pointer speed · counts per report',profile.lighting.pointerSpeed??1,1,32):'',
+      (!client||client.supportsMouseSwitch)?check('mouseUSB','Enable USB mouse',info.mouse):'',
       fullGamepad()?'<p class="hint">Xbox controller visibility is available on the Gamepad page.</p>':check('enablePad','Expose USB gamepad after reconnect',info.gamepad))+
       (browserRates()||onboardRates()
         ? commands(btn('Apply polling rate','applyPolling',!!status?.calibrationPhase),btn('Apply scan mode','applyScanner',!!status?.calibrationPhase),
@@ -736,10 +755,11 @@ function render(){
   const which=page==='performance'?view:page==='settings'&&view==='profiles'?'profiles':page;
   const [title,description]=headings[which]||headings.overview;
   byId('pageTitle').innerHTML='<h1>'+title+'</h1><p>'+description+'</p>';
-  closeRemapPicker();
   lightingDraft=barDraft=null;paletteEdited=false;
   if(page!=='lighting')rgb=null;
-  byId('editor').before(byId('board'));
+  const board=byId('board');
+  board.ondragover=board.ondrop=null;
+  byId('editor').before(board);
   byId('editor').innerHTML=renderEditor(which);
   document.querySelector('.pro-content').dataset.page=page;
   byId('activeProfile').replaceChildren(...info.names.map((name,i)=>{
@@ -752,6 +772,7 @@ function render(){
   byId('autoApplyToggle').disabled=!client||recoverySave()||recoveryPending||usbTransition;
   byId('autoApplyToggle').title=recoverySave()?'Live flash saves can stop this firmware from responding.':'';
   if(byId('controllerUSB'))byId('controllerUSB').disabled=busy||usbTransition||!!status?.calibrationPhase;
+  if(byId('mouseUSB'))byId('mouseUSB').disabled=busy||usbTransition||!!status?.calibrationPhase;
   byId('connectionStatus').textContent=client?'Connected':'Offline';
   byId('connect').disabled=busy||liveOnly;
   byId('connectionLabel').textContent=client?client.transport.device.productName+' connected':'Offline workspace';
@@ -760,14 +781,16 @@ function render(){
   paintBoard();
   byId('ruleTravel')?.addEventListener('toggle',paintRuleTravel);
   if(byId('controllerKeyboardSlot'))byId('controllerKeyboardSlot').append(byId('board'));
+  if(which==='gamepad'&&fullGamepad())bindGamepadDrag(board);
+  startGamepadTester(byId('gamepadTester'));
   bindControllerCurve();
   if(tuningPage())setLiveTravel(liveTravel);
   if(which==='keymap'){
-    byId('editor').querySelector('.layer-bar').after(byId('board'));
+    byId('editor').querySelector('.remap-board').append(byId('board'));
     bindRemap(remapOptions());
   }
   if(which==='lighting'){
-    byId('editor').querySelector('.layer-bar')?.after(byId('board'));
+    byId('editor').querySelector('.rgb-reloaded-toolbar').after(byId('board'));
     paintBarControls();
   }
 }
@@ -805,6 +828,7 @@ function remapOptions(){
   return {root:byId('editor'),keyName:selectionLabel(),layer,usage:selectedUsage(key),profileKeys:profileKeys(),desktopKeys:desktopKeys(),mediaKeys:mediaKeys(),
     onLayer:next=>{if(!busy){layer=next;render();}},
     onPick:code=>{if(!busy)run(()=>applyRemap(code));},
+    onDrop:(index,code)=>{if(!busy)run(()=>applyRemap(new Map([[index,code]])));},
     onCycleAll:()=>run(async()=>{
       const targets=editTargets(false);
       await requireActiveProfile();
@@ -818,6 +842,32 @@ function remapOptions(){
       mark('Next profile assigned in all four profiles. '+keepChanges());
     }),
     onReset:()=>{if(!busy)run(()=>applyRemap(new Map(editTargets(false).map(index=>[index,layer?254:codeFor(KEY_NAMES[index])]))));}};
+}
+function bindGamepadDrag(board){
+  const type='application/x-he30-controller-action';
+  byId('editor').querySelector('.control-picker').ondragstart=event=>{
+    const action=event.target.closest('[data-controller-action]');
+    if(action)event.dataTransfer.setData(type,action.dataset.controllerAction);
+  };
+  board.ondragover=event=>{
+    if(!busy&&event.target.closest('[data-key]')&&event.dataTransfer.types.includes(type))event.preventDefault();
+  };
+  board.ondrop=event=>{
+    const target=event.target.closest('[data-key]');
+    if(!target||busy||!event.dataTransfer.types.includes(type))return;
+    const value=event.dataTransfer.getData(type);
+    if(!/^\d{1,2}$/.test(value)||Number(value)>=GAMEPAD_ACTIONS.length)return;
+    event.preventDefault();
+    run(async()=>{
+      await requireActiveProfile();
+      selectKeys([Number(target.dataset.key)],'replace',Number(target.dataset.key));
+      const next=assignGamepad(controller,key,Number(value));
+      controller=client?await client.applyGamepad(next):next;
+      profile.gamepad=controllerBindings(controller);
+      padChoice=Number(value);
+      mark();
+    });
+  };
 }
 async function writeRule(index,rule){
   const requested=actionBytes(rule);
@@ -1037,22 +1087,25 @@ function queueAutoSave(){
     },2500);
   }
 }
-async function setControllerUSB(enabled){
-  if(!client){info.gamepad=enabled;mark();return;}
+async function setControllerUSB(enabled,deviceType='gamepad'){
+  const label=deviceType==='mouse'?'USB mouse':'Xbox controller';
+  if(!client){info[deviceType]=enabled;mark();return;}
+  if(info[deviceType]===enabled&&info[deviceType+'Attached']===enabled)return;
   const previous=client;
   usbTransition=true;clearTimeout(autoSaveTimer);
   try{
-    await previous.gamepadUSB(enabled);
+    if(deviceType==='mouse')await previous.mouseUSB(enabled);
+    else await previous.gamepadUSB(enabled);
     const device=previous.transport.device;
     client=null;generation++;status=padState=rgb=null;
     await previous.transport.close().catch(()=>{});
-    info.gamepad=enabled;dirty=true;
-    message('Updating the USB controller. Waiting for the keyboard to reconnect…');
-    const next=await ProDevice.reconnect(device,enabled);
-    if(!next){message('USB controller setting applied. Select Connect keyboard to restore the web connection.');return;}
+    info[deviceType]=enabled;dirty=true;
+    message('Updating '+label+'. Waiting for the keyboard to reconnect…');
+    const next=await ProDevice.reconnect(device,enabled,{deviceType});
+    if(!next){message('USB setting accepted. Select Connect keyboard to confirm the new state.');return;}
     client=next;generation++;
     await refresh();
-    message('Xbox controller '+(enabled?'enabled':'disabled')+'.'+(dirty?' '+(recoverySave()?'The choice applies for this session.':'Save changes to keep this setting after power loss.') :''));
+    message(label+' '+(enabled?'enabled':'disabled')+'.'+(dirty?' '+(recoverySave()?'The choice applies for this session.':'Save changes to keep this setting after power loss.') :''));
   }finally{usbTransition=false;queueAutoSave();}
 }
 async function recover(){
@@ -1134,10 +1187,13 @@ async function restoreProfile(file){
   }
   encodeConfig(nextCfg);encodeLighting(next.lighting);
   client?.lighting.checkBrightness(next.lighting);
-  if(!/^[ -~]{1,15}$/.test(next.name)||next.lighting.barCount>5||next.actions?.length!==8||
+  if(!/^[ -~]{1,15}$/.test(next.name)||next.lighting.barCount>5||!Array.isArray(next.actions)||![8,10].includes(next.actions.length)||
      !['fn2','gamepad','travel','coefficient'].every(name=>Array.isArray(next[name])&&next[name].length===36))
     throw new Error('Invalid profile structure.');
   next.actions.forEach(actionBytes);
+  const actionSlots=client?.actionSlots??10;
+  if(next.actions.slice(actionSlots).some(rule=>rule.kind))throw new Error('This profile uses advanced slots that require HE30 Pro v0.28.');
+  next.actions=Array.from({length:actionSlots},(_,i)=>next.actions[i]??blankAction());
   if(!mediaKeys()&&next.fn2.some(isMediaUsage))throw new Error('This profile uses media mappings that require HE30 Pro v0.26.');
   if(!desktopKeys()&&next.fn2.some(isDesktopUsage))throw new Error('This profile uses mappings that require HE30 Pro v0.25.');
   if(!profileKeys()&&next.fn2.some(isProfileUsage))throw new Error('This profile uses shortcuts that require HE30 Pro v0.20.');
@@ -1171,7 +1227,7 @@ async function restoreProfile(file){
         if(next.travel[i]!==profile.travel[i]||next.coefficient[i]!==profile.coefficient[i])
           await client.switch(i,next.travel[i],next.coefficient[i]);
       }
-      for(let i=0;i<8;i++)await client.action(i,next.actions[i]);
+      for(let i=0;i<actionSlots;i++)await client.action(i,next.actions[i]);
       if(nextController)await client.applyGamepad(nextController);
       await client.rename(next.name);
       await refresh();
@@ -1230,6 +1286,12 @@ document.addEventListener('click',e=>{
     render();
   }
   if(el.dataset.lightingLayer!==undefined){lightingLayer=Number(el.dataset.lightingLayer);render();}
+  if(el.dataset.lightingArea&&el.dataset.lightingArea!==lightingArea){lightingArea=el.dataset.lightingArea;render();}
+  if(el.dataset.controllerView&&el.dataset.controllerView!==controllerView){controllerView=el.dataset.controllerView;render();}
+  if(el.dataset.lightMode!==undefined){
+    const mode=byId('lightMode');mode.value=el.dataset.lightMode;
+    mode.dispatchEvent(new Event('input',{bubbles:true}));
+  }
   if(el.id==='livePressDistanceToggle')setLiveTravel(!liveTravel);
   if(el.dataset.key!==undefined){
     const index=Number(el.dataset.key);
@@ -1249,7 +1311,6 @@ document.addEventListener('click',e=>{
       if(advancedKind===null)slot=Math.max(0,profile.actions.findIndex(rule=>!rule.kind));
     }
     render();
-    if(page==='keymap'&&!modified)openRemapPicker(remapOptions());
   }
   if(el.dataset.controllerAction!==undefined){
     padChoice=Number(el.dataset.controllerAction);render();
@@ -1289,6 +1350,8 @@ byId('editor').addEventListener('input',event=>{
     if(output)output.value=input.value+'%';
     if(input.closest('[data-lightbar]')){barDraft=readLightingEditor('bar');paintBarControls();}
     else if(!input.closest('[data-lighting-timing]'))lightingDraft=readLightingEditor();
+    if(byId('lightMode'))byId('editor').querySelectorAll('[data-light-mode]').forEach(button=>
+      button.setAttribute('aria-pressed',String(button.dataset.lightMode===byId('lightMode').value)));
     paintBoard();
   }
   if(input.dataset.distanceFor)byId(input.dataset.distanceFor).value=input.value;
@@ -1318,6 +1381,7 @@ byId('editor').addEventListener('change',e=>{
     boardGauge=e.target.checked;
     paintBoard();
   }
+  if(e.target.id==='showSwitchAdc'){showSwitchAdc=e.target.checked;render();}
   if(e.target.id==='syncRapid'){
     syncRapid=e.target.checked;
     if(syncRapid)byId('rtPress').dispatchEvent(new Event('input',{bubbles:true}));
@@ -1342,6 +1406,7 @@ byId('editor').addEventListener('change',e=>{
     padChoice=choice<0?null:choice;render();
   }
   if(e.target.id==='controllerUSB')run(()=>setControllerUSB(e.target.checked));
+  if(e.target.id==='mouseUSB')run(()=>setControllerUSB(e.target.checked,'mouse'));
   if(e.target.id==='switchModel'){
     const s=catalog[values('switchModel')];byId('travel').value=s.travel/1000;byId('coefficient').value=s.coefficient;
   }
@@ -1415,7 +1480,7 @@ async function poll(){
     pollPending=true;
     const current=()=>stamp===generation&&client===active&&!busy&&page===pageAtStart&&view===viewAtStart;
     try{
-      const full=(!fast&&!lighting)||!status||start-lastFullStatus>=(lighting?200:1000);
+      const full=switchAdcVisible()||(!fast&&!lighting)||!status||start-lastFullStatus>=(lighting?200:1000);
       const next=full?await active.foundation.readStatus():fast?await active.foundation.readTravel():null;
       const extra=full&&current()&&(['diagnostics','overview','settings'].includes(page)||lighting&&active.supportsDesktopKeys)?await active.capabilities():null;
       const checkProfile=full||start-lastProfileCheck>=200;
@@ -1460,7 +1525,7 @@ async function poll(){
   }else if(lighting&&!busy)paintBoard();
   const live=!!client&&(tuningPage()&&liveTravel||byId('ruleTravel')?.open||boardGauge&&!byId('board').hidden&&page!=='lighting')&&!document.hidden;
   const calibrating=!!client&&page==='performance'&&view==='quick'&&!!status?.calibrationPhase&&!document.hidden;
-  const interval=live?1000/60:page==='lighting'&&!document.hidden?1000/30:calibrating?50:200;
+  const interval=switchAdcVisible()&&client&&!document.hidden?100:live?1000/60:page==='lighting'&&!document.hidden?1000/30:calibrating?50:200;
   setTimeout(poll,Math.max(4,interval-(performance.now()-start)));
 }
 for(const label of [...USAGE_NAMES.values(),'Fn1','Fn2']){

@@ -5,6 +5,21 @@
 
 static Profile *current_profile(void){return &S->library.profiles[S->library.active];}
 
+static Action *profile_action(Profile *profile,u32 slot){
+#ifdef HE30_INPUT_BUDGET
+ if(slot>=ACTION_COUNT)return &FN_LIGHT.extra_actions[S->library.active][slot-ACTION_COUNT];
+#endif
+ return &profile->actions[slot];
+}
+
+#ifdef HE30_INPUT_BUDGET
+__attribute__((section(".slow"),noinline)) static void refresh_action_limit(Profile *profile){
+ u32 limit=TOTAL_ACTIONS;
+ while(limit&&!profile_action(profile,limit-1)->kind)limit--;
+ G->action_limit=limit;
+}
+#endif
+
 __attribute__((section(".extra"),noinline))
 static void capture_profile(void){
  Profile *p=current_profile();
@@ -21,6 +36,9 @@ __attribute__((noinline)) static void activate_profile(void){
  bytes_copy(&S->cfg,S->library.calibration,160);
  bytes_copy(S->cfg.key,p->keys,sizeof(p->keys));
  S->light=p->light;S->identify=255;S->rgb_pending=3;
+#ifdef HE30_INPUT_BUDGET
+ refresh_action_limit(p);
+#endif
  recache();
  S->enabled=typing_requested();
  S->cal_phase=S->staging=0;
@@ -101,12 +119,21 @@ static const FnLighting *lighting_record(u32 library_page){
 }
 
 #ifdef HE30_USB_LIGHTING_FIX
+static u32 fn_record_size(u32 version){
+ if(version==6)return __builtin_offsetof(FnLighting,preferences);
+#ifdef HE30_INPUT_BUDGET
+ if(version==7)return __builtin_offsetof(FnLighting,extra_actions);
+#endif
+ return sizeof(FnLighting);
+}
 static u32 fn_lighting_crc(const FnLighting *p,u32 version){
- const u32 size=version==6?__builtin_offsetof(FnLighting,preferences):sizeof(*p);
- return crc32(&p->sequence,size-8);
+ return crc32(&p->sequence,fn_record_size(version)-8);
 }
 static int fn_lighting_valid(u32 address,u32 sequence,u32 version){
  const FnLighting *rgb=lighting_record(address);
+#ifdef HE30_INPUT_BUDGET
+ if(version==8&&rgb->mouse_disabled>1)return 0;
+#endif
  return rgb->magic==FN_RGB_MAGIC&&rgb->sequence==sequence&&rgb->crc==fn_lighting_crc(rgb,version);
 }
 #else
@@ -129,6 +156,9 @@ __attribute__((section(".text.first"),noinline)) static int library_valid(const 
  }
 #ifdef HE30_FN_RGB
 #ifdef HE30_USB_LIGHTING_FIX
+#ifdef HE30_INPUT_BUDGET
+ if(p->version==8)return fn_lighting_valid((u32)p,p->sequence,p->version)&&p->crc==stored_crc((const u8*)p);
+#endif
  if(p->version==6||p->version==7)return fn_lighting_valid((u32)p,p->sequence,p->version)&&p->crc==stored_crc((const u8*)p);
 #else
  if(p->version==6)return fn_lighting_valid((u32)p,p->sequence)&&p->crc==stored_crc((const u8*)p);
@@ -153,12 +183,11 @@ int load_saved(void){
  const Library *p=newest_library();
 #ifdef HE30_FN_RGB
 #ifdef HE30_USB_LIGHTING_FIX
- bytes_zero(&S->fn_light,sizeof(S->fn_light));
- if(p&&p->version>=6)bytes_copy(&S->fn_light,lighting_record((u32)p),
-     p->version==6?__builtin_offsetof(FnLighting,preferences):sizeof(FnLighting));
+ bytes_zero(&FN_LIGHT,sizeof(FN_LIGHT));
+ if(p&&p->version>=6)bytes_copy(&FN_LIGHT,lighting_record((u32)p),fn_record_size(p->version));
 #else
- if(p&&p->version==6)S->fn_light=*lighting_record((u32)p);
- else bytes_zero(&S->fn_light,sizeof(S->fn_light));
+ if(p&&p->version==6)FN_LIGHT=*lighting_record((u32)p);
+ else bytes_zero(&FN_LIGHT,sizeof(FN_LIGHT));
 #endif
 #endif
  if(p){
@@ -179,6 +208,9 @@ int load_saved(void){
  }
  S->saved_valid=1;S->dirty=0;S->usb_rate=6-S->library.rate;
  activate_profile();
+#ifdef HE30_INPUT_BUDGET
+ gp_queue_usb();
+#endif
  return OK;
 }
 
@@ -223,12 +255,17 @@ int save_settings(void){
  p->magic=LIB_MAGIC;p->version=5;p->sequence=S->saved_seq+1;p->commit=COMMIT;
 #ifdef HE30_FN_RGB
  p->version=6;
- S->fn_light.magic=FN_RGB_MAGIC;
- S->fn_light.sequence=p->sequence;
+ FN_LIGHT.magic=FN_RGB_MAGIC;
+ FN_LIGHT.sequence=p->sequence;
 #ifdef HE30_USB_LIGHTING_FIX
- p->version=7;S->fn_light.crc=fn_lighting_crc(&S->fn_light,p->version);
+#ifdef HE30_INPUT_BUDGET
+ p->version=8;
 #else
- S->fn_light.crc=fn_lighting_crc(&S->fn_light);
+ p->version=7;
+#endif
+ FN_LIGHT.crc=fn_lighting_crc(&FN_LIGHT,p->version);
+#else
+ FN_LIGHT.crc=fn_lighting_crc(&FN_LIGHT);
 #endif
 #endif
  p->crc=stored_crc(0);
@@ -237,7 +274,7 @@ int save_settings(void){
 #ifdef HE30_FN_RGB
  /* The new library becomes visible only once its matching palette record
   * has verified. Each pair is in the inactive slot until the final commit. */
- u32 result=flash_writer((u32)lighting_record(target),(const u8 *)&S->fn_light,1);
+ u32 result=flash_writer((u32)lighting_record(target),(const u8 *)&FN_LIGHT,1);
 #ifdef HE30_USB_LIGHTING_FIX
  if(!result&&!fn_lighting_valid(target,p->sequence,p->version))result=FLASH;
 #else
@@ -270,7 +307,9 @@ __attribute__((section(".extra"),noinline)) static int profile_request(const u8 
  int error=OK,changed=0;
  if(op==0){
   u8 status[
-#ifdef HE30_DESKTOP_KEYS
+#ifdef HE30_INPUT_BUDGET
+   91
+#elif defined(HE30_DESKTOP_KEYS)
    89
 #else
    88
@@ -278,7 +317,7 @@ __attribute__((section(".extra"),noinline)) static int profile_request(const u8 
   ]={0};
   put32(status,0x31503348);
   status[4]=1;status[5]=S->library.active;status[6]=S->library.rate;status[7]=S->library.fast;
-  status[8]=S->library.gamepad;status[9]=S->usb_rate;status[10]=MM8(0x20000104)==3;status[11]=ACTION_COUNT;
+  status[8]=S->library.gamepad;status[9]=S->usb_rate;status[10]=MM8(0x20000104)==3;status[11]=TOTAL_ACTIONS;
   put16(status+12,S->scan_hz);status[14]=S->running_fast;
 #ifdef HE30_FN_RGB
   status[15]=S->scan_trial;
@@ -288,11 +327,20 @@ __attribute__((section(".extra"),noinline)) static int profile_request(const u8 
 #ifdef HE30_DESKTOP_KEYS
   status[88]=100-(S->light.order>>1);
 #endif
+#ifdef HE30_INPUT_BUDGET
+  status[89]=!FN_LIGHT.mouse_disabled;status[90]=!G->mouse_disabled;
+#endif
   if(off+n<=sizeof(status)){make_reply(PROFILE_COMMAND,OK,off,n,status+off);return OK;}
   error=RANGE;
  }else if(op==1){
   if(off+n<=sizeof(*p)){capture_profile();make_reply(PROFILE_COMMAND,OK,off,n,(const u8*)p+off);return OK;}
   error=RANGE;
+#ifdef HE30_INPUT_BUDGET
+ }else if(op==13){
+  const void *extra=FN_LIGHT.extra_actions[S->library.active];
+  if(off+n<=EXTRA_ACTIONS*sizeof(Action)){make_reply(PROFILE_COMMAND,OK,off,n,(const u8 *)extra+off);return OK;}
+  error=RANGE;
+#endif
  }else if(S->cal_phase)error=STATE;
  else if(op==2&&off==0&&n==1&&data[0]<4){
 #ifdef HE30_PROFILE_KEYS
@@ -306,10 +354,15 @@ __attribute__((section(".extra"),noinline)) static int profile_request(const u8 
   if(!error){bytes_copy(p->label,data,16);changed=1;}
  }else if(op==4&&off<N&&n==1&&usage_ok(data[0],1)){
   p->fn2[off]=data[0];changed=1;
- }else if(op==5&&off<ACTION_COUNT&&n==sizeof(Action)){
+ }else if(op==5&&off<TOTAL_ACTIONS&&n==sizeof(Action)){
   Action a;bytes_copy(&a,data,sizeof(a));
   if(!action_valid(&a))error=RANGE;
-  else{p->actions[off]=a;changed=1;}
+  else{
+   *profile_action(p,off)=a;changed=1;
+#ifdef HE30_INPUT_BUDGET
+   refresh_action_limit(p);
+#endif
+  }
  }else if(op==6&&off<N&&n==4&&get16(data)>=500&&get16(data)<=6000){
   p->travel[off]=get16(data);p->coefficient[off]=get16(data+2);recache();changed=1;
  }else if(op==7&&off<N&&n==1&&data[0]<=26){
@@ -333,6 +386,13 @@ __attribute__((section(".extra"),noinline)) static int profile_request(const u8 
  else if(op==11&&off<N&&n==1&&data[0]<=2){
   if(S->staging)error=STATE;
   else cycle_map_all(off,data[0]);
+ }
+#endif
+#ifdef HE30_INPUT_BUDGET
+ else if(op==12&&off==0&&n==1&&data[0]<=1){
+  const u8 disabled=!data[0];
+  if(FN_LIGHT.mouse_disabled!=disabled){FN_LIGHT.mouse_disabled=disabled;S->dirty=1;}
+  gp_queue_usb();
  }
 #endif
  else error=RANGE;

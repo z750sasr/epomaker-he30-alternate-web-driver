@@ -8,6 +8,7 @@ export const SAVE_DIAGNOSTICS_MODEL='H3K16';
 export const LIVE_SAVE_TEST_MODEL='H3K17';
 export const ONBOARD_SAVE_TEST_MODEL='H3K18';
 export const FLASH_RESIDENT_SAVE_MODEL='H3K19';
+export const INPUT_CONTROLS_MODEL='H3K28';
 export const PRO_PRODUCTS=['H3K09','H3K10','H3K11','H3K12','H3K13','H3K14',MODEL,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,...FN_RGB_PRODUCTS];
 export const RATES=[125,250,500,1000,2000,4000,8000];
 export const ACTIONS=['Disabled','SOCD','Rappy Snappy','Dynamic Keystroke','Mod Tap','Toggle','Key Combination','Macro','Multi-Point Trigger','End Key'];
@@ -41,6 +42,10 @@ export function actionBytes(action){
   if(kind===8&&usage[2]&&depth[2]<=depth[1])throw new Error('Depth 3 must be deeper than depth 2.');
   return Uint8Array.of(kind,key,other,mode,...usage,...pack16(...depth));
 }
+const decodeActions=data=>Array.from({length:data.length/14},(_,i)=>{
+  const o=14*i;
+  return {kind:data[o],key:data[o+1],other:data[o+2],mode:data[o+3],usage:[...data.slice(o+4,o+8)],depth:[u16(data,o+8),u16(data,o+10),u16(data,o+12)]};
+});
 export function decodeProfile(data){
   if(data.byteLength!==976)throw new Error('Profile length differs from the HE30 Pro format.');
   return {
@@ -49,10 +54,7 @@ export function decodeProfile(data){
     name:decoder.decode(data.slice(704,720)).replace(/\0.*$/s,''),
     travel:Array.from({length:36},(_,i)=>u16(data,720+2*i)),
     coefficient:Array.from({length:36},(_,i)=>u16(data,904+2*i)),
-    actions:Array.from({length:8},(_,i)=>{
-      const o=792+14*i;
-      return {kind:data[o],key:data[o+1],other:data[o+2],mode:data[o+3],usage:[...data.slice(o+4,o+8)],depth:[u16(data,o+8),u16(data,o+10),u16(data,o+12)]};
-    })
+    actions:decodeActions(data.subarray(792,904))
   };
 }
 function packet(command,op,offset,length,data){
@@ -71,6 +73,8 @@ export class ProDevice{
     this.supportsProfileKeys=supportsProfileKeys(transport.device.productName);
     this.supportsDesktopKeys=DESKTOP_PRODUCTS.includes(transport.device.productName);
     this.supportsMedia=MEDIA_PRODUCTS.includes(transport.device.productName);
+    this.supportsMouseSwitch=transport.device.productName===INPUT_CONTROLS_MODEL;
+    this.actionSlots=this.supportsMouseSwitch?10:8;
     this.supportsGamepad=['H3K11','H3K12','H3K13','H3K14',MODEL,SAVE_DIAGNOSTICS_MODEL,LIVE_SAVE_TEST_MODEL,ONBOARD_SAVE_TEST_MODEL,FLASH_RESIDENT_SAVE_MODEL,PROFILE_KEY_MODEL,NKRO_MODEL,...FN_RGB_PRODUCTS].includes(transport.device.productName);
   }
   static async connect(authorizedProduct){
@@ -90,7 +94,7 @@ export class ProDevice{
       throw error;
     }
   }
-  static async reconnect(previous,enabled,{timeout=6000}={}){
+  static async reconnect(previous,enabled,{timeout=6000,deviceType='gamepad'}={}){
     const deadline=Date.now()+timeout;
     // Let the acknowledged USB configuration change detach before reopening.
     await new Promise(resolve=>setTimeout(resolve,400));
@@ -104,8 +108,13 @@ export class ProDevice{
         try{
           const next=new ProDevice(transport);
           await transport.open();
-          const state=await next.gamepadStatus();
-          if(state.usbRequested===enabled&&state.usbAttached===enabled)return next;
+          if(deviceType==='mouse'){
+            const state=await next.capabilities();
+            if(state.mouse===enabled&&state.mouseAttached===enabled)return next;
+          }else{
+            const state=await next.gamepadStatus();
+            if(state.usbRequested===enabled&&state.usbAttached===enabled)return next;
+          }
         }catch{}
         await transport.close().catch(()=>{});
       }
@@ -131,17 +140,22 @@ export class ProDevice{
   }
   capabilities(){
     return this.foundation.transaction(async()=>{
-      const data=await this.region(0xd2,0,this.supportsDesktopKeys?89:88);
+      const data=await this.region(0xd2,0,this.supportsMouseSwitch?91:this.supportsDesktopKeys?89:88);
       const active=profileIndex(data);
-      if(data[6]>6||data[11]!==8)throw new Error('H3P1 profile protocol is unavailable.');
+      if(data[6]>6||data[11]!==this.actionSlots||this.supportsMouseSwitch&&(data[89]>1||data[90]>1))throw new Error('H3P1 profile protocol is unavailable.');
       const v=new DataView(data.buffer);
       return {active,rate:data[6],scanMode:data[7],gamepad:!!data[8],runningRate:6-data[9],
         gamepadAttached:!!data[10],scanHz:u16(data,12),runningScanner:data[14],scanTrial:data[15],scanTicks:v.getUint32(16,true),scanWorst:v.getUint32(20,true),
-        keyBrightness:data[88],names:Array.from({length:4},(_,i)=>decoder.decode(data.slice(24+i*16,40+i*16)).replace(/\0.*$/s,''))};
+        keyBrightness:data[88],mouse:this.supportsMouseSwitch?!!data[89]:undefined,mouseAttached:this.supportsMouseSwitch?!!data[90]:undefined,
+        names:Array.from({length:4},(_,i)=>decoder.decode(data.slice(24+i*16,40+i*16)).replace(/\0.*$/s,''))};
     });
   }
   activeProfile(){return this.foundation.transaction(async()=>profileIndex(await this.exchange(0xd2,0,0,8)));}
-  profile(){return this.foundation.transaction(async()=>decodeProfile(await this.region(0xd2,1,976)));}
+  profile(){return this.foundation.transaction(async()=>{
+    const profile=decodeProfile(await this.region(0xd2,1,976));
+    if(this.actionSlots>8)profile.actions.push(...decodeActions(await this.region(0xd2,13,14*(this.actionSlots-8))));
+    return profile;
+  });}
   checkGamepad(){
     if(!this.supportsGamepad)throw new Error('Install HE30 Pro v0.11 for Xbox controller settings.');
   }
@@ -207,7 +221,11 @@ export class ProDevice{
     if(isMediaUsage(value)&&!this.supportsMedia)throw new Error('Media mappings require HE30 Pro v0.26.');
     return this.write(4,uint(key,35),Uint8Array.of(value));
   }
-  action(slot,action){return this.write(5,uint(slot,7),actionBytes(action));}
+  action(slot,action){return this.write(5,uint(slot,this.actionSlots-1),actionBytes(action));}
+  mouseUSB(enabled){
+    if(!this.supportsMouseSwitch||typeof enabled!=='boolean')throw new Error('USB mouse visibility requires HE30 Pro v0.28.');
+    return this.write(12,0,Uint8Array.of(Number(enabled)));
+  }
   switch(key,travel,coefficient){return this.write(6,uint(key,35),pack16(uint(travel,6000,500),uint(coefficient,65535)));}
   mapping(key,binding){return this.write(7,uint(key,35),Uint8Array.of(uint(binding,26)));}
   deviceSettings(rate,scanMode,gamepad){return this.write(8,0,Uint8Array.of(uint(rate,6),uint(scanMode,2),Number(gamepad)));}

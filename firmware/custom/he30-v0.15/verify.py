@@ -435,7 +435,7 @@ assert not reboot(saved_image(factory_cpu)).field('enabled')
 check('All four default maps match the physical board; a saved Disable overrides factory defaults')
 
 c=fresh();status=read(c,0xd2,0,88)
-assert status[:12]==b'H3P1\1\0\3\0\0\3\0\10'
+assert status[:12]==b'H3P1\1\0\3\0\0\3\0'+bytes([manifest.get('advanced_slots',8)])
 assert [status[24+i*16:33+i*16] for i in range(4)]==[f'Profile {i+1}'.encode() for i in range(4)]
 assert c.get(0x20000102)==66 and c.get(0x20000104)==2
 assert control(c,6)==0
@@ -627,7 +627,8 @@ check('RGB off and generated color wave reach completed frame readback')
 # The web tests consume exact replies from the compiled handlers.
 fixtures=[]
 fixture= fresh()
-for command,op,length in [(0xd0,0,208),(0xd0,1,664),(0xd1,0,160),(0xd1,8,123),(0xd2,0,89 if manifest.get('desktop_keys') else 88),(0xd2,1,976),(0xd3,0,40),(0xd3,1,292)]+([(0xd1,9,73)] if FN_RGB else [])+([(0xd1,11,4)] if manifest.get('usb_lighting_fix') else []):
+profile_status_size=91 if manifest.get('input_budget') else 89 if manifest.get('desktop_keys') else 88
+for command,op,length in [(0xd0,0,208),(0xd0,1,664),(0xd1,0,160),(0xd1,8,123),(0xd2,0,profile_status_size),(0xd2,1,976),(0xd3,0,40),(0xd3,1,292)]+([(0xd1,9,73)] if FN_RGB else [])+([(0xd1,11,4)] if manifest.get('usb_lighting_fix') else [])+([(0xd2,13,28)] if manifest.get('input_budget') else []):
     ranges=([(slot*128+off,n) for slot in range(8) for off,n in [(0,55),(55,18)]] if op==9 else
             [(slot,4) for slot in range(4)] if op==11 else [(0,8)]+[(off,min(56,length-off)) for off in range(0,length,56)])
     for off,n in ranges:

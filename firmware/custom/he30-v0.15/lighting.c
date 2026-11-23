@@ -63,10 +63,10 @@ static void fn_rgb_request(u8 op,u16 offset,u8 count,const u8 *data){
   make_reply(0xd1,RANGE,0,0,0);return;
  }
  const u32 profile=slot>>1,layer=slot&1u,mask=1u<<layer;
- u8 *colors=(u8 *)S->fn_light.colors[profile][layer];
+ u8 *colors=(u8 *)FN_LIGHT.colors[profile][layer];
  if(op==9){
   u8 encoded[FN_RGB_WIRE_BYTES];
-  encoded[0]=!!(S->fn_light.enabled[profile]&mask);
+  encoded[0]=!!(FN_LIGHT.enabled[profile]&mask);
   bytes_copy(encoded+1,colors,2*N);
   make_reply(0xd1,OK,offset,count,encoded+position);return;
  }
@@ -88,7 +88,7 @@ static void fn_rgb_request(u8 op,u16 offset,u8 count,const u8 *data){
    if(!result){
     bytes_copy(colors,S->fn_rgb_draft+1,FN_RGB_FIRST_CHUNK-1);
     bytes_copy(colors+FN_RGB_FIRST_CHUNK-1,data,count);
-    S->fn_light.enabled[profile]=(S->fn_light.enabled[profile]&~mask)|(S->fn_rgb_draft[0]<<layer);
+    FN_LIGHT.enabled[profile]=(FN_LIGHT.enabled[profile]&~mask)|(S->fn_rgb_draft[0]<<layer);
     S->rgb_pending|=1;S->dirty=1;
    }
   }
@@ -100,7 +100,7 @@ static void fn_rgb_request(u8 op,u16 offset,u8 count,const u8 *data){
 #ifdef HE30_USB_LIGHTING_FIX
 __attribute__((section(".slow"),noinline)) static void lighting_preferences(u8 op,u16 slot,u8 n,const u8 *data){
  if(slot>=PROFILE_COUNT||n!=4){make_reply(0xd1,RANGE,0,0,0);return;}
- LightingPreferences *p=&S->fn_light.preferences[slot];
+ LightingPreferences *p=&FN_LIGHT.preferences[slot];
  if(op==11){
   u8 bytes[4]={p->speed?p->speed-1:50,p->keep_bar,p->sleep,p->sleep>>8};
   make_reply(0xd1,OK,slot,n,bytes);
@@ -256,7 +256,7 @@ __attribute__((section(".extra"),noinline)) static void bar_color(u8 *color,u32 
 #endif
 #ifdef HE30_USB_LIGHTING_FIX
 __attribute__((section(".fncode"),noinline)) static void rgb_advance(u32 now){
- const LightingPreferences *p=&S->fn_light.preferences[S->library.active];
+ const LightingPreferences *p=&FN_LIGHT.preferences[S->library.active];
  const u32 ms=(now-S->rgb_epoch_ticks)/TICKS_MS;
  S->rgb_epoch_ticks+=ms*TICKS_MS;S->rgb_ms+=ms;
  S->rgb_phase+=ms*(p->speed?p->speed-1:50);
@@ -302,11 +302,11 @@ VERIFY_ENTRY void rgb_service(void){
 #ifdef HE30_USB_LIGHTING_FIX
  rgb_advance(now);
  const u8 key_asleep=S->rgb_asleep;
- const u8 bar_asleep=key_asleep&&!S->fn_light.preferences[S->library.active].keep_bar;
+ const u8 bar_asleep=key_asleep&&!FN_LIGHT.preferences[S->library.active].keep_bar;
 #endif
 #ifdef HE30_FN_RGB
  const u32 profile=S->library.active;
- const u8 fn=S->fn&&(S->fn_light.enabled[profile]&(1u<<(S->fn-1)))?S->fn:0;
+ const u8 fn=S->fn&&(FN_LIGHT.enabled[profile]&(1u<<(S->fn-1)))?S->fn:0;
 #ifdef HE30_CALIBRATION_QOL
  const u8 calibration=S->cal_phase&&!S->scan_error;
  const u8 rendered=calibration?3:fn;
@@ -377,7 +377,7 @@ VERIFY_ENTRY void rgb_service(void){
 #endif
 #ifdef HE30_FN_RGB
    if(fn){
-    const u32 value=S->fn_light.colors[profile][fn-1][key];
+    const u32 value=FN_LIGHT.colors[profile][fn-1][key];
     color[0]=value/(33u*33u);color[1]=(value/33u)%33u;color[2]=value%33u;
    }else
 #endif

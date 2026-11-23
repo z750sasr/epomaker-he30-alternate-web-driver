@@ -1,10 +1,10 @@
 /* Physical states feed the rule engine; keyboard output is composed from
  * surviving sources each frame, so suppressing one source cannot strand a key. */
 __attribute__((noinline)) static void release_actions(void){
- bytes_zero(S->action_prev,ACTION_COUNT);
- bytes_zero(S->action_state,ACTION_COUNT);
- bytes_zero(S->winner,ACTION_COUNT);
- bytes_zero(S->action_queue,ACTION_COUNT);
+ bytes_zero(S->action_prev,TOTAL_ACTIONS);
+ bytes_zero(S->action_state,TOTAL_ACTIONS);
+ bytes_zero(S->winner,TOTAL_ACTIONS);
+ bytes_zero(S->action_queue,TOTAL_ACTIONS);
  S->gp_pending=1;gp_reset(&G->state);
 #ifdef HE30_DESKTOP_KEYS
  S->mouse_down=0;S->mouse_wheel=0;
@@ -102,14 +102,19 @@ __attribute__((section(".early"),noinline)) static void run_action(const Action 
 
 __attribute__((section(".early"),noinline)) static void compose_advanced(void){
  Profile *p=current_profile();
+#ifdef HE30_INPUT_BUDGET
+ const u32 limit=G->action_limit;
+#else
+ const u32 limit=TOTAL_ACTIONS;
+#endif
  bytes_zero(S->overflow,N);
- for(u32 i=0;i<ACTION_COUNT;i++){
-  const Action *a=&p->actions[i];
+ for(u32 i=0;i<limit;i++){
+  const Action *a=profile_action(p,i);
   if(a->kind&&a->kind<=2)filter_pair(a,i);
  }
- u32 now=ticks();
- for(u32 i=0;i<ACTION_COUNT;i++){
-  const Action *a=&p->actions[i];
+ const u32 now=limit?ticks():0;
+ for(u32 i=0;i<limit;i++){
+  const Action *a=profile_action(p,i);
   if(a->kind<=2)continue;
   const int controller_only=gp_keyboard_only(a->key);
   if(!controller_only&&!S->overflow[a->key]&&!(S->cfg.key[a->key].flags&2))run_action(a,i,now);
@@ -122,23 +127,47 @@ __attribute__((section(".early"),noinline)) static void compose_advanced(void){
 
 __attribute__((used,noinline)) static void gpio_poll_setup(void){
  usb_gamepad_setup(S->library.gamepad);
+#ifdef HE30_INPUT_BUDGET
+ G->usb_switch=0;
+#endif
  S->usb_rate=6-S->library.rate;
 }
 
+#ifdef HE30_INPUT_BUDGET
+__attribute__((section(".slow"),noinline)) static void gp_update_changed(u32 now,int complete){
+ int changed=gp_watchdog(&G->state,now,50*TICKS_MS)||!G->state.has_frame;
+ if(!complete){if(G->state.has_frame)gp_reset(&G->state);return;}
+ for(u32 i=0;i<G->bound_count;i++){
+  const u8 key=G->bound_keys[i];
+  const u16 depth=(S->cfg.key[key].flags&2)?0:S->pos[key];
+  changed|=depth!=G->depth[key];
+  G->depth[key]=depth;
+ }
+ if(changed)gp_update(&G->state,&G->config,G->depth,1,now);
+ else G->state.last_frame_tick=now;
+}
+
+__attribute__((section(".slow")))
+#endif
 __attribute__((used,noinline)) static void gp_service(void){
  if(MM8(0x20000104)!=3)return;
  if(!usb_ready()){gp_reset(&G->state);S->gp_pending=1;return;}
+ const u32 now=ticks();
+ const int complete=S->enabled&&!S->inhibit&&!S->scan_error&&!S->cal_phase;
+ const u32 elapsed=now-S->gp_ticks;
+ const u32 period=(TICKS_MS/8)<<S->usb_rate;
+#ifdef HE30_INPUT_BUDGET
+ gp_update_changed(now,complete);
+ if(!S->gp_pending&&elapsed<period)return;
+#else
  u16 positions[N];
  for(u32 i=0;i<N;i++)positions[i]=(S->cfg.key[i].flags&2)?0:S->pos[i];
- const u32 now=ticks();
  gp_watchdog(&G->state,now,50*TICKS_MS);
- const int complete=S->enabled&&!S->inhibit&&!S->scan_error&&!S->cal_phase;
  gp_update(&G->state,&G->config,positions,complete,now);
+#endif
  u8 report[20];
  if(S->gp_pending){bytes_zero(report,20);report[1]=20;}
  else gp_encode(&G->state.report,report);
- const u32 elapsed=now-S->gp_ticks;
- const u32 period=(TICKS_MS/8)<<S->usb_rate;
  if(S->gp_pending||(elapsed>=period&&(!equal(report,S->gp_last,20)||elapsed>=4*TICKS_MS))){
   if(upload(3,report,20,1)==1){
    S->gp_pending=0;S->gp_ticks=now;bytes_copy(S->gp_last,report,20);

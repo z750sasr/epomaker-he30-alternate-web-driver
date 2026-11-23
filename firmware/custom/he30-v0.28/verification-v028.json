@@ -1,0 +1,17 @@
+{
+  "sha256": "056f009497ca8d2c505250bad7bb0dbe2791a0a9100d6700b901766a53b8ce7d",
+  "passed": [
+    "independent mouse and Xbox USB changes",
+    "consumer controls with mouse disabled",
+    "USB configuration and HID descriptor agree",
+    "slots 9 and 10 execute and save",
+    "advanced assignments stay profile-specific",
+    "power-cut rollback",
+    "v0.26 factory journal loads"
+  ],
+  "service_instructions_per_loop": {
+    "idle": 539,
+    "held_diagonal": 565
+  },
+  "hardware_tested": false
+}

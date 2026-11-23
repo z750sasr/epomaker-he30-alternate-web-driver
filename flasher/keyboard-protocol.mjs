@@ -18,7 +18,7 @@ export const ADC_RGB_FIX_MODEL='H3K23';
 export const CALIBRATION_QOL_MODEL='H3K24';
 export const DESKTOP_KEYS_MODEL='H3K25';
 export const MEDIA_MODEL='H3K26';
-export const MEDIA_PRODUCTS=[MEDIA_MODEL,'H3K27'];
+export const MEDIA_PRODUCTS=[MEDIA_MODEL,'H3K27','H3K28'];
 export const DESKTOP_PRODUCTS=[DESKTOP_KEYS_MODEL,...MEDIA_PRODUCTS];
 export const FN_RGB_PRODUCTS=[FN_RGB_MODEL,ADC_RGB_FIX_MODEL,CALIBRATION_QOL_MODEL,...DESKTOP_PRODUCTS];
 export const DESKTOP_USAGES=new Map([
@@ -116,7 +116,7 @@ function checkReply(response,length,offset){
   if(n!==length||(response[5]|response[6]<<8)!==offset)throw new Error('Foundation reply does not match the request.');
   return response.slice(8,8+n);
 }
-function checkDevice(transport){if(transport?.device?.vendorId!==0x19f5||transport.device.productId!==0xfb4c||!['H3K05','H3K06','H3K07','H3K08','H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25','H3K26','H3K27'].includes(transport.device.productName))throw new Error('Select an HE30 running supported foundation firmware.');}
+function checkDevice(transport){if(transport?.device?.vendorId!==0x19f5||transport.device.productId!==0xfb4c||!['H3K05','H3K06','H3K07','H3K08','H3K09','H3K10','H3K11','H3K12','H3K13','H3K14','H3K15','H3K16','H3K17','H3K18','H3K19','H3K20','H3K21','H3K22','H3K23','H3K24','H3K25','H3K26','H3K27','H3K28'].includes(transport.device.productName))throw new Error('Select an HE30 running supported foundation firmware.');}
 export class FoundationClient {
   constructor(transport){checkDevice(transport);this.transport=transport;this.queue=Promise.resolve();}
   transaction(action){const pending=this.queue.then(action);this.queue=pending.catch(()=>{});return pending;}
