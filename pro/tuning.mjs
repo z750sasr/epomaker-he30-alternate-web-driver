@@ -22,7 +22,7 @@ export function distanceField(value, travel, precision, min, max, scale = 1000) 
   };
 }
 
-export function distanceLabel(value, travel, precision) {
+export function distanceLabel(value, travel, precision, {showMillimeters = true} = {}) {
   const display = displayDistance(value, travel, precision);
-  return precision === 2 ? display.toFixed(1) + '%' : display.toFixed(precision === 1 ? 3 : 2) + ' mm';
+  return precision === 2 ? display.toFixed(1) + '%' : display.toFixed(precision === 1 ? 3 : 2) + (showMillimeters ? ' mm' : '');
 }

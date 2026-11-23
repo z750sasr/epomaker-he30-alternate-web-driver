@@ -586,7 +586,8 @@ const assertOrderedAssets = (source, files, tag, prefix = "") => {
 };
 assertOrderedAssets(htmlSource, styleFiles, "style");
 assertOrderedAssets(htmlSource, [...protocolFiles, ...appFiles], "script");
-if (!htmlSource.includes('data-app-mode="live"') || !htmlSource.includes('href="json_editor/"')) throw new Error("The live route does not link to the dedicated JSON editor.");
+if (!htmlSource.includes('data-app-mode="live"')) throw new Error("The stock driver must use live mode.");
+if (/href="(?:json_editor|matrix)\//.test(htmlSource)) throw new Error("The stock driver still links to an offline tool.");
 for (const removedId of ['id="openFileButton"', 'id="welcomeFileButton"', 'id="demoButton"', 'id="fileInput"']) {
   if (htmlSource.includes(removedId)) throw new Error(`Offline control must not appear on the live landing page: ${removedId}`);
 }

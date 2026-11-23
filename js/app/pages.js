@@ -569,7 +569,7 @@ function renderProfiles() {
   const profileDescription = state.source === "device" ? "Stored in onboard memory." : demo ? "Interactive example with four populated layers." : "Profile identity recovered from this backup.";
   return `<div class="profile-grid">${profileIndexes.map((index) => `<article class="panel profile-card${index === state.profile.profileIndex ? " active" : ""}"><span class="profile-number">${index + 1}</span>${index === state.profile.profileIndex ? "<span class=\"active-label\">Active workspace</span>" : ""}<h3>Profile ${index + 1}</h3><p>${profileDescription}</p><button class="button ${index === state.profile.profileIndex ? "secondary" : "primary"}" type="button" data-profile="${index}" ${index === state.profile.profileIndex || state.source !== "device" ? "disabled" : ""}>${index === state.profile.profileIndex ? "Loaded" : "Switch and load"}</button></article>`).join("")}</div>
     <div class="section-heading"><div><h2>Profile portability</h2><p>Back up the complete current profile, including Hall and lighting data.</p></div></div>
-    <section class="panel panel-pad"><div class="quick-list">${quickRow("⇩", "Export current backup", "Download a complete JSON copy of the current workspace", "export-profile")}${APP_MODE === "json" ? quickRow("⇧", "Import profile JSON", "Open another backup in this offline workspace", "import-profile") : quickRow("↗", "Open JSON editor", "Inspect or modify a backup without connecting a keyboard", "json-editor")}</div></section>
+    <section class="panel panel-pad"><div class="quick-list">${quickRow("⇩", "Export current backup", "Download a complete JSON copy of the current workspace", "export-profile")}${APP_MODE === "json" ? quickRow("⇧", "Import profile JSON", "Open another backup in this offline workspace", "import-profile") : ""}</div></section>
     ${profileShareHtml()}
     ${multi ? `<div class="callout">Profile 1 owns layers 0–3, Profile 2 owns layers 4–7, and Profile 3 owns layers 8–11. A key mapped to FN/FN1–FN11 may jump directly to any corresponding global layer.</div>` : `<div class="callout">${demo ? "Demo Mode represents one complete profile with layers 0–3. Export it as JSON or a compressed share code; connect the live driver to read and switch all three onboard profiles." : state.identity ? `${esc(state.identity.name)} reports a single onboard profile.` : "Connect a supported multi-profile HE30 to switch among three onboard profiles."}</div>`}`;
 }
@@ -599,7 +599,6 @@ function bindPageControls() {
   $$('[data-go-page]').forEach((button) => button.addEventListener("click", async () => {
     if (button.dataset.goPage === "export-profile") return exportProfile();
     if (button.dataset.goPage === "import-profile") return $("#fileInput")?.click();
-    if (button.dataset.goPage === "json-editor") return window.location.assign("json_editor/");
     if (state.calibrationActive && button.dataset.goPage !== "hall") await stopCalibration(false);
     if (state.page === "hall" && button.dataset.goPage !== "hall") { state.hallEditPending = false; state.hallEditSelection.clear(); }
     state.page = button.dataset.goPage; renderPage(); resetWorkspaceScroll();

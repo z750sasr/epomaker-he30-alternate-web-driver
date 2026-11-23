@@ -17,13 +17,35 @@ const hex=code=>'0x'+code.toString(16).padStart(2,'0').toUpperCase();
 const symbols=new Map([
   [79,'arrow-right'],[80,'arrow-left'],[81,'arrow-down'],[82,'arrow-up'],
   [0xc0,'play-pause'],[0xc1,'previous-track'],[0xc2,'next-track'],[0xc3,'stop-track'],[0xc4,'mute'],
-  [0xc5,'volume-up'],[0xc6,'volume-down'],[0xc7,'display-brightness-up'],[0xc8,'display-brightness-down'],[0xcd,'calculator'],
+  [0xc5,'volume-up'],[0xc6,'volume-down'],[0xc7,'display-brightness-up'],[0xc8,'display-brightness-down'],
+  [0xca,'browser'],[0xcb,'arrow-left'],[0xcc,'arrow-right'],[0xcd,'calculator'],
   [0xb0,'mouse-left'],[0xb1,'mouse-right'],[0xb2,'mouse-middle'],[0xb3,'mouse-back'],[0xb4,'mouse-forward'],
   [0xf5,'lighting-brightness-up'],[0xf6,'lighting-brightness-down']
 ]);
 const icon=id=>`<svg class="reloaded-remap-icon" aria-hidden="true" focusable="false"><use href="assets/remap-icons.svg#${id}"></use></svg>`;
 export function remapIcon(code,label){
   return symbols.has(code)?`${icon(symbols.get(code))}<span class="remap-sr-only">${escape(label)}</span>`:'';
+}
+
+// Keyboard usages describe a key position. Alternate legends below use the US layout.
+const punctuation=[['-','_'],['=','+'],['[','{'],[']','}'],['\\','|'],['#','~'],[';',':'],["'",'"'],['`','~'],[',','<'],['.','>'],['/','?']];
+const shiftedDigits='!@#$%^&*()';
+const shortLabels=new Map([
+  [0x2a,'Bksp'],[0x39,'Caps'],[0x46,'PrtSc'],[0x47,'ScrLk'],[0x49,'Ins'],[0x4b,'PgUp'],[0x4c,'Del'],[0x4e,'PgDn'],
+  [0x53,'NumLk'],[0x54,'Num /'],[0x55,'Num *'],[0x56,'Num −'],[0x57,'Num +'],[0x58,'Num ↵'],[0x63,'Num .'],[0x64,'\\'],[0x65,'Menu'],[0x66,'Power'],[0x67,'Num ='],
+  [0xe0,'LCtrl'],[0xe1,'LShift'],[0xe2,'LAlt'],[0xe3,'LWin'],[0xe4,'RCtrl'],[0xe5,'RShift'],[0xe6,'RAlt'],[0xe7,'RWin'],
+  [0xb5,'Wheel ↑'],[0xb6,'Wheel ↓'],[0xb7,'Mouse ←'],[0xb8,'Mouse →'],[0xb9,'Mouse ↑'],[0xba,'Mouse ↓'],
+  [0xc9,'Search'],[0xca,'Home'],[0xcb,'Web ←'],[0xcc,'Web →'],[0xce,'Apps'],[0xcf,'Mission'],[0xf4,'Next'],[0xfe,'Trans']
+]);
+for(const code of profileCodes)shortLabels.set(code,'P'+(code-239));
+for(let code=0x59;code<=0x62;code++)shortLabels.set(code,'Num '+((code-0x58)%10));
+
+export function remapKeyLegend(code){
+  const label=labelFor(code);
+  if(symbols.has(code))return icon(symbols.get(code));
+  const shifted=code>=0x1e&&code<=0x27?[label,shiftedDigits[code-0x1e]]:punctuation[code-0x2d];
+  if(!shifted)return escape(shortLabels.get(code)??label);
+  return escape(shifted[0])+`<sup class="pro-key-shifted">${escape(shifted[1])}</sup>`;
 }
 
 export function layerTabs(layer,area){
